@@ -225,4 +225,90 @@ function placeOrder() {
     .trim();
 
   const mobile = document
-    .getElementById("
+    .getElementById("customerMobile")
+    .value
+    .trim();
+
+  const address = document
+    .getElementById("customerAddress")
+    .value
+    .trim();
+
+
+  if (!name || !mobile || !address) {
+
+    alert(
+      "Please fill Name, Mobile and Address"
+    );
+
+    return;
+  }
+
+
+  let total = 0;
+
+
+  const lines = cart.map(function(item) {
+
+    const p = products.find(function(x) {
+      return x.id === item.id;
+    });
+
+    total = total + (p.price * item.qty);
+
+    return (
+      p.name +
+      " x " +
+      item.qty +
+      " = ₹" +
+      (p.price * item.qty)
+    );
+
+  });
+
+
+  const message =
+    "New Preesho Order\n\n" +
+    "Name: " + name + "\n" +
+    "Mobile: " + mobile + "\n" +
+    "Address: " + address + "\n\n" +
+    lines.join("\n") +
+    "\n\nTotal: ₹" +
+    total;
+
+
+  const whatsappNumber = "91XXXXXXXXXX";
+
+
+  window.open(
+    "https://wa.me/" +
+    whatsappNumber +
+    "?text=" +
+    encodeURIComponent(message),
+    "_blank"
+  );
+
+}
+
+
+document.getElementById("cartBtn").onclick = function() {
+
+  document
+    .getElementById("cartSection")
+    .classList
+    .toggle("hidden");
+
+};
+
+
+document
+  .getElementById("searchBox")
+  .addEventListener(
+    "input",
+    searchProducts
+  );
+
+
+renderProducts();
+
+renderCart();
