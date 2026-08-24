@@ -1,32 +1,38 @@
+# Preesho V2 — APK Ready Flutter Project
 
-# Preesho V2 - Backend Ready
-
-This package contains the Preesho mobile source plus a backend service interface and production setup specifications.
-
-Already included:
+Preesho is a mobile-first shopping app starter with:
 - Home
 - Categories
 - Product catalogue
 - Search
 - Cart
-- Address
-- Login/Signup UI
+- Delivery address form
+- Login / Sign Up UI
 - Profile
-- Backend service abstraction
-- Local backend implementation for development
-- Admin/API specification
-- Production backend/security setup notes
+- Release APK GitHub Actions workflow
 
-Still requiring your external account/configuration before a real launch:
-- Firebase/Supabase project credentials
-- Production database
-- Real authentication
-- Product/admin data
-- Android signing key
-- Google Play Console
-- Payment gateway credentials (when enabled)
+## Build locally
 
-Build:
+```bash
 flutter pub get
+flutter analyze
 flutter build apk --release
-flutter build appbundle --release
+```
+
+APK output:
+`build/app/outputs/flutter-apk/app-release.apk`
+
+## Build from GitHub Actions (recommended for phone-only workflow)
+
+1. Upload/push the whole project to the `main` branch.
+2. Open **Actions** → **Build Preesho APK**.
+3. Tap **Run workflow** if it has not started automatically.
+4. Open the completed workflow run.
+5. Under **Artifacts**, download `preesho-release-apk`.
+6. Extract it and install `app-release.apk` on Android.
+
+The workflow installs Flutter, refreshes Android platform files, runs dependency install and analysis, then builds the release APK.
+
+## Important
+
+This version does not include a live payment gateway. Authentication, production database, real product/admin API, Firebase/Supabase credentials, and Play Store signing configuration still need to be connected before a production commerce launch.
