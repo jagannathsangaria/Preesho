@@ -1,9 +1,9 @@
 const products = [
-  {id:1,name:"Lava Phone",price:9999,emoji:"📱"},
-  {id:2,name:"Biometric",price:1499,emoji:"🔐"},
-  {id:3,name:"T-Shirt",price:499,emoji:"👕"},
-  {id:4,name:"Bottle",price:299,emoji:"🍼"},
-  {id:5,name:"Dairy Product",price:199,emoji:"🥛"}
+  {id:1,name:"Lava Phone",price:9999,image:"Screenshot_20260824-183540_Google.jpg"},
+  {id:2,name:"Biometric",price:1499,image:"Screenshot_20260824-183612_Google.jpg"},
+  {id:3,name:"T-Shirt",price:499,image:"Screenshot_20260824-183701.jpg"},
+  {id:4,name:"Bottle",price:299,image:"Screenshot_20260824-183743.jpg"},
+  {id:5,name:"Dairy Product",price:199,image:"Screenshot_20260824-183844_Google.jpg"}
 ];
 let cart = JSON.parse(localStorage.getItem("preeshoCart") || "[]");
 
