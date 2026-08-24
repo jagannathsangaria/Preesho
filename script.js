@@ -1,10 +1,10 @@
 const products = [
-  {id: 1, name: "Product 1", price: 99, emoji: "🛍️"},
-  {id: 2, name: "Product 2", price: 149, emoji: "🎁"},
-  {id: 3, name: "Product 3", price: 199, emoji: "👕"},
-  {id: 4, name: "Product 4", price: 249, emoji: "⌚"}
+  {id:1,name:"Lava Phone",price:9999,emoji:"📱"},
+  {id:2,name:"Biometric",price:1499,emoji:"🔐"},
+  {id:3,name:"T-Shirt",price:499,emoji:"👕"},
+  {id:4,name:"Bottle",price:299,emoji:"🍼"},
+  {id:5,name:"Dairy Product",price:199,emoji:"🥛"}
 ];
-
 let cart = JSON.parse(localStorage.getItem("preeshoCart") || "[]");
 
 function renderProducts() {
