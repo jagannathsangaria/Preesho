@@ -1,4 +1,3 @@
-
 const products = [
   {
     id: 1,
@@ -32,16 +31,26 @@ const products = [
   }
 ];
 
-let cart = JSON.parse(localStorage.getItem("preeshoCart") || "[]");
+let cart = JSON.parse(
+  localStorage.getItem("preeshoCart") || "[]"
+);
 
-function renderProducts() {
+function renderProducts(list = products) {
+
   const box = document.getElementById("products");
 
-  box.innerHTML = products.map(function(p) {
+  if (list.length === 0) {
+    box.innerHTML = "<p>No product found.</p>";
+    return;
+  }
+
+  box.innerHTML = list.map(function(p) {
+
     return `
       <div class="product">
-        <img 
-          src="${p.image}" 
+
+        <img
+          src="${p.image}"
           alt="${p.name}"
           style="width:100%;height:180px;object-fit:contain;border-radius:8px;"
         >
@@ -55,30 +64,60 @@ function renderProducts() {
         <button onclick="addToCart(${p.id})">
           Add to Cart
         </button>
+
       </div>
     `;
+
   }).join("");
 }
 
+
+function searchProducts() {
+
+  const text = document
+    .getElementById("searchBox")
+    .value
+    .toLowerCase()
+    .trim();
+
+  const filteredProducts = products.filter(function(p) {
+
+    return p.name
+      .toLowerCase()
+      .includes(text);
+
+  });
+
+  renderProducts(filteredProducts);
+}
+
+
 function addToCart(id) {
+
   const item = cart.find(function(x) {
     return x.id === id;
   });
 
   if (item) {
+
     item.qty = item.qty + 1;
+
   } else {
+
     cart.push({
       id: id,
       qty: 1
     });
+
   }
 
   save();
   renderCart();
 }
 
+
 function changeQty(id, delta) {
+
   const item = cart.find(function(x) {
     return x.id === id;
   });
@@ -90,25 +129,33 @@ function changeQty(id, delta) {
   item.qty = item.qty + delta;
 
   if (item.qty <= 0) {
+
     cart = cart.filter(function(x) {
       return x.id !== id;
     });
+
   }
 
   save();
   renderCart();
 }
 
+
 function renderCart() {
+
   const box = document.getElementById("cartItems");
 
   let total = 0;
   let count = 0;
 
   if (cart.length === 0) {
+
     box.innerHTML = "<p>Your cart is empty.</p>";
+
   } else {
+
     box.innerHTML = cart.map(function(item) {
+
       const p = products.find(function(x) {
         return x.id === item.id;
       });
@@ -122,81 +169,60 @@ function renderCart() {
 
       return `
         <div>
+
           <b>${p.name}</b> × ${item.qty}
+
           <br>
+
           ₹${p.price * item.qty}
+
           <br>
-          <button onclick="changeQty(${p.id}, 1)">+</button>
-          <button onclick="changeQty(${p.id}, -1)">−</button>
+
+          <button onclick="changeQty(${p.id}, 1)">
+            +
+          </button>
+
+          <button onclick="changeQty(${p.id}, -1)">
+            −
+          </button>
+
         </div>
+
         <hr>
       `;
+
     }).join("");
   }
 
   document.getElementById("cartTotal").textContent = total;
+
   document.getElementById("cartCount").textContent = count;
 }
 
+
 function save() {
+
   localStorage.setItem(
     "preeshoCart",
     JSON.stringify(cart)
   );
+
 }
+
 
 function placeOrder() {
+
   if (cart.length === 0) {
+
     alert("Cart is empty");
     return;
+
   }
 
-  const name = document.getElementById("customerName").value.trim();
-  const mobile = document.getElementById("customerMobile").value.trim();
-  const address = document.getElementById("customerAddress").value.trim();
+  const name = document
+    .getElementById("customerName")
+    .value
+    .trim();
 
-  if (!name || !mobile || !address) {
-    alert("Please fill Name, Mobile and Address");
-    return;
-  }
-
-  let total = 0;
-
-  const lines = cart.map(function(item) {
-    const p = products.find(function(x) {
-      return x.id === item.id;
-    });
-
-    total = total + (p.price * item.qty);
-
-    return `${p.name} x ${item.qty} = ₹${p.price * item.qty}`;
-  });
-
-  const message =
-    "New Preesho Order\n\n" +
-    "Name: " + name + "\n" +
-    "Mobile: " + mobile + "\n" +
-    "Address: " + address + "\n\n" +
-    lines.join("\n") +
-    "\n\nTotal: ₹" + total;
-
-  const whatsappNumber = "91XXXXXXXXXX";
-
-  window.open(
-    "https://wa.me/" +
-    whatsappNumber +
-    "?text=" +
-    encodeURIComponent(message),
-    "_blank"
-  );
-}
-
-document.getElementById("cartBtn").onclick = function() {
-  document
-    .getElementById("cartSection")
-    .classList.toggle("hidden");
-};
-
-renderProducts();
-renderCart();
-  
+  const mobile = document
+    .getElementById("
