@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Preesho - Shopping App</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Preesho</h1>
+    <button id="cartBtn">🛒 Cart <span id="cartCount">0</span></button>
+  </header>
+
+  <section class="hero">
+    <h2>Welcome to Preesho</h2>
+    <p>Affordable products, easy ordering.</p>
+  </section>
+
+  <main>
+    <h2>Products</h2>
+    <div id="products" class="products"></div>
+  </main>
+
+  <section id="cartSection" class="cart hidden">
+    <h2>Your Cart</h2>
+    <div id="cartItems"></div>
+    <h3>Total: ₹<span id="cartTotal">0</span></h3>
+    <div class="order-form">
+      <input id="customerName" placeholder="Your Name">
+      <input id="customerMobile" placeholder="Mobile Number" type="tel">
+      <textarea id="customerAddress" placeholder="Delivery Address"></textarea>
+      <button onclick="placeOrder()">Order on WhatsApp</button>
+    </div>
+  </section>
+
+  <script src="script.js"></script>
+</body>
+</html>
