@@ -423,7 +423,7 @@ function placeOrder() {
     lines.join("\n") +
     "\n\nTotal: ₹" + total;
 
-  const whatsappNumber = "919785947493";
+  const whatsappNumber = "91XXXXXXXXXX";
   window.open(
     "https://wa.me/" +
     whatsappNumber +
