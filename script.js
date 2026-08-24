@@ -5,12 +5,13 @@ const products = [
   {id:4,name:"Bottle",price:299,image:"Screenshot_20260824-183743.jpg"},
   {id:5,name:"Dairy Product",price:199,image:"Screenshot_20260824-183844_Google.jpg"}
 ];
+
 let cart = JSON.parse(localStorage.getItem("preeshoCart") || "[]");
 
 function renderProducts() {
   document.getElementById("products").innerHTML = products.map(p => `
     <div class="product">
-      <div style="font-size:60px;text-align:center">${p.emoji}</div>
+      <img src="${p.image}" style="width:100%;height:180px;object-fit:contain;border-radius:8px;">
       <h3>${p.name}</h3>
       <div>₹${p.price}</div>
       <button onclick="addToCart(${p.id})">Add to Cart</button>
@@ -24,7 +25,7 @@ function addToCart(id) {
   if (item) {
     item.qty++;
   } else {
-    cart.push({id, qty: 1});
+    cart.push({id, qty:1});
   }
 
   save();
@@ -33,7 +34,6 @@ function addToCart(id) {
 
 function changeQty(id, delta) {
   const item = cart.find(x => x.id === id);
-
   if (!item) return;
 
   item.qty += delta;
@@ -67,8 +67,8 @@ function renderCart() {
           <br>
           ₹${p.price * item.qty}
           <br>
-          <button onclick="changeQty(${p.id}, 1)">+</button>
-          <button onclick="changeQty(${p.id}, -1)">−</button>
+          <button onclick="changeQty(${p.id},1)">+</button>
+          <button onclick="changeQty(${p.id},-1)">−</button>
         </div>
         <hr>
       `;
@@ -103,7 +103,6 @@ function placeOrder() {
   const lines = cart.map(item => {
     const p = products.find(x => x.id === item.id);
     total += p.price * item.qty;
-
     return `${p.name} x ${item.qty} = ₹${p.price * item.qty}`;
   });
 
