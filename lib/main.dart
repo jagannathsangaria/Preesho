@@ -34,12 +34,12 @@ class Product {
 
     return Product(
       id: doc.id,
-      name: (data['Name'] ?? '').toString(),
-      category: (data['Category'] ?? '').toString(),
-      price: (data['Price'] ?? '').toString(),
-      description: (data['Description'] ?? '').toString(),
-      imageUrl: (data['Imageurl'] ?? '').toString(),
-      stock: (data['Stock'] ?? '').toString(),
+      name: (data['Name'] ?? '').toString().trim(),
+      category: (data['Category'] ?? '').toString().trim(),
+      price: (data['Price'] ?? '').toString().trim(),
+      description: (data['Description'] ?? '').toString().trim(),
+      imageUrl: (data['Imageurl'] ?? '').toString().trim(),
+      stock: (data['Stock'] ?? '').toString().trim(),
     );
   }
 }
@@ -72,23 +72,23 @@ class _MainShellState extends State<MainShell> {
   int index = 0;
   final List<Product> cart = [];
 
+  void addToCart(Product product) {
+    setState(() {
+      cart.add(product);
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${product.name} added to cart'),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final pages = [
-      HomePage(
-        onAdd: (product) {
-          setState(() {
-            cart.add(product);
-          });
-        },
-      ),
-      CategoriesPage(
-        onAdd: (product) {
-          setState(() {
-            cart.add(product);
-          });
-        },
-      ),
+      HomePage(onAdd: addToCart),
+      CategoriesPage(onAdd: addToCart),
       CartPage(
         cart: cart,
         onRemove: (product) {
@@ -264,7 +264,7 @@ class HomePage extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 20),
               const Text(
                 'Products from Firebase',
                 style: TextStyle(
@@ -318,6 +318,98 @@ class CategoryCard extends StatelessWidget {
   }
 }
 
+class ProductTile extends StatelessWidget {
+  final Product product;
+  final void Function(Product) onAdd;
+
+  const ProductTile({
+    super.key,
+    required this.product,
+    required this.onAdd,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 75,
+              height: 75,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: Colors.grey.shade200,
+              ),
+              child: const Icon(
+                Icons.shopping_bag,
+                size: 38,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    product.name.isEmpty
+                        ? 'Unnamed Product'
+                        : product.name,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    product.category.isEmpty
+                        ? 'Category unavailable'
+                        : product.category,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    product.price.isEmpty
+                        ? 'Price unavailable'
+                        : '₹${product.price}',
+                    style: const TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    product.stock.isEmpty
+                        ? 'Stock unavailable'
+                        : 'Stock: ${product.stock}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              onPressed: () {
+                onAdd(product);
+              },
+              icon: const Icon(
+                Icons.add_shopping_cart,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class CategoriesPage extends StatelessWidget {
   final void Function(Product) onAdd;
 
@@ -346,7 +438,10 @@ class CategoriesPage extends StatelessWidget {
 
           if (snapshot.hasError) {
             return Center(
-              child: Text('Firebase error: ${snapshot.error}'),
+              child: Text(
+                'Firebase error:\n${snapshot.error}',
+                textAlign: TextAlign.center,
+              ),
             );
           }
 
@@ -355,7 +450,14 @@ class CategoriesPage extends StatelessWidget {
                   .toList() ??
               [];
 
+          if (products.isEmpty) {
+            return const Center(
+              child: Text('No products available'),
+            );
+          }
+
           return ListView(
+            padding: const EdgeInsets.all(16),
             children: products
                 .map(
                   (product) => ProductTile(
@@ -383,6 +485,12 @@ class CartPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    double total = 0;
+
+    for (final product in cart) {
+      total += double.tryParse(product.price) ?? 0;
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Cart'),
@@ -398,8 +506,8 @@ class CartPage extends StatelessWidget {
                     children: cart.map(
                       (product) {
                         return ListTile(
-                          leading: CircleAvatar(
-                            child: const Icon(Icons.shopping_bag),
+                          leading: const CircleAvatar(
+                            child: Icon(Icons.shopping_bag),
                           ),
                           title: Text(product.name),
                           subtitle: Text('₹${product.price}'),
@@ -414,19 +522,47 @@ class CartPage extends StatelessWidget {
                 ),
                 Padding(
                   padding: const EdgeInsets.all(16),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const AddressPage(),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment:
+                            MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Total',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        );
-                      },
-                      child: const Text('Proceed to Address'),
-                    ),
+                          Text(
+                            '₹${total.toStringAsFixed(0)}',
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    const AddressPage(),
+                              ),
+                            );
+                          },
+                          child: const Text(
+                            'Proceed to Address',
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -453,22 +589,26 @@ class AddressPage extends StatelessWidget {
                 labelText: 'Full Name',
               ),
             ),
+            const SizedBox(height: 10),
             const TextField(
               decoration: InputDecoration(
                 labelText: 'Mobile Number',
               ),
               keyboardType: TextInputType.phone,
             ),
+            const SizedBox(height: 10),
             const TextField(
               decoration: InputDecoration(
                 labelText: 'Address',
               ),
             ),
+            const SizedBox(height: 10),
             const TextField(
               decoration: InputDecoration(
                 labelText: 'City',
               ),
             ),
+            const SizedBox(height: 10),
             const TextField(
               decoration: InputDecoration(
                 labelText: 'PIN Code',
@@ -482,21 +622,27 @@ class AddressPage extends StatelessWidget {
                 onPressed: () {
                   showDialog(
                     context: context,
-                    builder: (_) => AlertDialog(
-                      title: const Text('Order Ready'),
-                      content: const Text(
-                        'Payment gateway will be connected in the next release.',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('OK'),
+                    builder: (_) {
+                      return AlertDialog(
+                        title: const Text('Order Ready'),
+                        content: const Text(
+                          'Payment gateway will be connected in the next release.',
                         ),
-                      ],
-                    ),
+                        actions: [
+                          TextButton(
+                            onPressed: () {
+                              Navigator.pop(context);
+                            },
+                            child: const Text('OK'),
+                          ),
+                        ],
+                      );
+                    },
                   );
                 },
-                child: const Text('Continue to Payment'),
+                child: const Text(
+                  'Continue to Payment',
+                ),
               ),
             ),
           ],
@@ -597,50 +743,13 @@ class LoginPage extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: FilledButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () {
+                  Navigator.pop(context);
+                },
                 child: const Text('Continue'),
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class ProductTile extends StatelessWidget {
-  final Product product;
-  final void Function(Product) onAdd;
-
-  const ProductTile({
-    super.key,
-    required this.product,
-    required this.onAdd,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        leading: CircleAvatar(
-          child: const Icon(Icons.shopping_bag),
-        ),
-        title: Text(product.name),
-        subtitle: Text(
-          '₹${product.price}\n${product.category}',
-        ),
-        isThreeLine: true,
-        trailing: IconButton(
-          onPressed: () {
-            onAdd(product);
-
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Added to cart'),
-              ),
-            );
-          },
-          icon: const Icon(Icons.add_shopping_cart),
         ),
       ),
     );
@@ -709,7 +818,8 @@ class FirebaseProductSearchResults extends StatelessWidget {
           .where('Active', isEqualTo: true)
           .snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (snapshot.connectionState ==
+            ConnectionState.waiting) {
           return const Center(
             child: CircularProgressIndicator(),
           );
@@ -717,7 +827,10 @@ class FirebaseProductSearchResults extends StatelessWidget {
 
         if (snapshot.hasError) {
           return Center(
-            child: Text('Firebase error: ${snapshot.error}'),
+            child: Text(
+              'Firebase error:\n${snapshot.error}',
+              textAlign: TextAlign.center,
+            ),
           );
         }
 
@@ -725,12 +838,12 @@ class FirebaseProductSearchResults extends StatelessWidget {
                 .map(Product.fromFirestore)
                 .where(
                   (product) =>
-                      product.name.toLowerCase().contains(
-                            query.toLowerCase(),
-                          ) ||
-                      product.category.toLowerCase().contains(
-                            query.toLowerCase(),
-                          ),
+                      product.name
+                          .toLowerCase()
+                          .contains(query.toLowerCase()) ||
+                      product.category
+                          .toLowerCase()
+                          .contains(query.toLowerCase()),
                 )
                 .toList() ??
             [];
@@ -742,6 +855,7 @@ class FirebaseProductSearchResults extends StatelessWidget {
         }
 
         return ListView(
+          padding: const EdgeInsets.all(16),
           children: products
               .map(
                 (product) => ProductTile(
