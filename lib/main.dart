@@ -14,8 +14,8 @@ class PreeshoApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: false,
       title: 'Preesho',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
         colorSchemeSeed: Colors.deepPurple,
@@ -27,6 +27,23 @@ class PreeshoApp extends StatelessWidget {
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
+
+  String readValue(
+    Map<String, dynamic> data,
+    List<String> keys,
+  ) {
+    for (final key in keys) {
+      if (data.containsKey(key) && data[key] != null) {
+        final value = data[key].toString().trim();
+
+        if (value.isNotEmpty) {
+          return value;
+        }
+      }
+    }
+
+    return '';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -129,17 +146,41 @@ class HomePage extends StatelessWidget {
               ...products.map((doc) {
                 final data = doc.data();
 
-                final name =
-                    data['Name']?.toString() ?? '';
+                final name = readValue(
+                  data,
+                  [
+                    'Name',
+                    'name',
+                    'NAME',
+                  ],
+                );
 
-                final category =
-                    data['Category']?.toString() ?? '';
+                final category = readValue(
+                  data,
+                  [
+                    'Category',
+                    'category',
+                    'CATEGORY',
+                  ],
+                );
 
-                final price =
-                    data['Price']?.toString() ?? '';
+                final price = readValue(
+                  data,
+                  [
+                    'Price',
+                    'price',
+                    'PRICE',
+                  ],
+                );
 
-                final stock =
-                    data['Stock']?.toString() ?? '';
+                final stock = readValue(
+                  data,
+                  [
+                    'Stock',
+                    'stock',
+                    'STOCK',
+                  ],
+                );
 
                 return Card(
                   margin:
@@ -152,7 +193,6 @@ class HomePage extends StatelessWidget {
                       crossAxisAlignment:
                           CrossAxisAlignment.start,
                       children: [
-                        // PRODUCT NAME
                         Text(
                           name.isEmpty
                               ? 'Unnamed Product'
@@ -163,80 +203,95 @@ class HomePage extends StatelessWidget {
                           ),
                         ),
 
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 10),
 
-                        // FIREBASE CATEGORY
-                        Text(
-                          category.isEmpty
-                              ? 'Category unavailable'
-                              : category,
-                          style: const TextStyle(
-                            fontSize: 16,
-                          ),
-                        ),
-
-                        // TEST CATEGORY
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Men Fashion TEST',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey,
-                          ),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.category_outlined,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                category.isEmpty
+                                    ? 'Category unavailable'
+                                    : category,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight:
+                                      FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
 
                         const SizedBox(height: 10),
 
-                        // FIREBASE PRICE
-                        Text(
-                          price.isEmpty
-                              ? 'Price unavailable'
-                              : '₹$price',
-                          style: const TextStyle(
-                            fontSize: 23,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-
-                        // TEST PRICE
-                        const SizedBox(height: 4),
-                        const Text(
-                          '₹399 TEST',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey,
-                          ),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.currency_rupee,
+                              size: 22,
+                            ),
+                            Expanded(
+                              child: Text(
+                                price.isEmpty
+                                    ? 'Price unavailable'
+                                    : price.startsWith('₹')
+                                        ? price
+                                        : '₹$price',
+                                style: const TextStyle(
+                                  fontSize: 23,
+                                  fontWeight:
+                                      FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
 
                         const SizedBox(height: 8),
 
-                        // STOCK
-                        Text(
-                          stock.isEmpty
-                              ? 'Stock unavailable'
-                              : 'Stock: $stock',
-                          style: const TextStyle(
-                            fontSize: 14,
-                          ),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.inventory_2_outlined,
+                              size: 19,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              stock.isEmpty
+                                  ? 'Stock unavailable'
+                                  : 'Stock: $stock',
+                              style: const TextStyle(
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
                         ),
 
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 16),
 
                         SizedBox(
                           width: double.infinity,
-                          child: FilledButton(
+                          child: FilledButton.icon(
                             onPressed: () {
                               ScaffoldMessenger.of(
                                 context,
                               ).showSnackBar(
                                 SnackBar(
                                   content: Text(
-                                    '$name added to cart',
+                                    '${name.isEmpty ? 'Product' : name} added to cart',
                                   ),
                                 ),
                               );
                             },
-                            child: const Text(
+                            icon: const Icon(
+                              Icons.shopping_cart,
+                            ),
+                            label: const Text(
                               'Add to Cart',
                             ),
                           ),
