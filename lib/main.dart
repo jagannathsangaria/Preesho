@@ -4,9 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
   await Firebase.initializeApp();
-
   runApp(const PreeshoApp());
 }
 
@@ -34,29 +32,20 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Preesho',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        centerTitle: false,
+        title: const Text('Preesho'),
       ),
-      body: StreamBuilder<QuerySnapshot>(
+      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance
             .collection('products')
             .where('Active', isEqualTo: true)
             .snapshots(),
         builder: (context, snapshot) {
-          // Loading
-          if (snapshot.connectionState ==
-              ConnectionState.waiting) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
               child: CircularProgressIndicator(),
             );
           }
 
-          // Firebase error
           if (snapshot.hasError) {
             return Center(
               child: Padding(
@@ -69,16 +58,9 @@ class HomePage extends StatelessWidget {
             );
           }
 
-          // No data
-          if (!snapshot.hasData ||
-              snapshot.data!.docs.isEmpty) {
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
             return const Center(
-              child: Text(
-                'No products available',
-                style: TextStyle(
-                  fontSize: 18,
-                ),
-              ),
+              child: Text('No products available'),
             );
           }
 
@@ -87,12 +69,11 @@ class HomePage extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // Welcome banner
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(22),
+                padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(18),
                   gradient: const LinearGradient(
                     colors: [
                       Colors.deepPurple,
@@ -101,14 +82,13 @@ class HomePage extends StatelessWidget {
                   ),
                 ),
                 child: const Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Welcome to Preesho',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 25,
+                        fontSize: 24,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -117,15 +97,12 @@ class HomePage extends StatelessWidget {
                       'Shop smarter. Shop faster.',
                       style: TextStyle(
                         color: Colors.white70,
-                        fontSize: 14,
                       ),
                     ),
                   ],
                 ),
               ),
-
-              const SizedBox(height: 25),
-
+              const SizedBox(height: 24),
               const Text(
                 'Products',
                 style: TextStyle(
@@ -133,215 +110,88 @@ class HomePage extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-
               const SizedBox(height: 12),
+              ...products.map((doc) {
+                final data = doc.data();
 
-              // Firebase products
-              ...products.map(
-                (doc) {
-                  final data =
-                      doc.data() as Map<String, dynamic>;
+                final name = data['Name']?.toString() ?? '';
+                final category =
+                    data['Category']?.toString() ?? '';
+                final price = data['Price']?.toString() ?? '';
+                final stock = data['Stock']?.toString() ?? '';
 
-                  return ProductCard(
-                    name: data['Name']?.toString() ?? '',
-                    category:
-                        data['Category']?.toString() ?? '',
-                    price:
-                        data['Price']?.toString() ?? '',
-                    stock:
-                        data['Stock']?.toString() ?? '',
-                    description:
-                        data['Description']?.toString() ?? '',
-                    imageUrl:
-                        data['Imageurl']?.toString() ?? '',
-                  );
-                },
-              ),
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 14),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name.isEmpty
+                              ? 'Unnamed Product'
+                              : name,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          category.isEmpty
+                              ? 'Category unavailable'
+                              : category,
+                          style: const TextStyle(
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          price.isEmpty
+                              ? 'Price unavailable'
+                              : '₹$price',
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          stock.isEmpty
+                              ? 'Stock unavailable'
+                              : 'Stock: $stock',
+                          style: const TextStyle(
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            onPressed: () {
+                              ScaffoldMessenger.of(context)
+                                  .showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    '$name added to cart',
+                                  ),
+                                ),
+                              );
+                            },
+                            child: const Text(
+                              'Add to Cart',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
             ],
           );
         },
-      ),
-    );
-  }
-}
-
-class ProductCard extends StatelessWidget {
-  final String name;
-  final String category;
-  final String price;
-  final String stock;
-  final String description;
-  final String imageUrl;
-
-  const ProductCard({
-    super.key,
-    required this.name,
-    required this.category,
-    required this.price,
-    required this.stock,
-    required this.description,
-    required this.imageUrl,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      elevation: 3,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-          children: [
-            // Product image / placeholder
-            Container(
-              width: 85,
-              height: 105,
-              decoration: BoxDecoration(
-                borderRadius:
-                    BorderRadius.circular(12),
-                color: Colors.grey.shade200,
-              ),
-              child: imageUrl.isNotEmpty &&
-                      !imageUrl.contains(
-                        'example.com',
-                      )
-                  ? ClipRRect(
-                      borderRadius:
-                          BorderRadius.circular(12),
-                      child: Image.network(
-                        imageUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder:
-                            (context, error, stack) {
-                          return const Icon(
-                            Icons.shopping_bag,
-                            size: 40,
-                          );
-                        },
-                      ),
-                    )
-                  : const Icon(
-                      Icons.shopping_bag,
-                      size: 40,
-                    ),
-            ),
-
-            const SizedBox(width: 14),
-
-            // Product information
-            Expanded(
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  // PRODUCT NAME
-                  const Text(
-  'PREESHO TEST 123',
-  style: TextStyle(
-    fontSize: 24,
-    fontWeight: FontWeight.bold,
-  ),
-),
-                    maxLines: 2,
-                    overflow:
-                        TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-
-                  const SizedBox(height: 7),
-
-                  // CATEGORY
-                  Text(
-                    category.isEmpty
-                        ? 'Category unavailable'
-                        : category,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color:
-                          Colors.grey.shade700,
-                    ),
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  // PRICE
-                  Text(
-                    price.isEmpty
-                        ? 'Price unavailable'
-                        : '₹$price',
-                    style: const TextStyle(
-                      fontSize: 21,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-
-                  const SizedBox(height: 5),
-
-                  // STOCK
-                  Text(
-                    stock.isEmpty
-                        ? 'Stock unavailable'
-                        : 'Stock: $stock',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color:
-                          Colors.grey.shade600,
-                    ),
-                  ),
-
-                  if (description.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      description,
-                      maxLines: 2,
-                      overflow:
-                          TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color:
-                            Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-
-                  const SizedBox(height: 10),
-
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: () {
-                        ScaffoldMessenger.of(
-                          context,
-                        ).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              '$name added to cart',
-                            ),
-                          ),
-                        );
-                      },
-                      icon: const Icon(
-                        Icons.shopping_cart,
-                        size: 18,
-                      ),
-                      label: const Text(
-                        'Add to Cart',
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
