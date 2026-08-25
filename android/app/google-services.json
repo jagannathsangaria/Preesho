@@ -1,1 +1,29 @@
-
+{
+  "project_info": {
+    "project_number": "749978278226",
+    "project_id": "preesho",
+    "storage_bucket": "preesho.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:749978278226:android:928d885bdd84ab9f79428b",
+        "android_client_info": {
+          "package_name": "com.example.preesho"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC_O0WV-3-ma8fZWo6tcUlWnDgevsKrABw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
