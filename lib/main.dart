@@ -32,7 +32,12 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Preesho'),
+        title: const Text(
+          'Preesho',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance
@@ -40,7 +45,8 @@ class HomePage extends StatelessWidget {
             .where('Active', isEqualTo: true)
             .snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (snapshot.connectionState ==
+              ConnectionState.waiting) {
             return const Center(
               child: CircularProgressIndicator(),
             );
@@ -58,9 +64,13 @@ class HomePage extends StatelessWidget {
             );
           }
 
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          if (!snapshot.hasData ||
+              snapshot.data!.docs.isEmpty) {
             return const Center(
-              child: Text('No products available'),
+              child: Text(
+                'No products available',
+                style: TextStyle(fontSize: 18),
+              ),
             );
           }
 
@@ -82,7 +92,8 @@ class HomePage extends StatelessWidget {
                   ),
                 ),
                 child: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Welcome to Preesho',
@@ -102,7 +113,9 @@ class HomePage extends StatelessWidget {
                   ],
                 ),
               ),
+
               const SizedBox(height: 24),
+
               const Text(
                 'Products',
                 style: TextStyle(
@@ -110,24 +123,36 @@ class HomePage extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                 ),
               ),
+
               const SizedBox(height: 12),
+
               ...products.map((doc) {
                 final data = doc.data();
 
-                final name = data['Name']?.toString() ?? '';
+                final name =
+                    data['Name']?.toString() ?? '';
+
                 final category =
                     data['Category']?.toString() ?? '';
-                final price = data['Price']?.toString() ?? '';
-                final stock = data['Stock']?.toString() ?? '';
+
+                final price =
+                    data['Price']?.toString() ?? '';
+
+                final stock =
+                    data['Stock']?.toString() ?? '';
 
                 return Card(
-                  margin: const EdgeInsets.only(bottom: 14),
+                  margin:
+                      const EdgeInsets.only(bottom: 16),
+                  elevation: 3,
                   child: Padding(
-                    padding: const EdgeInsets.all(16),
+                    padding:
+                        const EdgeInsets.all(16),
                     child: Column(
                       crossAxisAlignment:
                           CrossAxisAlignment.start,
                       children: [
+                        // PRODUCT NAME
                         Text(
                           name.isEmpty
                               ? 'Unnamed Product'
@@ -137,26 +162,55 @@ class HomePage extends StatelessWidget {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
+
                         const SizedBox(height: 8),
+
+                        // FIREBASE CATEGORY
                         Text(
                           category.isEmpty
                               ? 'Category unavailable'
                               : category,
                           style: const TextStyle(
-                            fontSize: 15,
+                            fontSize: 16,
                           ),
                         ),
-                        const SizedBox(height: 8),
+
+                        // TEST CATEGORY
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Men Fashion TEST',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                        ),
+
+                        const SizedBox(height: 10),
+
+                        // FIREBASE PRICE
                         Text(
                           price.isEmpty
                               ? 'Price unavailable'
                               : '₹$price',
                           style: const TextStyle(
-                            fontSize: 22,
+                            fontSize: 23,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        const SizedBox(height: 6),
+
+                        // TEST PRICE
+                        const SizedBox(height: 4),
+                        const Text(
+                          '₹399 TEST',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        // STOCK
                         Text(
                           stock.isEmpty
                               ? 'Stock unavailable'
@@ -165,13 +219,16 @@ class HomePage extends StatelessWidget {
                             fontSize: 14,
                           ),
                         ),
-                        const SizedBox(height: 12),
+
+                        const SizedBox(height: 14),
+
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton(
                             onPressed: () {
-                              ScaffoldMessenger.of(context)
-                                  .showSnackBar(
+                              ScaffoldMessenger.of(
+                                context,
+                              ).showSnackBar(
                                 SnackBar(
                                   content: Text(
                                     '$name added to cart',
