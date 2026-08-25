@@ -22,20 +22,48 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Prepare Flutter project
-        shell: bash
+      - name: Prepare Flutter Android project
+        run: |
+          set -e
+          flutter create . --platforms=android
+
+      - name: Add Firebase configuration
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          set -e
+          mkdir -p android/app
+          printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+
+      - name: Configure Firebase Gradle plugin
         run: |
           set -e
 
-          if [ ! -f "pubspec.yaml" ]; then
-            echo "ERROR: pubspec.yaml not found."
-            exit 1
-          fi
+          python3 - <<'PY'
+          from pathlib import Path
 
-          flutter create . --platforms=android
+          p = Path("android/settings.gradle.kts")
+          if p.exists():
+              s = p.read_text()
+              if "com.google.gms.google-services" not in s:
+                  s = s.replace(
+                      "plugins {",
+                      'plugins {\n    id("com.google.gms.google-services") version "4.4.2" apply false',
+                      1
+                  )
+                  p.write_text(s)
 
-      - name: Flutter doctor
-        run: flutter doctor -v
+          p = Path("android/app/build.gradle.kts")
+          if p.exists():
+              s = p.read_text()
+              if "com.google.gms.google-services" not in s:
+                  s = s.replace(
+                      "plugins {",
+                      'plugins {\n    id("com.google.gms.google-services")',
+                      1
+                  )
+                  p.write_text(s)
+          PY
 
       - name: Get dependencies
         run: flutter pub get
