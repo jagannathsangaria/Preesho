@@ -15,36 +15,6 @@ jobs:
       - name: Checkout project
         uses: actions/checkout@v4
 
-      - name: Prepare Flutter project
-        shell: bash
-        run: |
-          set -e
-
-          if [ -f "pubspec.yaml" ]; then
-            echo "Flutter project found in repository root."
-          else
-            ZIP_FILE=$(find . -maxdepth 2 -type f -name "*.zip" | head -n 1)
-
-            if [ -n "$ZIP_FILE" ]; then
-              echo "Flutter ZIP found: $ZIP_FILE"
-              mkdir -p flutter_project
-              unzip -o "$ZIP_FILE" -d flutter_project
-            fi
-          fi
-
-          PUBSPEC=$(find . -type f -name "pubspec.yaml" | head -n 1)
-
-          if [ -z "$PUBSPEC" ]; then
-            echo "ERROR: pubspec.yaml not found."
-            exit 1
-          fi
-
-          PROJECT_DIR=$(dirname "$PUBSPEC")
-          PROJECT_DIR=$(cd "$PROJECT_DIR" && pwd)
-
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Flutter project: $PROJECT_DIR"
-
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -52,20 +22,30 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Prepare Flutter project
+        shell: bash
+        run: |
+          set -e
+
+          if [ ! -f "pubspec.yaml" ]; then
+            echo "ERROR: pubspec.yaml not found."
+            exit 1
+          fi
+
+          flutter create . --platforms=android
+
       - name: Flutter doctor
         run: flutter doctor -v
 
       - name: Get dependencies
-        working-directory: ${{ env.PROJECT_DIR }}
         run: flutter pub get
 
       - name: Build APK
-        working-directory: ${{ env.PROJECT_DIR }}
         run: flutter build apk --release
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Preesho-APK
-          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
