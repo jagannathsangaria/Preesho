@@ -4,44 +4,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   await Firebase.initializeApp();
+
   runApp(const PreeshoApp());
-}
-
-class Product {
-  final String id;
-  final String name;
-  final String category;
-  final String price;
-  final String description;
-  final String imageUrl;
-  final String stock;
-
-  const Product({
-    required this.id,
-    required this.name,
-    required this.category,
-    required this.price,
-    required this.description,
-    required this.imageUrl,
-    required this.stock,
-  });
-
-  factory Product.fromFirestore(
-    DocumentSnapshot<Map<String, dynamic>> doc,
-  ) {
-    final data = doc.data() ?? {};
-
-    return Product(
-      id: doc.id,
-      name: (data['Name'] ?? '').toString().trim(),
-      category: (data['Category'] ?? '').toString().trim(),
-      price: (data['Price'] ?? '').toString().trim(),
-      description: (data['Description'] ?? '').toString().trim(),
-      imageUrl: (data['Imageurl'] ?? '').toString().trim(),
-      stock: (data['Stock'] ?? '').toString().trim(),
-    );
-  }
 }
 
 class PreeshoApp extends StatelessWidget {
@@ -50,172 +16,93 @@ class PreeshoApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Preesho',
       debugShowCheckedModeBanner: false,
+      title: 'Preesho',
       theme: ThemeData(
         useMaterial3: true,
         colorSchemeSeed: Colors.deepPurple,
       ),
-      home: const MainShell(),
-    );
-  }
-}
-
-class MainShell extends StatefulWidget {
-  const MainShell({super.key});
-
-  @override
-  State<MainShell> createState() => _MainShellState();
-}
-
-class _MainShellState extends State<MainShell> {
-  int index = 0;
-  final List<Product> cart = [];
-
-  void addToCart(Product product) {
-    setState(() {
-      cart.add(product);
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${product.name} added to cart'),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final pages = [
-      HomePage(onAdd: addToCart),
-      CategoriesPage(onAdd: addToCart),
-      CartPage(
-        cart: cart,
-        onRemove: (product) {
-          setState(() {
-            cart.remove(product);
-          });
-        },
-      ),
-      const ProfilePage(),
-    ];
-
-    return Scaffold(
-      body: pages[index],
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: index,
-        onDestinationSelected: (value) {
-          setState(() {
-            index = value;
-          });
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.category_outlined),
-            selectedIcon: Icon(Icons.category),
-            label: 'Categories',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.shopping_cart_outlined),
-            selectedIcon: Icon(Icons.shopping_cart),
-            label: 'Cart',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'Profile',
-          ),
-        ],
-      ),
+      home: const HomePage(),
     );
   }
 }
 
 class HomePage extends StatelessWidget {
-  final void Function(Product) onAdd;
-
-  const HomePage({
-    super.key,
-    required this.onAdd,
-  });
+  const HomePage({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Preesho'),
-        actions: [
-          IconButton(
-            onPressed: () {
-              showSearch(
-                context: context,
-                delegate: ProductSearch(onAdd),
-              );
-            },
-            icon: const Icon(Icons.search),
+        title: const Text(
+          'Preesho',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
           ),
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.notifications_none),
-          ),
-        ],
+        ),
+        centerTitle: false,
       ),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('products')
             .where('Active', isEqualTo: true)
             .snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          // Loading
+          if (snapshot.connectionState ==
+              ConnectionState.waiting) {
             return const Center(
               child: CircularProgressIndicator(),
             );
           }
 
+          // Firebase error
           if (snapshot.hasError) {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(20),
                 child: Text(
-                  'Firebase error:\n${snapshot.error}',
+                  'Firebase Error:\n${snapshot.error}',
                   textAlign: TextAlign.center,
                 ),
               ),
             );
           }
 
-          final products = snapshot.data?.docs
-                  .map(Product.fromFirestore)
-                  .toList() ??
-              [];
-
-          if (products.isEmpty) {
+          // No data
+          if (!snapshot.hasData ||
+              snapshot.data!.docs.isEmpty) {
             return const Center(
-              child: Text('No products available'),
+              child: Text(
+                'No products available',
+                style: TextStyle(
+                  fontSize: 18,
+                ),
+              ),
             );
           }
+
+          final products = snapshot.data!.docs;
 
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              // Welcome banner
               Container(
+                width: double.infinity,
                 padding: const EdgeInsets.all(22),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(22),
+                  borderRadius: BorderRadius.circular(20),
                   gradient: const LinearGradient(
                     colors: [
-                      Color(0xff5E35B1),
-                      Color(0xff8E24AA),
+                      Colors.deepPurple,
+                      Colors.purple,
                     ],
                   ),
                 ),
                 child: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Welcome to Preesho',
@@ -225,59 +112,50 @@ class HomePage extends StatelessWidget {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    SizedBox(height: 7),
+                    SizedBox(height: 6),
                     Text(
                       'Shop smarter. Shop faster.',
                       style: TextStyle(
                         color: Colors.white70,
+                        fontSize: 14,
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 22),
+
+              const SizedBox(height: 25),
+
               const Text(
-                'Categories',
+                'Products',
                 style: TextStyle(
-                  fontSize: 20,
+                  fontSize: 22,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(height: 10),
-              SizedBox(
-                height: 90,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: const [
-                    CategoryCard(
-                      icon: Icons.phone_android,
-                      text: 'Electronics',
-                    ),
-                    CategoryCard(
-                      icon: Icons.checkroom,
-                      text: 'Fashion',
-                    ),
-                    CategoryCard(
-                      icon: Icons.home,
-                      text: 'Home',
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Products from Firebase',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 10),
+
+              const SizedBox(height: 12),
+
+              // Firebase products
               ...products.map(
-                (product) => ProductTile(
-                  product: product,
-                  onAdd: onAdd,
-                ),
+                (doc) {
+                  final data =
+                      doc.data() as Map<String, dynamic>;
+
+                  return ProductCard(
+                    name: data['Name']?.toString() ?? '',
+                    category:
+                        data['Category']?.toString() ?? '',
+                    price:
+                        data['Price']?.toString() ?? '',
+                    stock:
+                        data['Stock']?.toString() ?? '',
+                    description:
+                        data['Description']?.toString() ?? '',
+                    imageUrl:
+                        data['Imageurl']?.toString() ?? '',
+                  );
+                },
               ),
             ],
           );
@@ -287,585 +165,181 @@ class HomePage extends StatelessWidget {
   }
 }
 
-class CategoryCard extends StatelessWidget {
-  final IconData icon;
-  final String text;
+class ProductCard extends StatelessWidget {
+  final String name;
+  final String category;
+  final String price;
+  final String stock;
+  final String description;
+  final String imageUrl;
 
-  const CategoryCard({
+  const ProductCard({
     super.key,
-    required this.icon,
-    required this.text,
+    required this.name,
+    required this.category,
+    required this.price,
+    required this.stock,
+    required this.description,
+    required this.imageUrl,
   });
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: SizedBox(
-        width: 115,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon),
-            const SizedBox(height: 5),
-            Text(
-              text,
-              style: const TextStyle(fontSize: 12),
-            ),
-          ],
-        ),
+      margin: const EdgeInsets.only(bottom: 16),
+      elevation: 3,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
       ),
-    );
-  }
-}
-
-class ProductTile extends StatelessWidget {
-  final Product product;
-  final void Function(Product) onAdd;
-
-  const ProductTile({
-    super.key,
-    required this.product,
-    required this.onAdd,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
           children: [
+            // Product image / placeholder
             Container(
-              width: 75,
-              height: 75,
+              width: 85,
+              height: 105,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius:
+                    BorderRadius.circular(12),
                 color: Colors.grey.shade200,
               ),
-              child: const Icon(
-                Icons.shopping_bag,
-                size: 38,
-              ),
+              child: imageUrl.isNotEmpty &&
+                      !imageUrl.contains(
+                        'example.com',
+                      )
+                  ? ClipRRect(
+                      borderRadius:
+                          BorderRadius.circular(12),
+                      child: Image.network(
+                        imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder:
+                            (context, error, stack) {
+                          return const Icon(
+                            Icons.shopping_bag,
+                            size: 40,
+                          );
+                        },
+                      ),
+                    )
+                  : const Icon(
+                      Icons.shopping_bag,
+                      size: 40,
+                    ),
             ),
-            const SizedBox(width: 12),
+
+            const SizedBox(width: 14),
+
+            // Product information
             Expanded(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
                 children: [
+                  // PRODUCT NAME
                   Text(
-                    product.name.isEmpty
+                    name.isEmpty
                         ? 'Unnamed Product'
-                        : product.name,
+                        : name,
+                    maxLines: 2,
+                    overflow:
+                        TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 17,
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 5),
+
+                  const SizedBox(height: 7),
+
+                  // CATEGORY
                   Text(
-                    product.category.isEmpty
+                    category.isEmpty
                         ? 'Category unavailable'
-                        : product.category,
+                        : category,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color:
+                          Colors.grey.shade700,
+                    ),
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  // PRICE
+                  Text(
+                    price.isEmpty
+                        ? 'Price unavailable'
+                        : '₹$price',
+                    style: const TextStyle(
+                      fontSize: 21,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+
+                  const SizedBox(height: 5),
+
+                  // STOCK
+                  Text(
+                    stock.isEmpty
+                        ? 'Stock unavailable'
+                        : 'Stock: $stock',
                     style: TextStyle(
                       fontSize: 13,
-                      color: Colors.grey.shade600,
+                      color:
+                          Colors.grey.shade600,
                     ),
                   ),
-                  const SizedBox(height: 7),
-                  Text(
-                    product.price.isEmpty
-                        ? 'Price unavailable'
-                        : '₹${product.price}',
-                    style: const TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.bold,
+
+                  if (description.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      description,
+                      maxLines: 2,
+                      overflow:
+                          TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color:
+                            Colors.grey.shade600,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    product.stock.isEmpty
-                        ? 'Stock unavailable'
-                        : 'Stock: ${product.stock}',
-                    style: const TextStyle(
-                      fontSize: 12,
+                  ],
+
+                  const SizedBox(height: 10),
+
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () {
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              '$name added to cart',
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(
+                        Icons.shopping_cart,
+                        size: 18,
+                      ),
+                      label: const Text(
+                        'Add to Cart',
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-            IconButton(
-              onPressed: () {
-                onAdd(product);
-              },
-              icon: const Icon(
-                Icons.add_shopping_cart,
-              ),
-            ),
           ],
         ),
       ),
-    );
-  }
-}
-
-class CategoriesPage extends StatelessWidget {
-  final void Function(Product) onAdd;
-
-  const CategoriesPage({
-    super.key,
-    required this.onAdd,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Categories'),
-      ),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance
-            .collection('products')
-            .where('Active', isEqualTo: true)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
-          }
-
-          if (snapshot.hasError) {
-            return Center(
-              child: Text(
-                'Firebase error:\n${snapshot.error}',
-                textAlign: TextAlign.center,
-              ),
-            );
-          }
-
-          final products = snapshot.data?.docs
-                  .map(Product.fromFirestore)
-                  .toList() ??
-              [];
-
-          if (products.isEmpty) {
-            return const Center(
-              child: Text('No products available'),
-            );
-          }
-
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: products
-                .map(
-                  (product) => ProductTile(
-                    product: product,
-                    onAdd: onAdd,
-                  ),
-                )
-                .toList(),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class CartPage extends StatelessWidget {
-  final List<Product> cart;
-  final void Function(Product) onRemove;
-
-  const CartPage({
-    super.key,
-    required this.cart,
-    required this.onRemove,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    double total = 0;
-
-    for (final product in cart) {
-      total += double.tryParse(product.price) ?? 0;
-    }
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Cart'),
-      ),
-      body: cart.isEmpty
-          ? const Center(
-              child: Text('Your cart is empty'),
-            )
-          : Column(
-              children: [
-                Expanded(
-                  child: ListView(
-                    children: cart.map(
-                      (product) {
-                        return ListTile(
-                          leading: const CircleAvatar(
-                            child: Icon(Icons.shopping_bag),
-                          ),
-                          title: Text(product.name),
-                          subtitle: Text('₹${product.price}'),
-                          trailing: IconButton(
-                            onPressed: () => onRemove(product),
-                            icon: const Icon(Icons.delete_outline),
-                          ),
-                        );
-                      },
-                    ).toList(),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment:
-                            MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Total',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            '₹${total.toStringAsFixed(0)}',
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    const AddressPage(),
-                              ),
-                            );
-                          },
-                          child: const Text(
-                            'Proceed to Address',
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-    );
-  }
-}
-
-class AddressPage extends StatelessWidget {
-  const AddressPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Delivery Address'),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            const TextField(
-              decoration: InputDecoration(
-                labelText: 'Full Name',
-              ),
-            ),
-            const SizedBox(height: 10),
-            const TextField(
-              decoration: InputDecoration(
-                labelText: 'Mobile Number',
-              ),
-              keyboardType: TextInputType.phone,
-            ),
-            const SizedBox(height: 10),
-            const TextField(
-              decoration: InputDecoration(
-                labelText: 'Address',
-              ),
-            ),
-            const SizedBox(height: 10),
-            const TextField(
-              decoration: InputDecoration(
-                labelText: 'City',
-              ),
-            ),
-            const SizedBox(height: 10),
-            const TextField(
-              decoration: InputDecoration(
-                labelText: 'PIN Code',
-              ),
-              keyboardType: TextInputType.number,
-            ),
-            const Spacer(),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () {
-                  showDialog(
-                    context: context,
-                    builder: (_) {
-                      return AlertDialog(
-                        title: const Text('Order Ready'),
-                        content: const Text(
-                          'Payment gateway will be connected in the next release.',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () {
-                              Navigator.pop(context);
-                            },
-                            child: const Text('OK'),
-                          ),
-                        ],
-                      );
-                    },
-                  );
-                },
-                child: const Text(
-                  'Continue to Payment',
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class ProfilePage extends StatelessWidget {
-  const ProfilePage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Profile'),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          const CircleAvatar(
-            radius: 42,
-            child: Icon(
-              Icons.person,
-              size: 45,
-            ),
-          ),
-          const SizedBox(height: 10),
-          const Center(
-            child: Text(
-              'Guest User',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          ListTile(
-            leading: const Icon(Icons.login),
-            title: const Text('Login / Sign Up'),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const LoginPage(),
-                ),
-              );
-            },
-          ),
-          const ListTile(
-            leading: Icon(Icons.location_on_outlined),
-            title: Text('Saved Addresses'),
-          ),
-          const ListTile(
-            leading: Icon(Icons.receipt_long),
-            title: Text('My Orders'),
-          ),
-          const ListTile(
-            leading: Icon(Icons.help_outline),
-            title: Text('Help & Support'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class LoginPage extends StatelessWidget {
-  const LoginPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Login / Sign Up'),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            const TextField(
-              decoration: InputDecoration(
-                labelText: 'Mobile Number',
-                prefixText: '+91 ',
-              ),
-              keyboardType: TextInputType.phone,
-            ),
-            const SizedBox(height: 12),
-            const TextField(
-              decoration: InputDecoration(
-                labelText: 'Password',
-              ),
-              obscureText: true,
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                },
-                child: const Text('Continue'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class ProductSearch extends SearchDelegate<Product?> {
-  final void Function(Product) onAdd;
-
-  ProductSearch(this.onAdd);
-
-  @override
-  List<Widget>? buildActions(BuildContext context) {
-    return [
-      IconButton(
-        onPressed: () {
-          query = '';
-        },
-        icon: const Icon(Icons.clear),
-      ),
-    ];
-  }
-
-  @override
-  Widget buildLeading(BuildContext context) {
-    return IconButton(
-      onPressed: () {
-        close(context, null);
-      },
-      icon: const Icon(Icons.arrow_back),
-    );
-  }
-
-  @override
-  Widget buildResults(BuildContext context) {
-    return FirebaseProductSearchResults(
-      query: query,
-      onAdd: onAdd,
-    );
-  }
-
-  @override
-  Widget buildSuggestions(BuildContext context) {
-    return FirebaseProductSearchResults(
-      query: query,
-      onAdd: onAdd,
-    );
-  }
-}
-
-class FirebaseProductSearchResults extends StatelessWidget {
-  final String query;
-  final void Function(Product) onAdd;
-
-  const FirebaseProductSearchResults({
-    super.key,
-    required this.query,
-    required this.onAdd,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('products')
-          .where('Active', isEqualTo: true)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState ==
-            ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(),
-          );
-        }
-
-        if (snapshot.hasError) {
-          return Center(
-            child: Text(
-              'Firebase error:\n${snapshot.error}',
-              textAlign: TextAlign.center,
-            ),
-          );
-        }
-
-        final products = snapshot.data?.docs
-                .map(Product.fromFirestore)
-                .where(
-                  (product) =>
-                      product.name
-                          .toLowerCase()
-                          .contains(query.toLowerCase()) ||
-                      product.category
-                          .toLowerCase()
-                          .contains(query.toLowerCase()),
-                )
-                .toList() ??
-            [];
-
-        if (products.isEmpty) {
-          return const Center(
-            child: Text('No products found'),
-          );
-        }
-
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: products
-              .map(
-                (product) => ProductTile(
-                  product: product,
-                  onAdd: onAdd,
-                ),
-              )
-              .toList(),
-        );
-      },
     );
   }
 }
