@@ -240,10 +240,13 @@ class ProductCard extends StatelessWidget {
                     CrossAxisAlignment.start,
                 children: [
                   // PRODUCT NAME
-                  Text(
-                    name.isEmpty
-                        ? 'Unnamed Product'
-                        : name,
+                  const Text(
+  'PREESHO TEST 123',
+  style: TextStyle(
+    fontSize: 24,
+    fontWeight: FontWeight.bold,
+  ),
+),
                     maxLines: 2,
                     overflow:
                         TextOverflow.ellipsis,
