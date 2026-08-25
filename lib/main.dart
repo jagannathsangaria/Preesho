@@ -4,7 +4,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+
+  try {
+    await Firebase.initializeApp();
+  } catch (e) {
+    debugPrint('Firebase initialization error: $e');
+  }
+
   runApp(const PreeshoApp());
 }
 
@@ -28,16 +34,47 @@ class PreeshoApp extends StatelessWidget {
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
-  String readValue(
+  // Firebase field names ko safely read karta hai.
+  // Example:
+  // Category / category / CATEGORY / " Category "
+  // sab ko identify karega.
+  String readField(
     Map<String, dynamic> data,
-    List<String> keys,
+    String wantedField,
   ) {
-    for (final key in keys) {
-      if (data.containsKey(key) && data[key] != null) {
-        final value = data[key].toString().trim();
+    // 1. Exact field
+    if (data.containsKey(wantedField)) {
+      final value = data[wantedField];
 
-        if (value.isNotEmpty) {
-          return value;
+      if (value != null) {
+        final text = value.toString().trim();
+
+        if (text.isNotEmpty) {
+          return text;
+        }
+      }
+    }
+
+    // 2. Normalized field search
+    String normalize(String value) {
+      return value
+          .trim()
+          .toLowerCase()
+          .replaceAll(RegExp(r'[\s_\-]'), '');
+    }
+
+    final wanted = normalize(wantedField);
+
+    for (final entry in data.entries) {
+      final actualKey = normalize(entry.key.toString());
+
+      if (actualKey == wanted) {
+        if (entry.value != null) {
+          final text = entry.value.toString().trim();
+
+          if (text.isNotEmpty) {
+            return text;
+          }
         }
       }
     }
@@ -55,6 +92,7 @@ class HomePage extends StatelessWidget {
             fontWeight: FontWeight.bold,
           ),
         ),
+        centerTitle: false,
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance
@@ -62,6 +100,7 @@ class HomePage extends StatelessWidget {
             .where('Active', isEqualTo: true)
             .snapshots(),
         builder: (context, snapshot) {
+          // Loading
           if (snapshot.connectionState ==
               ConnectionState.waiting) {
             return const Center(
@@ -69,24 +108,29 @@ class HomePage extends StatelessWidget {
             );
           }
 
+          // Firebase error
           if (snapshot.hasError) {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(20),
                 child: Text(
-                  'Firebase Error:\n${snapshot.error}',
+                  'Firebase Error:\n\n${snapshot.error}',
                   textAlign: TextAlign.center,
                 ),
               ),
             );
           }
 
+          // No data
           if (!snapshot.hasData ||
               snapshot.data!.docs.isEmpty) {
             return const Center(
               child: Text(
                 'No products available',
-                style: TextStyle(fontSize: 18),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             );
           }
@@ -96,15 +140,16 @@ class HomePage extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              // HEADER
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(22),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(20),
                   gradient: const LinearGradient(
                     colors: [
-                      Colors.deepPurple,
-                      Colors.purple,
+                      Color(0xFF5E35B1),
+                      Color(0xFF8E24AA),
                     ],
                   ),
                 ),
@@ -116,7 +161,7 @@ class HomePage extends StatelessWidget {
                       'Welcome to Preesho',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 24,
+                        fontSize: 25,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -125,6 +170,7 @@ class HomePage extends StatelessWidget {
                       'Shop smarter. Shop faster.',
                       style: TextStyle(
                         color: Colors.white70,
+                        fontSize: 15,
                       ),
                     ),
                   ],
@@ -141,164 +187,29 @@ class HomePage extends StatelessWidget {
                 ),
               ),
 
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
 
+              // FIREBASE PRODUCTS
               ...products.map((doc) {
                 final data = doc.data();
 
-                final name = readValue(
-                  data,
-                  [
-                    'Name',
-                    'name',
-                    'NAME',
-                  ],
-                );
+                final name =
+                    readField(data, 'Name');
 
-                final category = readValue(
-                  data,
-                  [
-                    'Category',
-                    'category',
-                    'CATEGORY',
-                  ],
-                );
+                final category =
+                    readField(data, 'Category');
 
-                final price = readValue(
-                  data,
-                  [
-                    'Price',
-                    'price',
-                    'PRICE',
-                  ],
-                );
+                final price =
+                    readField(data, 'Price');
 
-                final stock = readValue(
-                  data,
-                  [
-                    'Stock',
-                    'stock',
-                    'STOCK',
-                  ],
-                );
+                final stock =
+                    readField(data, 'Stock');
 
-                return Card(
-                  margin:
-                      const EdgeInsets.only(bottom: 16),
-                  elevation: 3,
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          name.isEmpty
-                              ? 'Unnamed Product'
-                              : name,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-
-                        const SizedBox(height: 10),
-
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.category_outlined,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                category.isEmpty
-                                    ? 'Category unavailable'
-                                    : category,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight:
-                                      FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 10),
-
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.currency_rupee,
-                              size: 22,
-                            ),
-                            Expanded(
-                              child: Text(
-                                price.isEmpty
-                                    ? 'Price unavailable'
-                                    : price.startsWith('₹')
-                                        ? price
-                                        : '₹$price',
-                                style: const TextStyle(
-                                  fontSize: 23,
-                                  fontWeight:
-                                      FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 8),
-
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.inventory_2_outlined,
-                              size: 19,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              stock.isEmpty
-                                  ? 'Stock unavailable'
-                                  : 'Stock: $stock',
-                              style: const TextStyle(
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 16),
-
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.icon(
-                            onPressed: () {
-                              ScaffoldMessenger.of(
-                                context,
-                              ).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    '${name.isEmpty ? 'Product' : name} added to cart',
-                                  ),
-                                ),
-                              );
-                            },
-                            icon: const Icon(
-                              Icons.shopping_cart,
-                            ),
-                            label: const Text(
-                              'Add to Cart',
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                return ProductCard(
+                  name: name,
+                  category: category,
+                  price: price,
+                  stock: stock,
                 );
               }),
             ],
@@ -306,5 +217,154 @@ class HomePage extends StatelessWidget {
         },
       ),
     );
+  }
+}
+
+class ProductCard extends StatelessWidget {
+  final String name;
+  final String category;
+  final String price;
+  final String stock;
+
+  const ProductCard({
+    super.key,
+    required this.name,
+    required this.category,
+    required this.price,
+    required this.stock,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 3,
+      margin: const EdgeInsets.only(bottom: 16),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
+          children: [
+            // PRODUCT NAME
+            Text(
+              name.isEmpty
+                  ? 'Unnamed Product'
+                  : name,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            // CATEGORY
+            Row(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.category_outlined,
+                  size: 21,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    category.isEmpty
+                        ? 'Category unavailable'
+                        : category,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            // PRICE
+            Row(
+              children: [
+                const Icon(
+                  Icons.currency_rupee,
+                  size: 23,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  price.isEmpty
+                      ? 'Price unavailable'
+                      : _formatPrice(price),
+                  style: const TextStyle(
+                    fontSize: 23,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 10),
+
+            // STOCK
+            Row(
+              children: [
+                const Icon(
+                  Icons.inventory_2_outlined,
+                  size: 19,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  stock.isEmpty
+                      ? 'Stock unavailable'
+                      : 'Stock: $stock',
+                  style: const TextStyle(
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            // ADD TO CART
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () {
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        '${name.isEmpty ? 'Product' : name} added to cart',
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(
+                  Icons.shopping_cart_outlined,
+                ),
+                label: const Text(
+                  'Add to Cart',
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _formatPrice(String value) {
+    final cleaned = value.trim();
+
+    if (cleaned.startsWith('₹')) {
+      return cleaned;
+    }
+
+    return '₹$cleaned';
   }
 }
