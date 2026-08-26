@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'admin_panel.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -92,18 +93,23 @@ class HomePage extends StatelessWidget {
         ),
         actions: [
           IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.search),
-          ),
-          IconButton(
-            onPressed: () {},
+            tooltip: 'Admin Panel',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const AdminPanel(),
+                ),
+              );
+            },
             icon: const Icon(
-              Icons.shopping_cart_outlined,
+              Icons.admin_panel_settings_outlined,
             ),
           ),
         ],
       ),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      body: StreamBuilder<
+          QuerySnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance
             .collection('products')
             .where('Active', isEqualTo: true)
@@ -195,7 +201,7 @@ class HomePage extends StatelessWidget {
 
               const SizedBox(height: 24),
 
-              // CATEGORIES
+              // CATEGORY
               const Text(
                 'Shop by Category',
                 style: TextStyle(
@@ -254,7 +260,7 @@ class HomePage extends StatelessWidget {
 
               const SizedBox(height: 8),
 
-              // FIREBASE PRODUCTS
+              // PRODUCTS
               ...products.map((doc) {
                 final data = doc.data();
 
@@ -377,7 +383,7 @@ class ProductCard extends StatelessWidget {
         crossAxisAlignment:
             CrossAxisAlignment.start,
         children: [
-          // PRODUCT IMAGE
+          // IMAGE
           SizedBox(
             width: double.infinity,
             height: 210,
@@ -455,8 +461,6 @@ class ProductCard extends StatelessWidget {
                 Row(
                   mainAxisAlignment:
                       MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment:
-                      CrossAxisAlignment.center,
                   children: [
                     Text(
                       formatPrice(price),
