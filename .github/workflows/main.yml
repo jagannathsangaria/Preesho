@@ -21,22 +21,29 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Create Android
+      - name: Create Android Project
         run: flutter create . --platforms=android
 
-      - name: Add Firebase
+      - name: Add Firebase Configuration
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
-          mkdir -p android/app
+          set -e
           printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
 
       - name: Configure Firebase
         run: |
-          sed -i '/id("dev.flutter.flutter-plugin-loader")/a\    id("com.google.gms.google-services") version "4.4.2" apply false' android/settings.gradle.kts
-          sed -i '/id("com.android.application")/a\    id("com.google.gms.google-services")' android/app/build.gradle.kts
+          set -e
 
-      - name: Get Packages
+          if ! grep -q 'com.google.gms.google-services' android/settings.gradle.kts; then
+            sed -i '/plugins {/a\    id("com.google.gms.google-services") version "4.4.2" apply false' android/settings.gradle.kts
+          fi
+
+          if ! grep -q 'com.google.gms.google-services' android/app/build.gradle.kts; then
+            sed -i '/plugins {/a\    id("com.google.gms.google-services")' android/app/build.gradle.kts
+          fi
+
+      - name: Get Dependencies
         run: flutter pub get
 
       - name: Build APK
