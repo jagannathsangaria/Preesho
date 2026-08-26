@@ -25,6 +25,7 @@ class PreeshoApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorSchemeSeed: Colors.deepPurple,
+        scaffoldBackgroundColor: const Color(0xffF7F7F9),
       ),
       home: const HomePage(),
     );
@@ -34,15 +35,10 @@ class PreeshoApp extends StatelessWidget {
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
-  // Firebase field names ko safely read karta hai.
-  // Example:
-  // Category / category / CATEGORY / " Category "
-  // sab ko identify karega.
   String readField(
     Map<String, dynamic> data,
     String wantedField,
   ) {
-    // 1. Exact field
     if (data.containsKey(wantedField)) {
       final value = data[wantedField];
 
@@ -55,7 +51,6 @@ class HomePage extends StatelessWidget {
       }
     }
 
-    // 2. Normalized field search
     String normalize(String value) {
       return value
           .trim()
@@ -86,13 +81,27 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
         title: const Text(
           'Preesho',
           style: TextStyle(
             fontWeight: FontWeight.bold,
+            fontSize: 24,
           ),
         ),
-        centerTitle: false,
+        actions: [
+          IconButton(
+            onPressed: () {},
+            icon: const Icon(Icons.search),
+          ),
+          IconButton(
+            onPressed: () {},
+            icon: const Icon(
+              Icons.shopping_cart_outlined,
+            ),
+          ),
+        ],
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance
@@ -100,7 +109,6 @@ class HomePage extends StatelessWidget {
             .where('Active', isEqualTo: true)
             .snapshots(),
         builder: (context, snapshot) {
-          // Loading
           if (snapshot.connectionState ==
               ConnectionState.waiting) {
             return const Center(
@@ -108,7 +116,6 @@ class HomePage extends StatelessWidget {
             );
           }
 
-          // Firebase error
           if (snapshot.hasError) {
             return Center(
               child: Padding(
@@ -121,7 +128,6 @@ class HomePage extends StatelessWidget {
             );
           }
 
-          // No data
           if (!snapshot.hasData ||
               snapshot.data!.docs.isEmpty) {
             return const Center(
@@ -140,16 +146,18 @@ class HomePage extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // HEADER
+              // HOME BANNER
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(22),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(22),
                   gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                     colors: [
-                      Color(0xFF5E35B1),
-                      Color(0xFF8E24AA),
+                      Color(0xff5E35B1),
+                      Color(0xff8E24AA),
                     ],
                   ),
                 ),
@@ -161,16 +169,24 @@ class HomePage extends StatelessWidget {
                       'Welcome to Preesho',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 25,
+                        fontSize: 26,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    SizedBox(height: 6),
+                    SizedBox(height: 8),
                     Text(
                       'Shop smarter. Shop faster.',
                       style: TextStyle(
                         color: Colors.white70,
                         fontSize: 15,
+                      ),
+                    ),
+                    SizedBox(height: 18),
+                    Text(
+                      '✨ Best products at great prices',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
                       ),
                     ),
                   ],
@@ -179,15 +195,64 @@ class HomePage extends StatelessWidget {
 
               const SizedBox(height: 24),
 
+              // CATEGORIES
               const Text(
-                'Products',
+                'Shop by Category',
                 style: TextStyle(
-                  fontSize: 22,
+                  fontSize: 21,
                   fontWeight: FontWeight.bold,
                 ),
               ),
 
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
+
+              SizedBox(
+                height: 100,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: const [
+                    CategoryCard(
+                      icon: Icons.checkroom,
+                      title: 'Fashion',
+                    ),
+                    CategoryCard(
+                      icon: Icons.phone_android,
+                      title: 'Electronics',
+                    ),
+                    CategoryCard(
+                      icon: Icons.home_outlined,
+                      title: 'Home',
+                    ),
+                    CategoryCard(
+                      icon: Icons.watch_outlined,
+                      title: 'Accessories',
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // PRODUCTS TITLE
+              Row(
+                mainAxisAlignment:
+                    MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Latest Products',
+                    style: TextStyle(
+                      fontSize: 21,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () {},
+                    child: const Text('View All'),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 8),
 
               // FIREBASE PRODUCTS
               ...products.map((doc) {
@@ -205,11 +270,15 @@ class HomePage extends StatelessWidget {
                 final stock =
                     readField(data, 'Stock');
 
+                final imageUrl =
+                    readField(data, 'Imageurl');
+
                 return ProductCard(
                   name: name,
                   category: category,
                   price: price,
                   stock: stock,
+                  imageUrl: imageUrl,
                 );
               }),
             ],
@@ -220,11 +289,56 @@ class HomePage extends StatelessWidget {
   }
 }
 
+class CategoryCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+
+  const CategoryCard({
+    super.key,
+    required this.icon,
+    required this.title,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 105,
+      margin: const EdgeInsets.only(right: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.grey.shade200,
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment:
+            MainAxisAlignment.center,
+        children: [
+          Icon(
+            icon,
+            size: 30,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class ProductCard extends StatelessWidget {
   final String name;
   final String category;
   final String price;
   final String stock;
+  final String imageUrl;
 
   const ProductCard({
     super.key,
@@ -232,139 +346,207 @@ class ProductCard extends StatelessWidget {
     required this.category,
     required this.price,
     required this.stock,
+    required this.imageUrl,
   });
 
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 3,
-      margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-          children: [
-            // PRODUCT NAME
-            Text(
-              name.isEmpty
-                  ? 'Unnamed Product'
-                  : name,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // CATEGORY
-            Row(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                const Icon(
-                  Icons.category_outlined,
-                  size: 21,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    category.isEmpty
-                        ? 'Category unavailable'
-                        : category,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            // PRICE
-            Row(
-              children: [
-                const Icon(
-                  Icons.currency_rupee,
-                  size: 23,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  price.isEmpty
-                      ? 'Price unavailable'
-                      : _formatPrice(price),
-                  style: const TextStyle(
-                    fontSize: 23,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 10),
-
-            // STOCK
-            Row(
-              children: [
-                const Icon(
-                  Icons.inventory_2_outlined,
-                  size: 19,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  stock.isEmpty
-                      ? 'Stock unavailable'
-                      : 'Stock: $stock',
-                  style: const TextStyle(
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 16),
-
-            // ADD TO CART
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context)
-                      .showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        '${name.isEmpty ? 'Product' : name} added to cart',
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(
-                  Icons.shopping_cart_outlined,
-                ),
-                label: const Text(
-                  'Add to Cart',
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  static String _formatPrice(String value) {
+  String formatPrice(String value) {
     final cleaned = value.trim();
+
+    if (cleaned.isEmpty) {
+      return 'Price unavailable';
+    }
 
     if (cleaned.startsWith('₹')) {
       return cleaned;
     }
 
     return '₹$cleaned';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.only(bottom: 16),
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          // PRODUCT IMAGE
+          SizedBox(
+            width: double.infinity,
+            height: 210,
+            child: imageUrl.isNotEmpty &&
+                    imageUrl.startsWith('http')
+                ? Image.network(
+                    imageUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder:
+                        (context, error, stackTrace) {
+                      return const ProductImagePlaceholder();
+                    },
+                    loadingBuilder:
+                        (context, child, progress) {
+                      if (progress == null) {
+                        return child;
+                      }
+
+                      return const Center(
+                        child:
+                            CircularProgressIndicator(),
+                      );
+                    },
+                  )
+                : const ProductImagePlaceholder(),
+          ),
+
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                // NAME
+                Text(
+                  name.isEmpty
+                      ? 'Unnamed Product'
+                      : name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 19,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                // CATEGORY
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.category_outlined,
+                      size: 19,
+                    ),
+                    const SizedBox(width: 7),
+                    Expanded(
+                      child: Text(
+                        category.isEmpty
+                            ? 'Category unavailable'
+                            : category,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey.shade700,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 10),
+
+                // PRICE + STOCK
+                Row(
+                  mainAxisAlignment:
+                      MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment:
+                      CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      formatPrice(price),
+                      style: const TextStyle(
+                        fontSize: 23,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.inventory_2_outlined,
+                          size: 17,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          stock.isEmpty
+                              ? 'Stock unavailable'
+                              : 'Stock: $stock',
+                          style: const TextStyle(
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 14),
+
+                // ADD TO CART
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      ScaffoldMessenger.of(context)
+                          .showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            '${name.isEmpty ? 'Product' : name} added to cart',
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(
+                      Icons.shopping_cart_outlined,
+                    ),
+                    label: const Text(
+                      'Add to Cart',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ProductImagePlaceholder
+    extends StatelessWidget {
+  const ProductImagePlaceholder({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(0xffEEEEF2),
+      child: const Center(
+        child: Column(
+          mainAxisAlignment:
+              MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.image_outlined,
+              size: 60,
+              color: Colors.grey,
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Product Image',
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
