@@ -1,4 +1,4 @@
- name: Build Preesho APK
+name: Build Preesho APK
 
 on:
   workflow_dispatch:
@@ -131,4 +131,4 @@ kotlin {
         with:
           name: Preesho-APK
           path: build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: error   
+          if-no-files-found: error
