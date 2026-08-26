@@ -38,7 +38,7 @@ jobs:
           set -e
           flutter create . --platforms=android
 
-      - name: Enable AndroidX
+      - name: Configure Android Build
         run: |
           set -e
 
@@ -47,6 +47,46 @@ jobs:
           android.useAndroidX=true
           android.enableJetifier=true
           EOF
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # Update Kotlin plugin to 2.3.0
+          settings = Path("android/settings.gradle.kts")
+          text = settings.read_text()
+
+          text = text.replace(
+              'id("org.jetbrains.kotlin.android") version "2.1.0" apply false',
+              'id("org.jetbrains.kotlin.android") version "2.3.0" apply false'
+          )
+
+          # Add Google Services plugin
+          firebase_plugin = 'id("com.google.gms.google-services") version "4.4.2" apply false'
+
+          if firebase_plugin not in text:
+              text = text.replace(
+                  "plugins {",
+                  "plugins {\n    " + firebase_plugin,
+                  1
+              )
+
+          settings.write_text(text)
+
+          # Add Google Services plugin to app
+          app = Path("android/app/build.gradle.kts")
+          text = app.read_text()
+
+          app_plugin = 'id("com.google.gms.google-services")'
+
+          if app_plugin not in text:
+              text = text.replace(
+                  "plugins {",
+                  "plugins {\n    " + app_plugin,
+                  1
+              )
+
+          app.write_text(text)
+          PY
 
       - name: Restore Flutter App Files
         run: |
@@ -62,42 +102,6 @@ jobs:
           set -e
           mkdir -p android/app
           printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
-
-      - name: Configure Firebase
-        run: |
-          set -e
-
-          python3 - <<'PY'
-          from pathlib import Path
-
-          settings = Path("android/settings.gradle.kts")
-          text = settings.read_text()
-
-          plugin = 'id("com.google.gms.google-services") version "4.4.2" apply false'
-
-          if plugin not in text:
-              text = text.replace(
-                  "plugins {",
-                  "plugins {\n    " + plugin,
-                  1
-              )
-
-          settings.write_text(text)
-
-          app = Path("android/app/build.gradle.kts")
-          text = app.read_text()
-
-          app_plugin = 'id("com.google.gms.google-services")'
-
-          if app_plugin not in text:
-              text = text.replace(
-                  "plugins {",
-                  "plugins {\n    " + app_plugin,
-                  1
-              )
-
-          app.write_text(text)
-          PY
 
       - name: Get Dependencies
         run: flutter pub get
