@@ -21,8 +21,13 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Generate Android Project
-        run: flutter create . --platforms=android
+      - name: Restore Firebase Configuration
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          set -e
+          mkdir -p android/app
+          printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
 
       - name: Configure Flutter Maven Repository
         run: |
@@ -34,34 +39,20 @@ jobs:
           p = Path("android/settings.gradle.kts")
           text = p.read_text()
 
-          if 'maven { url = uri("https://storage.googleapis.com/download.flutter.io") }' not in text:
+          repo = 'maven { url = uri("https://storage.googleapis.com/download.flutter.io") }'
+
+          if repo not in text:
               text = text.replace(
-                  "repositories {\n        google()",
-                  'repositories {\n        maven { url = uri("https://storage.googleapis.com/download.flutter.io") }\n        google()'
+                  "repositories {",
+                  "repositories {\n        " + repo,
+                  1
               )
 
           p.write_text(text)
           PY
 
-      - name: Restore Firebase Configuration
-        env:
-          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
-        run: |
-          set -e
-          mkdir -p android/app
-          printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
-
-      - name: Configure Firebase
-        run: |
-          set -e
-
-          if ! grep -q 'id("com.google.gms.google-services") version' android/settings.gradle.kts; then
-            sed -i '/plugins {/a\    id("com.google.gms.google-services") version "4.4.2" apply false' android/settings.gradle.kts
-          fi
-
-          if ! grep -q 'id("com.google.gms.google-services")' android/app/build.gradle.kts; then
-            sed -i '/plugins {/a\    id("com.google.gms.google-services")' android/app/build.gradle.kts
-          fi
+          echo "===== settings.gradle.kts ====="
+          cat android/settings.gradle.kts
 
       - name: Get Dependencies
         run: flutter pub get
