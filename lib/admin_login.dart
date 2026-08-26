@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'admin_panel.dart';
 
 class AdminLogin extends StatefulWidget {
@@ -9,37 +10,75 @@ class AdminLogin extends StatefulWidget {
 }
 
 class _AdminLoginState extends State<AdminLogin> {
-  final idController = TextEditingController();
+  final emailController = TextEditingController();
   final passwordController = TextEditingController();
 
   bool hidePassword = true;
+  bool loading = false;
 
-  void login() {
-    final id = idController.text.trim();
+  Future<void> login() async {
+    final email = emailController.text.trim();
     final password = passwordController.text;
 
-    if (id == 'admin' && password == 'Preesho@123') {
+    if (email.isEmpty || password.isEmpty) {
+      showMessage('Email and password required');
+      return;
+    }
+
+    setState(() {
+      loading = true;
+    });
+
+    try {
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      if (!mounted) return;
+
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
           builder: (_) => const AdminPanel(),
         ),
       );
-      return;
-    }
+    } on FirebaseAuthException catch (e) {
+      String message = 'Login failed';
 
+      if (e.code == 'invalid-credential' ||
+          e.code == 'wrong-password' ||
+          e.code == 'user-not-found') {
+        message = 'Invalid email or password';
+      } else if (e.code == 'invalid-email') {
+        message = 'Invalid email address';
+      } else if (e.code == 'too-many-requests') {
+        message = 'Too many attempts. Try again later.';
+      }
+
+      showMessage(message);
+    } catch (e) {
+      showMessage('Something went wrong');
+    } finally {
+      if (mounted) {
+        setState(() {
+          loading = false;
+        });
+      }
+    }
+  }
+
+  void showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Invalid Admin ID or Password',
-        ),
+      SnackBar(
+        content: Text(message),
       ),
     );
   }
 
   @override
   void dispose() {
-    idController.dispose();
+    emailController.dispose();
     passwordController.dispose();
     super.dispose();
   }
@@ -70,7 +109,9 @@ class _AdminLoginState extends State<AdminLogin> {
                     Icons.admin_panel_settings,
                     size: 70,
                   ),
+
                   const SizedBox(height: 16),
+
                   const Text(
                     'Preesho Admin',
                     textAlign: TextAlign.center,
@@ -79,7 +120,9 @@ class _AdminLoginState extends State<AdminLogin> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
+
                   const SizedBox(height: 8),
+
                   const Text(
                     'Login to manage products',
                     textAlign: TextAlign.center,
@@ -87,13 +130,18 @@ class _AdminLoginState extends State<AdminLogin> {
                       color: Colors.grey,
                     ),
                   ),
+
                   const SizedBox(height: 28),
+
                   TextField(
-                    controller: idController,
+                    controller: emailController,
+                    keyboardType:
+                        TextInputType.emailAddress,
                     decoration: InputDecoration(
-                      labelText: 'Admin ID',
+                      labelText: 'Admin Email',
+                      hintText: 'admin@preesho.com',
                       prefixIcon: const Icon(
-                        Icons.person_outline,
+                        Icons.email_outlined,
                       ),
                       border: OutlineInputBorder(
                         borderRadius:
@@ -101,7 +149,9 @@ class _AdminLoginState extends State<AdminLogin> {
                       ),
                     ),
                   ),
+
                   const SizedBox(height: 16),
+
                   TextField(
                     controller: passwordController,
                     obscureText: hidePassword,
@@ -120,7 +170,8 @@ class _AdminLoginState extends State<AdminLogin> {
                         icon: Icon(
                           hidePassword
                               ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
+                              : Icons
+                                  .visibility_off_outlined,
                         ),
                       ),
                       border: OutlineInputBorder(
@@ -130,15 +181,29 @@ class _AdminLoginState extends State<AdminLogin> {
                     ),
                     onSubmitted: (_) => login(),
                   ),
+
                   const SizedBox(height: 24),
+
                   SizedBox(
                     height: 52,
                     child: FilledButton.icon(
-                      onPressed: login,
-                      icon: const Icon(Icons.login),
-                      label: const Text(
-                        'Login',
-                        style: TextStyle(
+                      onPressed:
+                          loading ? null : login,
+                      icon: loading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child:
+                                  CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Icon(Icons.login),
+                      label: Text(
+                        loading
+                            ? 'Logging in...'
+                            : 'Login',
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                         ),
