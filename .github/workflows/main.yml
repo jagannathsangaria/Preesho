@@ -51,17 +51,24 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          # Update Kotlin plugin to 2.3.0
+          # ----------------------------------------
+          # settings.gradle.kts
+          # ----------------------------------------
+
           settings = Path("android/settings.gradle.kts")
           text = settings.read_text()
 
+          # Kotlin 2.3.0
           text = text.replace(
               'id("org.jetbrains.kotlin.android") version "2.1.0" apply false',
               'id("org.jetbrains.kotlin.android") version "2.3.0" apply false'
           )
 
-          # Add Google Services plugin
-          firebase_plugin = 'id("com.google.gms.google-services") version "4.4.2" apply false'
+          # Google Services plugin
+          firebase_plugin = (
+              'id("com.google.gms.google-services") '
+              'version "4.4.2" apply false'
+          )
 
           if firebase_plugin not in text:
               text = text.replace(
@@ -72,10 +79,14 @@ jobs:
 
           settings.write_text(text)
 
-          # Add Google Services plugin to app
+          # ----------------------------------------
+          # app/build.gradle.kts
+          # ----------------------------------------
+
           app = Path("android/app/build.gradle.kts")
           text = app.read_text()
 
+          # Google Services plugin
           app_plugin = 'id("com.google.gms.google-services")'
 
           if app_plugin not in text:
@@ -85,8 +96,61 @@ jobs:
                   1
               )
 
+          # Remove old Kotlin jvmTarget syntax
+          text = text.replace(
+              'jvmTarget = JavaVersion.VERSION_11.toString()',
+              ''
+          )
+
+          text = text.replace(
+              'jvmTarget = JavaVersion.VERSION_17.toString()',
+              ''
+          )
+
+          # Remove an existing kotlin compilerOptions block if present.
+          # The generated Flutter project will then receive one clean block.
+          start = text.find("kotlin {")
+
+          if start != -1:
+              brace_start = text.find("{", start)
+              depth = 0
+              end = None
+
+              for i in range(brace_start, len(text)):
+                  if text[i] == "{":
+                      depth += 1
+                  elif text[i] == "}":
+                      depth -= 1
+                      if depth == 0:
+                          end = i + 1
+                          break
+
+              if end is not None:
+                  text = text[:start] + text[end:]
+
+          # Add modern Kotlin compilerOptions DSL
+          text = text.rstrip() + '''
+
+          kotlin {
+              compilerOptions {
+                  jvmTarget.set(
+                      org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+                  )
+              }
+          }
+          '''
+
           app.write_text(text)
           PY
+
+          echo "===== settings.gradle.kts ====="
+          cat android/settings.gradle.kts
+
+          echo "===== app/build.gradle.kts ====="
+          cat android/app/build.gradle.kts
+
+          echo "===== gradle.properties ====="
+          cat android/gradle.properties
 
       - name: Restore Flutter App Files
         run: |
@@ -100,14 +164,24 @@ jobs:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
           set -e
+
+          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
+            echo "GOOGLE_SERVICES_JSON secret is empty."
+            exit 1
+          fi
+
           mkdir -p android/app
           printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
 
       - name: Get Dependencies
-        run: flutter pub get
+        run: |
+          set -e
+          flutter pub get
 
       - name: Build APK
-        run: flutter build apk --release
+        run: |
+          set -e
+          flutter build apk --release
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
