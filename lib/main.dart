@@ -6,17 +6,28 @@ import 'admin_login.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  String? firebaseError;
+
   try {
     await Firebase.initializeApp();
   } catch (e) {
-    debugPrint('Firebase initialization error: $e');
+    firebaseError = e.toString();
   }
 
-  runApp(const PreeshoApp());
+  runApp(
+    PreeshoApp(
+      firebaseError: firebaseError,
+    ),
+  );
 }
 
 class PreeshoApp extends StatelessWidget {
-  const PreeshoApp({super.key});
+  final String? firebaseError;
+
+  const PreeshoApp({
+    super.key,
+    this.firebaseError,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +39,81 @@ class PreeshoApp extends StatelessWidget {
         colorSchemeSeed: Colors.deepPurple,
         scaffoldBackgroundColor: const Color(0xffF7F7F9),
       ),
-      home: const HomePage(),
+      home: firebaseError != null
+          ? FirebaseErrorPage(
+              error: firebaseError!,
+            )
+          : const HomePage(),
+    );
+  }
+}
+
+class FirebaseErrorPage extends StatelessWidget {
+  final String error;
+
+  const FirebaseErrorPage({
+    super.key,
+    required this.error,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Preesho',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error_outline,
+                size: 70,
+                color: Colors.red,
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Firebase initialization failed',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Preesho could not connect to Firebase.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xffEEEEF2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: SelectableText(
+                  error,
+                  style: const TextStyle(
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -110,7 +195,10 @@ class HomePage extends StatelessWidget {
           QuerySnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance
             .collection('products')
-            .where('Active', isEqualTo: true)
+            .where(
+              'Active',
+              isEqualTo: true,
+            )
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState ==
@@ -122,11 +210,29 @@ class HomePage extends StatelessWidget {
 
           if (snapshot.hasError) {
             return Center(
-              child: Padding(
+              child: SingleChildScrollView(
                 padding: const EdgeInsets.all(20),
-                child: Text(
-                  'Firebase Error:\n\n${snapshot.error}',
-                  textAlign: TextAlign.center,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.cloud_off,
+                      size: 60,
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Firestore Error',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SelectableText(
+                      '${snapshot.error}',
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                 ),
               ),
             );
