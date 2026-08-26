@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout project
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Flutter
@@ -22,85 +22,37 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Prepare Flutter Android project
+      - name: Prepare Android
         run: flutter create . --platforms=android
 
       - name: Add Firebase configuration
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
-          set -e
           mkdir -p android/app
           printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
 
-      - name: Configure Android
+      - name: Configure Kotlin
         run: |
-          set -e
+          sed -i 's/version "2.1.0"/version "2.3.0"/g' android/settings.gradle.kts
+          sed -i 's/JavaVersion.VERSION_11/JavaVersion.VERSION_17/g' android/app/build.gradle.kts
+          sed -i '/jvmTarget = JavaVersion.VERSION_17.toString()/d' android/app/build.gradle.kts
 
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
+      - name: Configure Google Services
+        run: |
+          sed -i '/plugins {/a\    id("com.google.gms.google-services") version "4.4.2" apply false' android/settings.gradle.kts
+          sed -i '/plugins {/a\    id("com.google.gms.google-services")' android/app/build.gradle.kts
 
-          settings = Path("android/settings.gradle.kts")
-
-          if settings.exists():
-              s = settings.read_text()
-
-              s = re.sub(
-                  r'id\("org\.jetbrains\.kotlin\.android"\)\s+version\s+"[^"]+"',
-                  'id("org.jetbrains.kotlin.android") version "2.3.0"',
-                  s
-              )
-
-              if "com.google.gms.google-services" not in s:
-                  s = s.replace(
-                      "plugins {",
-                      'plugins {\n    id("com.google.gms.google-services") version "4.4.2" apply false',
-                      1
-                  )
-
-              settings.write_text(s)
-
-          app = Path("android/app/build.gradle.kts")
-
-          if app.exists():
-              s = app.read_text()
-
-              if "com.google.gms.google-services" not in s:
-                  s = s.replace(
-                      "plugins {",
-                      'plugins {\n    id("com.google.gms.google-services")',
-                      1
-                  )
-
-              # Java 17
-              s = s.replace(
-                  "JavaVersion.VERSION_11",
-                  "JavaVersion.VERSION_17"
-              )
-
-              # Remove old jvmTarget setting
-              s = re.sub(
-                  r'^\s*jvmTarget\s*=.*$',
-                  '',
-                  s,
-                  flags=re.MULTILINE
-              )
-
-              # Kotlin JVM toolchain 17
-              if "jvmToolchain(17)" not in s:
-                  s += '''
+      - name: Configure Kotlin JVM
+        run: |
+          cat >> android/app/build.gradle.kts <<'EOF'
 
 kotlin {
     jvmToolchain(17)
 }
-'''
+EOF
 
-              app.write_text(s)
-
-          PY
-
-      - name: Get dependencies
+      - name: Get packages
         run: flutter pub get
 
       - name: Build APK
