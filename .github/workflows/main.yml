@@ -24,6 +24,25 @@ jobs:
       - name: Generate Android Project
         run: flutter create . --platforms=android
 
+      - name: Configure Flutter Maven Repository
+        run: |
+          set -e
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("android/settings.gradle.kts")
+          text = p.read_text()
+
+          if 'maven { url = uri("https://storage.googleapis.com/download.flutter.io") }' not in text:
+              text = text.replace(
+                  "repositories {\n        google()",
+                  'repositories {\n        maven { url = uri("https://storage.googleapis.com/download.flutter.io") }\n        google()'
+              )
+
+          p.write_text(text)
+          PY
+
       - name: Restore Firebase Configuration
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
