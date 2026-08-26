@@ -25,8 +25,8 @@ jobs:
         run: |
           set -e
           mkdir -p /tmp/preesho_backup
-          cp -r lib /tmp/preesho_backup/
-          cp pubspec.yaml /tmp/preesho_backup/
+          cp -r lib /tmp/preesho_backup/lib
+          cp pubspec.yaml /tmp/preesho_backup/pubspec.yaml
 
       - name: Remove Incomplete Android Project
         run: |
@@ -37,6 +37,16 @@ jobs:
         run: |
           set -e
           flutter create . --platforms=android
+
+      - name: Enable AndroidX
+        run: |
+          set -e
+
+          cat > android/gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx4G -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          android.enableJetifier=true
+          EOF
 
       - name: Restore Flutter App Files
         run: |
@@ -50,6 +60,7 @@ jobs:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
           set -e
+          mkdir -p android/app
           printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
 
       - name: Configure Firebase
@@ -62,10 +73,12 @@ jobs:
           settings = Path("android/settings.gradle.kts")
           text = settings.read_text()
 
-          if 'id("com.google.gms.google-services") version "4.4.2" apply false' not in text:
+          plugin = 'id("com.google.gms.google-services") version "4.4.2" apply false'
+
+          if plugin not in text:
               text = text.replace(
-                  'plugins {',
-                  'plugins {\n    id("com.google.gms.google-services") version "4.4.2" apply false',
+                  "plugins {",
+                  "plugins {\n    " + plugin,
                   1
               )
 
@@ -74,10 +87,12 @@ jobs:
           app = Path("android/app/build.gradle.kts")
           text = app.read_text()
 
-          if 'id("com.google.gms.google-services")' not in text:
+          app_plugin = 'id("com.google.gms.google-services")'
+
+          if app_plugin not in text:
               text = text.replace(
-                  'plugins {',
-                  'plugins {\n    id("com.google.gms.google-services")',
+                  "plugins {",
+                  "plugins {\n    " + app_plugin,
                   1
               )
 
