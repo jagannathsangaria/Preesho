@@ -29,42 +29,50 @@ jobs:
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
+          set -e
           mkdir -p android/app
           printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
 
-      - name: Configure Kotlin and Firebase
+      - name: Configure Firebase and Kotlin
         run: |
+          set -e
+
           python3 - <<'PY'
           from pathlib import Path
 
-          p = Path("android/settings.gradle")
-          s = p.read_text()
+          settings = Path("android/settings.gradle.kts")
 
-          s = s.replace(
-              'id "org.jetbrains.kotlin.android" version "2.1.0"',
-              'id "org.jetbrains.kotlin.android" version "2.3.0"'
-          )
+          if settings.exists():
+              s = settings.read_text()
 
-          if "com.google.gms.google-services" not in s:
-              s = s.replace(
-                  "plugins {",
-                  'plugins {\n    id "com.google.gms.google-services" version "4.4.2" apply false',
-                  1
-              )
+              if 'id("org.jetbrains.kotlin.android") version "2.3.0"' not in s:
+                  s = s.replace(
+                      'id("org.jetbrains.kotlin.android") version "2.1.0"',
+                      'id("org.jetbrains.kotlin.android") version "2.3.0"'
+                  )
 
-          p.write_text(s)
+              if "com.google.gms.google-services" not in s:
+                  s = s.replace(
+                      "plugins {",
+                      'plugins {\n    id("com.google.gms.google-services") version "4.4.2" apply false',
+                      1
+                  )
 
-          p = Path("android/app/build.gradle")
-          s = p.read_text()
+              settings.write_text(s)
 
-          if "com.google.gms.google-services" not in s:
-              s = s.replace(
-                  "plugins {",
-                  'plugins {\n    id "com.google.gms.google-services"',
-                  1
-              )
+          app = Path("android/app/build.gradle.kts")
 
-          p.write_text(s)
+          if app.exists():
+              s = app.read_text()
+
+              if "com.google.gms.google-services" not in s:
+                  s = s.replace(
+                      "plugins {",
+                      'plugins {\n    id("com.google.gms.google-services")',
+                      1
+                  )
+
+              app.write_text(s)
           PY
 
       - name: Get dependencies
