@@ -41,20 +41,17 @@ jobs:
           from pathlib import Path
           import re
 
-          # settings.gradle.kts
           settings = Path("android/settings.gradle.kts")
 
           if settings.exists():
               s = settings.read_text()
 
-              # Kotlin 2.3.0
               s = re.sub(
                   r'id\("org\.jetbrains\.kotlin\.android"\)\s+version\s+"[^"]+"',
                   'id("org.jetbrains.kotlin.android") version "2.3.0"',
                   s
               )
 
-              # Google Services plugin
               if "com.google.gms.google-services" not in s:
                   s = s.replace(
                       "plugins {",
@@ -64,13 +61,11 @@ jobs:
 
               settings.write_text(s)
 
-          # app/build.gradle.kts
           app = Path("android/app/build.gradle.kts")
 
           if app.exists():
               s = app.read_text()
 
-              # Google Services
               if "com.google.gms.google-services" not in s:
                   s = s.replace(
                       "plugins {",
@@ -79,13 +74,12 @@ jobs:
                   )
 
               # Java 17
-              s = re.sub(
-                  r'JavaVersion\.VERSION_\d+',
-                  'JavaVersion.VERSION_17',
-                  s
+              s = s.replace(
+                  "JavaVersion.VERSION_11",
+                  "JavaVersion.VERSION_17"
               )
 
-              # Remove old jvmTarget lines
+              # Remove old jvmTarget setting
               s = re.sub(
                   r'^\s*jvmTarget\s*=.*$',
                   '',
@@ -93,8 +87,8 @@ jobs:
                   flags=re.MULTILINE
               )
 
-              # Add Kotlin compiler options
-              if "compilerOptions" not in s:
+              # Kotlin JVM toolchain 17
+              if "jvmToolchain(17)" not in s:
                   s += '''
 
 kotlin {
@@ -103,20 +97,6 @@ kotlin {
 '''
 
               app.write_text(s)
-
-          # app/build.gradle
-          app_groovy = Path("android/app/build.gradle")
-
-          if app_groovy.exists():
-              s = app_groovy.read_text()
-
-              s = re.sub(
-                  r'JavaVersion\.VERSION_\d+',
-                  'JavaVersion.VERSION_17',
-                  s
-              )
-
-              app_groovy.write_text(s)
 
           PY
 
