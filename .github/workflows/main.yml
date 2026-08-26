@@ -14,6 +14,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -28,17 +34,17 @@ jobs:
           cp -r lib /tmp/preesho_backup/lib
           cp pubspec.yaml /tmp/preesho_backup/pubspec.yaml
 
-      - name: Remove Incomplete Android Project
+      - name: Remove Old Android Project
         run: |
           set -e
           rm -rf android
 
-      - name: Generate Fresh Android Project
+      - name: Create Fresh Android Project
         run: |
           set -e
           flutter create . --platforms=android
 
-      - name: Configure Android Build
+      - name: Configure AndroidX and Kotlin
         run: |
           set -e
 
@@ -51,20 +57,18 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          # ----------------------------------------
+          # -----------------------------
           # settings.gradle.kts
-          # ----------------------------------------
+          # -----------------------------
 
           settings = Path("android/settings.gradle.kts")
           text = settings.read_text()
 
-          # Kotlin 2.3.0
           text = text.replace(
               'id("org.jetbrains.kotlin.android") version "2.1.0" apply false',
               'id("org.jetbrains.kotlin.android") version "2.3.0" apply false'
           )
 
-          # Google Services plugin
           firebase_plugin = (
               'id("com.google.gms.google-services") '
               'version "4.4.2" apply false'
@@ -77,38 +81,47 @@ jobs:
                   1
               )
 
+          flutter_repo = (
+              'maven { '
+              'url = uri("https://storage.googleapis.com/download.flutter.io") '
+              '}'
+          )
+
+          if flutter_repo not in text:
+              text = text.replace(
+                  "repositories {",
+                  "repositories {\n        " + flutter_repo,
+                  1
+              )
+
           settings.write_text(text)
 
-          # ----------------------------------------
+          # -----------------------------
           # app/build.gradle.kts
-          # ----------------------------------------
+          # -----------------------------
 
           app = Path("android/app/build.gradle.kts")
           text = app.read_text()
 
-          # Google Services plugin
-          app_plugin = 'id("com.google.gms.google-services")'
-
-          if app_plugin not in text:
+          if 'id("com.google.gms.google-services")' not in text:
               text = text.replace(
                   "plugins {",
-                  "plugins {\n    " + app_plugin,
+                  'plugins {\n    id("com.google.gms.google-services")',
                   1
               )
 
-          # Remove old Kotlin jvmTarget syntax
+          # Java 17
           text = text.replace(
-              'jvmTarget = JavaVersion.VERSION_11.toString()',
-              ''
+              "sourceCompatibility = JavaVersion.VERSION_11",
+              "sourceCompatibility = JavaVersion.VERSION_17"
           )
 
           text = text.replace(
-              'jvmTarget = JavaVersion.VERSION_17.toString()',
-              ''
+              "targetCompatibility = JavaVersion.VERSION_11",
+              "targetCompatibility = JavaVersion.VERSION_17"
           )
 
-          # Remove an existing kotlin compilerOptions block if present.
-          # The generated Flutter project will then receive one clean block.
+          # Remove old Kotlin block
           start = text.find("kotlin {")
 
           if start != -1:
@@ -128,10 +141,12 @@ jobs:
               if end is not None:
                   text = text[:start] + text[end:]
 
-          # Add modern Kotlin compilerOptions DSL
+          # Add Kotlin 17 configuration
           text = text.rstrip() + '''
 
           kotlin {
+              jvmToolchain(17)
+
               compilerOptions {
                   jvmTarget.set(
                       org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
@@ -142,15 +157,6 @@ jobs:
 
           app.write_text(text)
           PY
-
-          echo "===== settings.gradle.kts ====="
-          cat android/settings.gradle.kts
-
-          echo "===== app/build.gradle.kts ====="
-          cat android/app/build.gradle.kts
-
-          echo "===== gradle.properties ====="
-          cat android/gradle.properties
 
       - name: Restore Flutter App Files
         run: |
@@ -166,17 +172,24 @@ jobs:
           set -e
 
           if [ -z "$GOOGLE_SERVICES_JSON" ]; then
-            echo "GOOGLE_SERVICES_JSON secret is empty."
+            echo "GOOGLE_SERVICES_JSON secret is empty"
             exit 1
           fi
 
           mkdir -p android/app
-          printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+
+          printf '%s' "$GOOGLE_SERVICES_JSON" \
+            > android/app/google-services.json
 
       - name: Get Dependencies
         run: |
           set -e
           flutter pub get
+
+      - name: Clean Flutter Build
+        run: |
+          set -e
+          flutter clean
 
       - name: Build APK
         run: |
