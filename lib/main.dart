@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'admin_panel.dart';
+import 'admin_login.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -62,9 +62,7 @@ class HomePage extends StatelessWidget {
     final wanted = normalize(wantedField);
 
     for (final entry in data.entries) {
-      final actualKey = normalize(entry.key.toString());
-
-      if (actualKey == wanted) {
+      if (normalize(entry.key.toString()) == wanted) {
         if (entry.value != null) {
           final text = entry.value.toString().trim();
 
@@ -93,12 +91,12 @@ class HomePage extends StatelessWidget {
         ),
         actions: [
           IconButton(
-            tooltip: 'Admin Panel',
+            tooltip: 'Admin Login',
             onPressed: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => const AdminPanel(),
+                  builder: (_) => const AdminLogin(),
                 ),
               );
             },
@@ -152,15 +150,12 @@ class HomePage extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // HOME BANNER
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(22),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(22),
                   gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
                     colors: [
                       Color(0xff5E35B1),
                       Color(0xff8E24AA),
@@ -187,153 +182,38 @@ class HomePage extends StatelessWidget {
                         fontSize: 15,
                       ),
                     ),
-                    SizedBox(height: 18),
-                    Text(
-                      '✨ Best products at great prices',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                      ),
-                    ),
                   ],
                 ),
               ),
 
               const SizedBox(height: 24),
 
-              // CATEGORY
               const Text(
-                'Shop by Category',
+                'Latest Products',
                 style: TextStyle(
                   fontSize: 21,
                   fontWeight: FontWeight.bold,
                 ),
               ),
 
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
 
-              SizedBox(
-                height: 100,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: const [
-                    CategoryCard(
-                      icon: Icons.checkroom,
-                      title: 'Fashion',
-                    ),
-                    CategoryCard(
-                      icon: Icons.phone_android,
-                      title: 'Electronics',
-                    ),
-                    CategoryCard(
-                      icon: Icons.home_outlined,
-                      title: 'Home',
-                    ),
-                    CategoryCard(
-                      icon: Icons.watch_outlined,
-                      title: 'Accessories',
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // PRODUCTS TITLE
-              Row(
-                mainAxisAlignment:
-                    MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Latest Products',
-                    style: TextStyle(
-                      fontSize: 21,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () {},
-                    child: const Text('View All'),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 8),
-
-              // PRODUCTS
               ...products.map((doc) {
                 final data = doc.data();
 
-                final name =
-                    readField(data, 'Name');
-
-                final category =
-                    readField(data, 'Category');
-
-                final price =
-                    readField(data, 'Price');
-
-                final stock =
-                    readField(data, 'Stock');
-
-                final imageUrl =
-                    readField(data, 'Imageurl');
-
                 return ProductCard(
-                  name: name,
-                  category: category,
-                  price: price,
-                  stock: stock,
-                  imageUrl: imageUrl,
+                  name: readField(data, 'Name'),
+                  category:
+                      readField(data, 'Category'),
+                  price: readField(data, 'Price'),
+                  stock: readField(data, 'Stock'),
+                  imageUrl:
+                      readField(data, 'Imageurl'),
                 );
               }),
             ],
           );
         },
-      ),
-    );
-  }
-}
-
-class CategoryCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-
-  const CategoryCard({
-    super.key,
-    required this.icon,
-    required this.title,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 105,
-      margin: const EdgeInsets.only(right: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.grey.shade200,
-        ),
-      ),
-      child: Column(
-        mainAxisAlignment:
-            MainAxisAlignment.center,
-        children: [
-          Icon(
-            icon,
-            size: 30,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -383,7 +263,6 @@ class ProductCard extends StatelessWidget {
         crossAxisAlignment:
             CrossAxisAlignment.start,
         children: [
-          // IMAGE
           SizedBox(
             width: double.infinity,
             height: 210,
@@ -396,17 +275,6 @@ class ProductCard extends StatelessWidget {
                         (context, error, stackTrace) {
                       return const ProductImagePlaceholder();
                     },
-                    loadingBuilder:
-                        (context, child, progress) {
-                      if (progress == null) {
-                        return child;
-                      }
-
-                      return const Center(
-                        child:
-                            CircularProgressIndicator(),
-                      );
-                    },
                   )
                 : const ProductImagePlaceholder(),
           ),
@@ -417,13 +285,10 @@ class ProductCard extends StatelessWidget {
               crossAxisAlignment:
                   CrossAxisAlignment.start,
               children: [
-                // NAME
                 Text(
                   name.isEmpty
                       ? 'Unnamed Product'
                       : name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 19,
                     fontWeight: FontWeight.bold,
@@ -432,32 +297,18 @@ class ProductCard extends StatelessWidget {
 
                 const SizedBox(height: 8),
 
-                // CATEGORY
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.category_outlined,
-                      size: 19,
-                    ),
-                    const SizedBox(width: 7),
-                    Expanded(
-                      child: Text(
-                        category.isEmpty
-                            ? 'Category unavailable'
-                            : category,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey.shade700,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
+                Text(
+                  category.isEmpty
+                      ? 'Category unavailable'
+                      : category,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade700,
+                  ),
                 ),
 
                 const SizedBox(height: 10),
 
-                // PRICE + STOCK
                 Row(
                   mainAxisAlignment:
                       MainAxisAlignment.spaceBetween,
@@ -469,29 +320,16 @@ class ProductCard extends StatelessWidget {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.inventory_2_outlined,
-                          size: 17,
-                        ),
-                        const SizedBox(width: 5),
-                        Text(
-                          stock.isEmpty
-                              ? 'Stock unavailable'
-                              : 'Stock: $stock',
-                          style: const TextStyle(
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
+                    Text(
+                      stock.isEmpty
+                          ? 'Stock unavailable'
+                          : 'Stock: $stock',
                     ),
                   ],
                 ),
 
                 const SizedBox(height: 14),
 
-                // ADD TO CART
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
@@ -531,24 +369,10 @@ class ProductImagePlaceholder
     return Container(
       color: const Color(0xffEEEEF2),
       child: const Center(
-        child: Column(
-          mainAxisAlignment:
-              MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.image_outlined,
-              size: 60,
-              color: Colors.grey,
-            ),
-            SizedBox(height: 8),
-            Text(
-              'Product Image',
-              style: TextStyle(
-                color: Colors.grey,
-                fontSize: 14,
-              ),
-            ),
-          ],
+        child: Icon(
+          Icons.image_outlined,
+          size: 60,
+          color: Colors.grey,
         ),
       ),
     );
