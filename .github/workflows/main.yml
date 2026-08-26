@@ -36,9 +36,13 @@ jobs:
         run: |
           set -e
 
-          sed -i '/plugins {/a\    id("com.google.gms.google-services") version "4.4.2" apply false' android/settings.gradle.kts
+          if ! grep -q 'id("com.google.gms.google-services") version' android/settings.gradle.kts; then
+            sed -i '/plugins {/a\    id("com.google.gms.google-services") version "4.4.2" apply false' android/settings.gradle.kts
+          fi
 
-          sed -i '/plugins {/a\    id("com.google.gms.google-services")' android/app/build.gradle.kts
+          if ! grep -q 'id("com.google.gms.google-services")' android/app/build.gradle.kts; then
+            sed -i '/plugins {/a\    id("com.google.gms.google-services")' android/app/build.gradle.kts
+          fi
 
       - name: Get Dependencies
         run: flutter pub get
