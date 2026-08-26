@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - main
-      - master
 
 jobs:
   build:
@@ -20,32 +19,43 @@ jobs:
         with:
           flutter-version: "3.35.0"
           channel: stable
-          cache: true
 
-      - name: Prepare Android
+      - name: Create Android project
         run: flutter create . --platforms=android
 
-      - name: Add Firebase configuration
+      - name: Setup Firebase
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
           mkdir -p android/app
           printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
 
-      - name: Configure Android
+      - name: Configure Kotlin and Java
         run: |
-          sed -i 's/version "2.1.0"/version "2.3.0"/g' android/settings.gradle.kts
-          sed -i 's/JavaVersion.VERSION_11/JavaVersion.VERSION_17/g' android/app/build.gradle.kts
-          sed -i '/jvmTarget = JavaVersion.VERSION_17.toString()/d' android/app/build.gradle.kts
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
 
-      - name: Configure Kotlin JVM
-        run: |
-          cat >> android/app/build.gradle.kts <<'EOF'
+          settings = Path("android/settings.gradle.kts")
+          app = Path("android/app/build.gradle.kts")
 
-kotlin {
-    jvmToolchain(17)
-}
-EOF
+          s = settings.read_text()
+          s = re.sub(
+              r'id\("org\.jetbrains\.kotlin\.android"\)\s+version\s+"[^"]+"',
+              'id("org.jetbrains.kotlin.android") version "2.3.0"',
+              s
+          )
+          settings.write_text(s)
+
+          a = app.read_text()
+          a = a.replace("JavaVersion.VERSION_11", "JavaVersion.VERSION_17")
+          a = re.sub(
+              r'jvmTarget\s*=\s*JavaVersion\.VERSION_17\.toString\(\)',
+              'jvmTarget = "17"',
+              a
+          )
+          app.write_text(a)
+          PY
 
       - name: Get packages
         run: flutter pub get
