@@ -21,105 +21,22 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Create Android project
+      - name: Create Android
         run: flutter create . --platforms=android
 
-      - name: Add Firebase configuration
+      - name: Add Firebase
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
-          set -e
+          mkdir -p android/app
           printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
 
-      - name: Configure Flutter Maven repository
+      - name: Configure Firebase
         run: |
-          set -e
+          sed -i '/id("dev.flutter.flutter-plugin-loader")/a\    id("com.google.gms.google-services") version "4.4.2" apply false' android/settings.gradle.kts
+          sed -i '/id("com.android.application")/a\    id("com.google.gms.google-services")' android/app/build.gradle.kts
 
-          python3 <<'PY'
-          from pathlib import Path
-
-          p = Path("android/settings.gradle.kts")
-          s = p.read_text()
-
-          marker = "repositories {"
-
-          flutter_repo = '''
-              maven {
-                  url = uri("https://storage.googleapis.com/download.flutter.io")
-              }
-          '''
-
-          if "storage.googleapis.com/download.flutter.io" not in s:
-              s = s.replace(
-                  marker,
-                  marker + "\n" + flutter_repo,
-                  1
-              )
-
-          p.write_text(s)
-          PY
-
-      - name: Configure Firebase and Kotlin
-        run: |
-          set -e
-
-          python3 <<'PY'
-          from pathlib import Path
-          import re
-
-          settings = Path("android/settings.gradle.kts")
-          app = Path("android/app/build.gradle.kts")
-
-          s = settings.read_text()
-
-          if 'id("com.google.gms.google-services")' not in s:
-              s = s.replace(
-                  "plugins {",
-                  '''plugins {
-              id("com.google.gms.google-services") version "4.4.2" apply false''",
-                  1
-              )
-
-          settings.write_text(s)
-
-          a = app.read_text()
-
-          if 'id("com.google.gms.google-services")' not in a:
-              a = a.replace(
-                  "plugins {",
-                  '''plugins {
-              id("com.google.gms.google-services")''",
-                  1
-              )
-
-          a = a.replace(
-              "JavaVersion.VERSION_11",
-              "JavaVersion.VERSION_17"
-          )
-
-          a = re.sub(
-              r'\nkotlinOptions\s*\{.*?\n\}',
-              "",
-              a,
-              flags=re.DOTALL
-          )
-
-          if "compilerOptions" not in a:
-              a += '''
-
-          kotlin {
-              compilerOptions {
-                  jvmTarget.set(
-                      org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
-                  )
-              }
-          }
-          '''
-
-          app.write_text(a)
-          PY
-
-      - name: Get packages
+      - name: Get Packages
         run: flutter pub get
 
       - name: Build APK
