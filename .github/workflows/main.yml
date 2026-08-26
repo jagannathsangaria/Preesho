@@ -32,16 +32,11 @@ jobs:
           mkdir -p android/app
           printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
 
-      - name: Configure Kotlin
+      - name: Configure Android
         run: |
           sed -i 's/version "2.1.0"/version "2.3.0"/g' android/settings.gradle.kts
           sed -i 's/JavaVersion.VERSION_11/JavaVersion.VERSION_17/g' android/app/build.gradle.kts
           sed -i '/jvmTarget = JavaVersion.VERSION_17.toString()/d' android/app/build.gradle.kts
-
-      - name: Configure Google Services
-        run: |
-          sed -i '/plugins {/a\    id("com.google.gms.google-services") version "4.4.2" apply false' android/settings.gradle.kts
-          sed -i '/plugins {/a\    id("com.google.gms.google-services")' android/app/build.gradle.kts
 
       - name: Configure Kotlin JVM
         run: |
