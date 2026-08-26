@@ -1,4 +1,4 @@
-name: Build Preesho APK
+ name: Build Preesho APK
 
 on:
   workflow_dispatch:
@@ -33,34 +33,26 @@ jobs:
           mkdir -p android/app
           printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
 
-      - name: Configure Firebase and Kotlin
+      - name: Configure Android
         run: |
           set -e
 
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
-          # -----------------------------
           # settings.gradle.kts
-          # -----------------------------
           settings = Path("android/settings.gradle.kts")
 
           if settings.exists():
               s = settings.read_text()
 
               # Kotlin 2.3.0
-              s = s.replace(
-                  'id("org.jetbrains.kotlin.android") version "2.1.0"',
-                  'id("org.jetbrains.kotlin.android") version "2.3.0"'
+              s = re.sub(
+                  r'id\("org\.jetbrains\.kotlin\.android"\)\s+version\s+"[^"]+"',
+                  'id("org.jetbrains.kotlin.android") version "2.3.0"',
+                  s
               )
-
-              if "org.jetbrains.kotlin.android" in s:
-                  import re
-                  s = re.sub(
-                      r'id\("org\.jetbrains\.kotlin\.android"\)\s+version\s+"[^"]+"',
-                      'id("org.jetbrains.kotlin.android") version "2.3.0"',
-                      s
-                  )
 
               # Google Services plugin
               if "com.google.gms.google-services" not in s:
@@ -72,15 +64,13 @@ jobs:
 
               settings.write_text(s)
 
-          # -----------------------------
           # app/build.gradle.kts
-          # -----------------------------
           app = Path("android/app/build.gradle.kts")
 
           if app.exists():
               s = app.read_text()
 
-              # Google Services plugin
+              # Google Services
               if "com.google.gms.google-services" not in s:
                   s = s.replace(
                       "plugins {",
@@ -88,20 +78,45 @@ jobs:
                       1
                   )
 
-              # Remove old Kotlin jvmTarget assignment
-              s = s.replace(
-                  '        jvmTarget = JavaVersion.VERSION_11.toString()',
-                  ''
-              )
-
-              # Remove any other old jvmTarget assignment
+              # Java 17
               s = re.sub(
-                  r'\s*jvmTarget\s*=\s*JavaVersion\.VERSION_11\.toString\(\)',
-                  '',
+                  r'JavaVersion\.VERSION_\d+',
+                  'JavaVersion.VERSION_17',
                   s
               )
 
+              # Remove old jvmTarget lines
+              s = re.sub(
+                  r'^\s*jvmTarget\s*=.*$',
+                  '',
+                  s,
+                  flags=re.MULTILINE
+              )
+
+              # Add Kotlin compiler options
+              if "compilerOptions" not in s:
+                  s += '''
+
+kotlin {
+    jvmToolchain(17)
+}
+'''
+
               app.write_text(s)
+
+          # app/build.gradle
+          app_groovy = Path("android/app/build.gradle")
+
+          if app_groovy.exists():
+              s = app_groovy.read_text()
+
+              s = re.sub(
+                  r'JavaVersion\.VERSION_\d+',
+                  'JavaVersion.VERSION_17',
+                  s
+              )
+
+              app_groovy.write_text(s)
 
           PY
 
@@ -116,4 +131,4 @@ jobs:
         with:
           name: Preesho-APK
           path: build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: error
+          if-no-files-found: error   
