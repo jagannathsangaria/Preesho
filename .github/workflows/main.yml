@@ -19,72 +19,23 @@ jobs:
         with:
           flutter-version: "3.35.0"
           channel: stable
-          cache: true
 
-      - name: Create Android project
+      - name: Create Android
         run: flutter create . --platforms=android
 
-      - name: Add Firebase configuration
+      - name: Firebase
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
-          mkdir -p android/app
-          printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+          echo "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
 
-      - name: Configure Android
+      - name: Fix Kotlin
         run: |
-          set -e
+          sed -i 's/version "2.1.0"/version "2.3.0"/g' android/settings.gradle.kts
+          sed -i 's/JavaVersion.VERSION_11/JavaVersion.VERSION_17/g' android/app/build.gradle.kts
+          sed -i '/jvmTarget/d' android/app/build.gradle.kts
 
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          settings = Path("android/settings.gradle.kts")
-          app = Path("android/app/build.gradle.kts")
-
-          # Kotlin 2.3.0
-          s = settings.read_text()
-          s = re.sub(
-              r'id\("org\.jetbrains\.kotlin\.android"\)\s+version\s+"[^"]+"',
-              'id("org.jetbrains.kotlin.android") version "2.3.0"',
-              s
-          )
-          settings.write_text(s)
-
-          # App Gradle
-          a = app.read_text()
-
-          # Java 17
-          a = a.replace(
-              "JavaVersion.VERSION_11",
-              "JavaVersion.VERSION_17"
-          )
-
-          # Remove old jvmTarget syntax
-          a = re.sub(
-              r'^\s*jvmTarget\s*=.*$',
-              '',
-              a,
-              flags=re.MULTILINE
-          )
-
-          # Add new Kotlin compilerOptions syntax
-          if "compilerOptions {" not in a:
-              a += '''
-
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
-kotlin {
-    compilerOptions {
-        jvmTarget.set(JvmTarget.JVM_17)
-    }
-}
-'''
-
-          app.write_text(a)
-          PY
-
-      - name: Get packages
+      - name: Packages
         run: flutter pub get
 
       - name: Build APK
@@ -95,4 +46,3 @@ kotlin {
         with:
           name: Preesho-APK
           path: build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: error
