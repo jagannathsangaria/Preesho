@@ -31,7 +31,35 @@ jobs:
           set -e
           printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
 
-      - name: Configure Android and Kotlin
+      - name: Configure Flutter Maven repository
+        run: |
+          set -e
+
+          python3 <<'PY'
+          from pathlib import Path
+
+          p = Path("android/settings.gradle.kts")
+          s = p.read_text()
+
+          marker = "repositories {"
+
+          flutter_repo = '''
+              maven {
+                  url = uri("https://storage.googleapis.com/download.flutter.io")
+              }
+          '''
+
+          if "storage.googleapis.com/download.flutter.io" not in s:
+              s = s.replace(
+                  marker,
+                  marker + "\n" + flutter_repo,
+                  1
+              )
+
+          p.write_text(s)
+          PY
+
+      - name: Configure Firebase and Kotlin
         run: |
           set -e
 
@@ -42,58 +70,40 @@ jobs:
           settings = Path("android/settings.gradle.kts")
           app = Path("android/app/build.gradle.kts")
 
-          # -----------------------------
-          # settings.gradle.kts
-          # -----------------------------
           s = settings.read_text()
 
-          # Kotlin 2.3.0
-          s = re.sub(
-              r'id\("org\.jetbrains\.kotlin\.android"\)\s+version\s+"[^"]+"\s+apply false',
-              'id("org.jetbrains.kotlin.android") version "2.3.0" apply false',
-              s
-          )
-
-          # Add Google Services plugin
           if 'id("com.google.gms.google-services")' not in s:
               s = s.replace(
-                  'plugins {',
+                  "plugins {",
                   '''plugins {
-              id("com.google.gms.google-services") version "4.4.2" apply false''',
+              id("com.google.gms.google-services") version "4.4.2" apply false''",
                   1
               )
 
           settings.write_text(s)
 
-          # -----------------------------
-          # app/build.gradle.kts
-          # -----------------------------
           a = app.read_text()
 
-          # Add Google Services plugin
           if 'id("com.google.gms.google-services")' not in a:
               a = a.replace(
-                  'plugins {',
+                  "plugins {",
                   '''plugins {
-              id("com.google.gms.google-services")''',
+              id("com.google.gms.google-services")''",
                   1
               )
 
-          # Java 17
           a = a.replace(
               "JavaVersion.VERSION_11",
               "JavaVersion.VERSION_17"
           )
 
-          # Remove old Kotlin JVM target block
           a = re.sub(
               r'\nkotlinOptions\s*\{.*?\n\}',
-              '',
+              "",
               a,
               flags=re.DOTALL
           )
 
-          # Add Kotlin 2.3 compilerOptions
           if "compilerOptions" not in a:
               a += '''
 
@@ -121,14 +131,3 @@ jobs:
           name: Preesho-APK
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
-      - name: Packages
-        run: flutter pub get
-
-      - name: Build APK
-        run: flutter build apk --release
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Preesho-APK
-          path: build/app/outputs/flutter-apk/app-release.apk
