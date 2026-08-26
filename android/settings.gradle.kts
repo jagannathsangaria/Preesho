@@ -1,3 +1,5 @@
+import org.gradle.api.initialization.resolve.RepositoriesMode
+
 pluginManagement {
     repositories {
         google()
@@ -14,6 +16,7 @@ plugins {
 
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+
     repositories {
         google()
         mavenCentral()
@@ -21,4 +24,5 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Preesho"
+
 include(":app")
