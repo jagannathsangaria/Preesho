@@ -7,6 +7,7 @@ plugins {
 
 android {
     namespace = "com.example.preesho"
+
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -31,6 +32,8 @@ android {
 }
 
 kotlin {
+    jvmToolchain(17)
+
     compilerOptions {
         jvmTarget.set(
             org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
