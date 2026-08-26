@@ -27,27 +27,24 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Backup Flutter App Files
+      - name: Backup Flutter Files
         run: |
           set -e
           mkdir -p /tmp/preesho_backup
           cp -r lib /tmp/preesho_backup/lib
           cp pubspec.yaml /tmp/preesho_backup/pubspec.yaml
 
-      - name: Remove Old Android Project
-        run: |
-          set -e
-          rm -rf android
-
       - name: Create Fresh Android Project
         run: |
           set -e
+          rm -rf android
           flutter create . --platforms=android
 
-      - name: Configure AndroidX and Kotlin
+      - name: Configure Android
         run: |
           set -e
 
+          # AndroidX
           cat > android/gradle.properties <<'EOF'
           org.gradle.jvmargs=-Xmx4G -Dfile.encoding=UTF-8
           android.useAndroidX=true
@@ -57,37 +54,40 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          # -----------------------------
+          # ==========================================
           # settings.gradle.kts
-          # -----------------------------
+          # ==========================================
 
           settings = Path("android/settings.gradle.kts")
           text = settings.read_text()
 
+          # Kotlin 2.3.0
           text = text.replace(
               'id("org.jetbrains.kotlin.android") version "2.1.0" apply false',
               'id("org.jetbrains.kotlin.android") version "2.3.0" apply false'
           )
 
+          # Firebase Google Services
           firebase_plugin = (
               'id("com.google.gms.google-services") '
               'version "4.4.2" apply false'
           )
 
-          if firebase_plugin not in text:
+          if 'id("com.google.gms.google-services")' not in text:
               text = text.replace(
                   "plugins {",
                   "plugins {\n    " + firebase_plugin,
                   1
               )
 
+          # Flutter Maven repository
           flutter_repo = (
               'maven { '
               'url = uri("https://storage.googleapis.com/download.flutter.io") '
               '}'
           )
 
-          if flutter_repo not in text:
+          if "storage.googleapis.com/download.flutter.io" not in text:
               text = text.replace(
                   "repositories {",
                   "repositories {\n        " + flutter_repo,
@@ -96,13 +96,14 @@ jobs:
 
           settings.write_text(text)
 
-          # -----------------------------
+          # ==========================================
           # app/build.gradle.kts
-          # -----------------------------
+          # ==========================================
 
           app = Path("android/app/build.gradle.kts")
           text = app.read_text()
 
+          # Firebase plugin
           if 'id("com.google.gms.google-services")' not in text:
               text = text.replace(
                   "plugins {",
@@ -110,7 +111,33 @@ jobs:
                   1
               )
 
+          # ------------------------------------------
+          # REMOVE ALL OLD Kotlin jvmTarget SETTINGS
+          # ------------------------------------------
+
+          lines = text.splitlines()
+          cleaned = []
+
+          for line in lines:
+              stripped = line.strip()
+
+              if "jvmTarget =" in stripped:
+                  continue
+
+              if "jvmTarget.set(" in stripped:
+                  continue
+
+              if "JvmTarget.JVM_" in stripped:
+                  continue
+
+              cleaned.append(line)
+
+          text = "\n".join(cleaned)
+
+          # ------------------------------------------
           # Java 17
+          # ------------------------------------------
+
           text = text.replace(
               "sourceCompatibility = JavaVersion.VERSION_11",
               "sourceCompatibility = JavaVersion.VERSION_17"
@@ -121,11 +148,21 @@ jobs:
               "targetCompatibility = JavaVersion.VERSION_17"
           )
 
-          # Remove old Kotlin block
-          start = text.find("kotlin {")
+          # ------------------------------------------
+          # Remove existing kotlin { } blocks
+          # ------------------------------------------
 
-          if start != -1:
+          while True:
+              start = text.find("kotlin {")
+
+              if start == -1:
+                  break
+
               brace_start = text.find("{", start)
+
+              if brace_start == -1:
+                  break
+
               depth = 0
               end = None
 
@@ -134,15 +171,23 @@ jobs:
                       depth += 1
                   elif text[i] == "}":
                       depth -= 1
+
                       if depth == 0:
                           end = i + 1
                           break
 
-              if end is not None:
-                  text = text[:start] + text[end:]
+              if end is None:
+                  break
 
-          # Add Kotlin 17 configuration
-          text = text.rstrip() + '''
+              text = text[:start] + text[end:]
+
+          # ------------------------------------------
+          # Add FINAL Kotlin configuration
+          # ------------------------------------------
+
+          text = text.rstrip()
+
+          text += """
 
           kotlin {
               jvmToolchain(17)
@@ -153,19 +198,29 @@ jobs:
                   )
               }
           }
-          '''
+          """
 
           app.write_text(text)
+
+          # Show final configuration in Actions log
+          print("===== FINAL android/app/build.gradle.kts =====")
+          print(app.read_text())
+
+          print("===== FINAL android/settings.gradle.kts =====")
+          print(settings.read_text())
+
+          print("===== FINAL android/gradle.properties =====")
+          print(Path("android/gradle.properties").read_text())
           PY
 
-      - name: Restore Flutter App Files
+      - name: Restore Flutter Files
         run: |
           set -e
           rm -rf lib
           cp -r /tmp/preesho_backup/lib .
           cp /tmp/preesho_backup/pubspec.yaml .
 
-      - name: Restore Firebase Configuration
+      - name: Restore Firebase
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
@@ -181,12 +236,30 @@ jobs:
           printf '%s' "$GOOGLE_SERVICES_JSON" \
             > android/app/google-services.json
 
+      - name: Verify Kotlin Configuration
+        run: |
+          set -e
+
+          echo "Checking for old JVM target..."
+
+          if grep -R "jvmTarget = JavaVersion.VERSION_11" android; then
+            echo "ERROR: Old JVM target 11 still exists."
+            exit 1
+          fi
+
+          if grep -R "jvmTarget = JavaVersion.VERSION_11.toString()" android; then
+            echo "ERROR: Old Kotlin JVM target still exists."
+            exit 1
+          fi
+
+          echo "Kotlin/Java configuration looks good."
+
       - name: Get Dependencies
         run: |
           set -e
           flutter pub get
 
-      - name: Clean Flutter Build
+      - name: Clean
         run: |
           set -e
           flutter clean
