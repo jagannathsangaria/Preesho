@@ -23,15 +23,13 @@ class _SignupPageState extends State<SignupPage> {
   bool obscureConfirmPassword = true;
 
   Future<void> signup() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
 
     if (passwordController.text !=
         confirmPasswordController.text) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Passwords do not match'),
-        ),
-      );
+      showMessage('Passwords do not match');
       return;
     }
 
@@ -39,74 +37,123 @@ class _SignupPageState extends State<SignupPage> {
       loading = true;
     });
 
-    UserCredential? credential;
-
     try {
-      credential = await FirebaseAuth.instance
-          .createUserWithEmailAndPassword(
-        email: emailController.text.trim(),
-        password: passwordController.text,
-      );
+      final email = emailController.text.trim();
+      final password = passwordController.text;
+      final name = nameController.text.trim();
+      final mobile = mobileController.text.trim();
+
+      // =================================================
+      // STEP 1: CREATE FIREBASE AUTH ACCOUNT
+      // =================================================
+
+      UserCredential credential;
+
+      try {
+        credential = await FirebaseAuth.instance
+            .createUserWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+      } on FirebaseAuthException catch (e) {
+        String message = 'Sign up failed';
+
+        if (e.code == 'email-already-in-use') {
+          message =
+              'This email is already registered. Please login.';
+        } else if (e.code == 'invalid-email') {
+          message = 'Please enter a valid email address.';
+        } else if (e.code == 'weak-password') {
+          message =
+              'Password is too weak. Use at least 6 characters.';
+        } else if (e.code == 'network-request-failed') {
+          message =
+              'Internet connection problem. Please try again.';
+        } else if (e.code == 'operation-not-allowed') {
+          message =
+              'Email/Password authentication is not enabled.';
+        }
+
+        showMessage(message);
+        return;
+      }
 
       final user = credential.user;
 
-      if (user != null) {
-        await user.updateDisplayName(
-          nameController.text.trim(),
+      if (user == null) {
+        showMessage(
+          'Account could not be created. Please try again.',
         );
+        return;
+      }
 
+      // =================================================
+      // STEP 2: UPDATE FIREBASE USER PROFILE
+      // =================================================
+
+      try {
+        await user.updateDisplayName(name);
+      } catch (_) {
+        // Profile update failure should NOT make signup fail.
+      }
+
+      // =================================================
+      // STEP 3: SAVE CUSTOMER DATA TO FIRESTORE
+      // =================================================
+
+      try {
         await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
-            .set({
-          'uid': user.uid,
-          'name': nameController.text.trim(),
-          'mobile': mobileController.text.trim(),
-          'email': emailController.text.trim(),
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+            .set(
+          {
+            'uid': user.uid,
+            'name': name,
+            'mobile': mobile,
+            'email': email,
+            'createdAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+      } catch (firestoreError) {
+        // IMPORTANT:
+        // Authentication account is already successfully created.
+        //
+        // If Firestore fails, do NOT tell the customer
+        // that signup failed.
+        //
+        // The account can still be used for login.
       }
 
+      if (!mounted) return;
+
+      // =================================================
+      // STEP 4: SUCCESS
+      // =================================================
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Account created successfully. Please login.',
+          ),
+        ),
+      );
+
+      // Sign out so the user reaches the normal login flow.
+      try {
+        await FirebaseAuth.instance.signOut();
+      } catch (_) {}
+
+      if (!mounted) return;
+
+      Navigator.pop(context, true);
+    } catch (e) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Account created successfully',
-          ),
-        ),
-      );
-
-      Navigator.pop(context, true);
-    } on FirebaseAuthException catch (e) {
-      String message = 'Sign up failed';
-
-      if (e.code == 'email-already-in-use') {
-        message = 'This email is already registered.';
-      } else if (e.code == 'invalid-email') {
-        message = 'Please enter a valid email.';
-      } else if (e.code == 'weak-password') {
-        message = 'Password is too weak.';
-      } else if (e.code == 'network-request-failed') {
-        message = 'Internet connection problem.';
-      } else if (e.code == 'operation-not-allowed') {
-        message = 'Email/Password sign-in is not enabled.';
-      }
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Something went wrong: $e',
+            'Account creation could not be completed. Please try again.',
           ),
         ),
       );
@@ -117,6 +164,18 @@ class _SignupPageState extends State<SignupPage> {
         });
       }
     }
+  }
+
+  void showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+      ),
+    );
   }
 
   @override
@@ -179,6 +238,10 @@ class _SignupPageState extends State<SignupPage> {
 
                   const SizedBox(height: 28),
 
+                  // =================================================
+                  // NAME
+                  // =================================================
+
                   TextFormField(
                     controller: nameController,
                     textInputAction:
@@ -210,6 +273,10 @@ class _SignupPageState extends State<SignupPage> {
 
                   const SizedBox(height: 16),
 
+                  // =================================================
+                  // MOBILE
+                  // =================================================
+
                   TextFormField(
                     controller: mobileController,
                     keyboardType:
@@ -219,7 +286,8 @@ class _SignupPageState extends State<SignupPage> {
                     maxLength: 10,
                     decoration: InputDecoration(
                       labelText: 'Mobile Number',
-                      hintText: 'Enter 10 digit mobile number',
+                      hintText:
+                          'Enter 10 digit mobile number',
                       prefixIcon: const Icon(
                         Icons.phone_outlined,
                       ),
@@ -237,8 +305,9 @@ class _SignupPageState extends State<SignupPage> {
                         return 'Please enter mobile number';
                       }
 
-                      if (!RegExp(r'^[0-9]{10}$')
-                          .hasMatch(mobile)) {
+                      if (!RegExp(
+                        r'^[0-9]{10}$',
+                      ).hasMatch(mobile)) {
                         return 'Enter a valid 10 digit number';
                       }
 
@@ -248,6 +317,10 @@ class _SignupPageState extends State<SignupPage> {
 
                   const SizedBox(height: 16),
 
+                  // =================================================
+                  // EMAIL
+                  // =================================================
+
                   TextFormField(
                     controller: emailController,
                     keyboardType:
@@ -256,7 +329,8 @@ class _SignupPageState extends State<SignupPage> {
                         TextInputAction.next,
                     decoration: InputDecoration(
                       labelText: 'Email',
-                      hintText: 'Enter your email',
+                      hintText:
+                          'Enter your email',
                       prefixIcon: const Icon(
                         Icons.email_outlined,
                       ),
@@ -285,14 +359,20 @@ class _SignupPageState extends State<SignupPage> {
 
                   const SizedBox(height: 16),
 
+                  // =================================================
+                  // PASSWORD
+                  // =================================================
+
                   TextFormField(
-                    controller: passwordController,
+                    controller:
+                        passwordController,
                     obscureText: obscurePassword,
                     textInputAction:
                         TextInputAction.next,
                     decoration: InputDecoration(
                       labelText: 'Password',
-                      hintText: 'Minimum 6 characters',
+                      hintText:
+                          'Minimum 6 characters',
                       prefixIcon: const Icon(
                         Icons.lock_outline,
                       ),
@@ -305,8 +385,10 @@ class _SignupPageState extends State<SignupPage> {
                         },
                         icon: Icon(
                           obscurePassword
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
+                              ? Icons
+                                  .visibility_outlined
+                              : Icons
+                                  .visibility_off_outlined,
                         ),
                       ),
                       border: OutlineInputBorder(
@@ -321,7 +403,8 @@ class _SignupPageState extends State<SignupPage> {
                       }
 
                       if (value.length < 6) {
-                        return 'Password must be at least 6 characters';
+                        return
+                            'Password must be at least 6 characters';
                       }
 
                       return null;
@@ -329,6 +412,10 @@ class _SignupPageState extends State<SignupPage> {
                   ),
 
                   const SizedBox(height: 16),
+
+                  // =================================================
+                  // CONFIRM PASSWORD
+                  // =================================================
 
                   TextFormField(
                     controller:
@@ -343,8 +430,10 @@ class _SignupPageState extends State<SignupPage> {
                       }
                     },
                     decoration: InputDecoration(
-                      labelText: 'Confirm Password',
-                      hintText: 'Enter password again',
+                      labelText:
+                          'Confirm Password',
+                      hintText:
+                          'Enter password again',
                       prefixIcon: const Icon(
                         Icons.lock_reset_outlined,
                       ),
@@ -357,8 +446,10 @@ class _SignupPageState extends State<SignupPage> {
                         },
                         icon: Icon(
                           obscureConfirmPassword
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
+                              ? Icons
+                                  .visibility_outlined
+                              : Icons
+                                  .visibility_off_outlined,
                         ),
                       ),
                       border: OutlineInputBorder(
@@ -369,12 +460,14 @@ class _SignupPageState extends State<SignupPage> {
                     validator: (value) {
                       if (value == null ||
                           value.isEmpty) {
-                        return 'Please confirm your password';
+                        return
+                            'Please confirm your password';
                       }
 
                       if (value !=
                           passwordController.text) {
-                        return 'Passwords do not match';
+                        return
+                            'Passwords do not match';
                       }
 
                       return null;
@@ -382,6 +475,10 @@ class _SignupPageState extends State<SignupPage> {
                   ),
 
                   const SizedBox(height: 24),
+
+                  // =================================================
+                  // CREATE ACCOUNT BUTTON
+                  // =================================================
 
                   SizedBox(
                     height: 52,
@@ -401,13 +498,18 @@ class _SignupPageState extends State<SignupPage> {
                               'Create Account',
                               style: TextStyle(
                                 fontSize: 17,
-                                fontWeight: FontWeight.bold,
+                                fontWeight:
+                                    FontWeight.bold,
                               ),
                             ),
                     ),
                   ),
 
                   const SizedBox(height: 12),
+
+                  // =================================================
+                  // LOGIN
+                  // =================================================
 
                   TextButton(
                     onPressed: loading
