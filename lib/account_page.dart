@@ -1,29 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'login_page.dart';
+import 'orders_page.dart';
+
 class AccountPage extends StatelessWidget {
   const AccountPage({super.key});
-
-  Future<void> logout(BuildContext context) async {
-    await FirebaseAuth.instance.signOut();
-
-    if (!context.mounted) return;
-
-    Navigator.popUntil(
-      context,
-      (route) => route.isFirst,
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-
-    final name = user?.displayName?.trim().isNotEmpty == true
-        ? user!.displayName!
-        : 'Preesho Customer';
-
-    final email = user?.email ?? 'No email available';
 
     return Scaffold(
       appBar: AppBar(
@@ -34,202 +20,250 @@ class AccountPage extends StatelessWidget {
           ),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // PROFILE HEADER
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              gradient: const LinearGradient(
-                colors: [
-                  Color(0xff5E35B1),
-                  Color(0xff8E24AA),
-                ],
+      body: user == null
+          ? _LoggedOutView()
+          : _LoggedInView(user: user),
+    );
+  }
+}
+
+// =====================================================
+// LOGGED OUT
+// =====================================================
+
+class _LoggedOutView extends StatelessWidget {
+  const _LoggedOutView();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment:
+              MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.person_outline,
+              size: 90,
+              color: Colors.grey.shade400,
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'You are not logged in',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
               ),
             ),
-            child: Row(
-              children: [
-                const CircleAvatar(
-                  radius: 32,
-                  backgroundColor: Colors.white,
-                  child: Icon(
-                    Icons.person,
-                    size: 38,
-                    color: Color(0xff5E35B1),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        email,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+            const SizedBox(height: 10),
+            const Text(
+              'Login to view your account and orders.',
+              textAlign: TextAlign.center,
             ),
-          ),
-
-          const SizedBox(height: 20),
-
-          // MY ORDERS
-          Card(
-            child: ListTile(
-              leading: const Icon(
-                Icons.receipt_long_outlined,
-              ),
-              title: const Text(
-                'My Orders',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              subtitle: const Text(
-                'View your orders and order status',
-              ),
-              trailing: const Icon(
-                Icons.chevron_right,
-              ),
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'My Orders will be connected next.',
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-
-          // SAVED ADDRESS
-          Card(
-            child: ListTile(
-              leading: const Icon(
-                Icons.location_on_outlined,
-              ),
-              title: const Text(
-                'Saved Address',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              subtitle: const Text(
-                'Manage your delivery addresses',
-              ),
-              trailing: const Icon(
-                Icons.chevron_right,
-              ),
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Saved Address will be connected next.',
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-
-          // SECURITY
-          Card(
-            child: ListTile(
-              leading: const Icon(
-                Icons.security_outlined,
-              ),
-              title: const Text(
-                'Account Security',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              subtitle: const Text(
-                'Your account is protected by Firebase Authentication',
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          // LOGOUT
-          SizedBox(
-            height: 52,
-            child: OutlinedButton.icon(
+            const SizedBox(height: 24),
+            FilledButton.icon(
               onPressed: () async {
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  builder: (dialogContext) {
-                    return AlertDialog(
-                      title: const Text('Logout?'),
-                      content: const Text(
-                        'Are you sure you want to logout?',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () {
-                            Navigator.pop(
-                              dialogContext,
-                              false,
-                            );
-                          },
-                          child: const Text('Cancel'),
-                        ),
-                        FilledButton(
-                          onPressed: () {
-                            Navigator.pop(
-                              dialogContext,
-                              true,
-                            );
-                          },
-                          child: const Text('Logout'),
-                        ),
-                      ],
-                    );
-                  },
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const LoginPage(),
+                  ),
                 );
 
-                if (confirm == true && context.mounted) {
-                  await logout(context);
+                if (context.mounted) {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          const AccountPage(),
+                    ),
+                  );
                 }
               },
-              icon: const Icon(
-                Icons.logout,
-              ),
-              label: const Text(
-                'Logout',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+              icon: const Icon(Icons.login),
+              label: const Text('Login'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =====================================================
+// LOGGED IN
+// =====================================================
+
+class _LoggedInView extends StatelessWidget {
+  final User user;
+
+  const _LoggedInView({
+    required this.user,
+  });
+
+  String displayName() {
+    if (user.displayName != null &&
+        user.displayName!.trim().isNotEmpty) {
+      return user.displayName!.trim();
+    }
+
+    if (user.email != null &&
+        user.email!.contains('@')) {
+      return user.email!.split('@').first;
+    }
+
+    return 'Customer';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        // PROFILE
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius:
+                BorderRadius.circular(20),
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 32,
+                child: Text(
+                  displayName()
+                      .substring(
+                        0,
+                        1,
+                      )
+                      .toUpperCase(),
+                  style: const TextStyle(
+                    fontSize: 25,
+                    fontWeight:
+                        FontWeight.bold,
+                  ),
                 ),
+              ),
+              const SizedBox(width: 15),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      displayName(),
+                      style: const TextStyle(
+                        fontSize: 21,
+                        fontWeight:
+                            FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      user.email ??
+                          'Email unavailable',
+                      maxLines: 1,
+                      overflow:
+                          TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color:
+                            Colors.grey.shade700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 20),
+
+        // MY ORDERS
+        Card(
+          color: Colors.white,
+          child: ListTile(
+            leading: const CircleAvatar(
+              child: Icon(
+                Icons.receipt_long_outlined,
+              ),
+            ),
+            title: const Text(
+              'My Orders',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            subtitle: const Text(
+              'View your orders and order status',
+            ),
+            trailing:
+                const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      const OrdersPage(),
+                ),
+              );
+            },
+          ),
+        ),
+
+        const SizedBox(height: 10),
+
+        // EMAIL
+        Card(
+          color: Colors.white,
+          child: ListTile(
+            leading: const CircleAvatar(
+              child: Icon(
+                Icons.email_outlined,
+              ),
+            ),
+            title: const Text(
+              'Email',
+            ),
+            subtitle: Text(
+              user.email ??
+                  'Not available',
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 25),
+
+        // LOGOUT
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () async {
+              await FirebaseAuth.instance
+                  .signOut();
+
+              if (!context.mounted) {
+                return;
+              }
+
+              Navigator.pop(context);
+            },
+            icon: const Icon(
+              Icons.logout,
+              color: Colors.red,
+            ),
+            label: const Text(
+              'Logout',
+              style: TextStyle(
+                color: Colors.red,
               ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
