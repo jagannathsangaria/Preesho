@@ -159,6 +159,10 @@ class CartController {
       (sum, item) => sum + item.quantity,
     );
   }
+
+  static void clear() {
+    items.clear();
+  }
 }
 
 // =====================================================
@@ -281,7 +285,6 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         actions: [
-          // ACCOUNT / LOGIN
           IconButton(
             tooltip: user == null
                 ? 'Login'
@@ -296,7 +299,6 @@ class _HomePageState extends State<HomePage> {
                 : openAccount,
           ),
 
-          // CART
           Stack(
             alignment: Alignment.center,
             children: [
@@ -341,7 +343,6 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
 
-          // ADMIN
           IconButton(
             tooltip: 'Admin',
             icon: const Icon(
@@ -417,7 +418,6 @@ class _HomePageState extends State<HomePage> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // SEARCH
               TextField(
                 onChanged: (value) {
                   setState(() {
@@ -442,7 +442,8 @@ class _HomePageState extends State<HomePage> {
                   filled: true,
                   fillColor: Colors.white,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius:
+                        BorderRadius.circular(16),
                     borderSide: BorderSide.none,
                   ),
                 ),
@@ -450,11 +451,11 @@ class _HomePageState extends State<HomePage> {
 
               const SizedBox(height: 18),
 
-              // BANNER
               Container(
                 padding: const EdgeInsets.all(22),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(22),
+                  borderRadius:
+                      BorderRadius.circular(22),
                   gradient: const LinearGradient(
                     colors: [
                       Color(0xff5E35B1),
@@ -721,6 +722,43 @@ class _CartPageState extends State<CartPage> {
     return '₹${value.toStringAsFixed(0)}';
   }
 
+  Future<void> checkout() async {
+    if (CartController.items.isEmpty) {
+      return;
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const LoginPage(),
+        ),
+      );
+
+      if (!mounted) return;
+
+      if (result != true &&
+          FirebaseAuth.instance.currentUser == null) {
+        return;
+      }
+    }
+
+    if (!mounted) return;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const CheckoutPage(),
+      ),
+    );
+
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final items = CartController.items;
@@ -801,32 +839,13 @@ class _CartPageState extends State<CartPage> {
 
                         SizedBox(
                           width: double.infinity,
-                          child: FilledButton(
-                            onPressed: () {
-                              if (FirebaseAuth.instance
-                                      .currentUser ==
-                                  null) {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        const LoginPage(),
-                                  ),
-                                );
-                                return;
-                              }
-
-                              ScaffoldMessenger.of(
-                                context,
-                              ).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Checkout will be connected next.',
-                                  ),
-                                ),
-                              );
-                            },
-                            child: const Padding(
+                          child: FilledButton.icon(
+                            onPressed: checkout,
+                            icon: const Icon(
+                              Icons
+                                  .shopping_bag_outlined,
+                            ),
+                            label: const Padding(
                               padding:
                                   EdgeInsets.symmetric(
                                 vertical: 14,
@@ -853,7 +872,656 @@ class _CartPageState extends State<CartPage> {
 }
 
 // =====================================================
-// CART ITEM
+// CHECKOUT PAGE
+// =====================================================
+
+class CheckoutPage extends StatefulWidget {
+  const CheckoutPage({super.key});
+
+  @override
+  State<CheckoutPage> createState() =>
+      _CheckoutPageState();
+}
+
+class _CheckoutPageState
+    extends State<CheckoutPage> {
+  final _formKey = GlobalKey<FormState>();
+
+  final nameController = TextEditingController();
+  final mobileController = TextEditingController();
+  final addressController = TextEditingController();
+  final cityController = TextEditingController();
+  final stateController = TextEditingController();
+  final pincodeController = TextEditingController();
+
+  bool placingOrder = false;
+
+  String money(double value) {
+    return '₹${value.toStringAsFixed(0)}';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+
+    final user =
+        FirebaseAuth.instance.currentUser;
+
+    if (user != null) {
+      nameController.text =
+          user.displayName ?? '';
+      // Email is intentionally not used as mobile.
+    }
+
+    loadExistingProfile();
+  }
+
+  Future<void> loadExistingProfile() async {
+    final user =
+        FirebaseAuth.instance.currentUser;
+
+    if (user == null) return;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (!doc.exists) return;
+
+      final data = doc.data();
+
+      if (data == null) return;
+
+      if (nameController.text.trim().isEmpty) {
+        nameController.text =
+            data['name']?.toString() ?? '';
+      }
+
+      mobileController.text =
+          data['mobile']?.toString() ?? '';
+    } catch (_) {
+      // Profile loading failure should not block checkout.
+    }
+  }
+
+  Future<void> placeOrder() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    final user =
+        FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      showMessage(
+        'Please login before placing your order.',
+      );
+      return;
+    }
+
+    if (CartController.items.isEmpty) {
+      showMessage('Your cart is empty.');
+      return;
+    }
+
+    setState(() {
+      placingOrder = true;
+    });
+
+    try {
+      final orderItems =
+          CartController.items.map((item) {
+        return {
+          'productId': item.id,
+          'name': item.name,
+          'category': item.category,
+          'price': item.numericPrice,
+          'quantity': item.quantity,
+          'total': item.totalPrice,
+          'imageUrl': item.imageUrl,
+        };
+      }).toList();
+
+      final total = CartController.total;
+
+      final orderData = {
+        'userId': user.uid,
+        'customerName':
+            nameController.text.trim(),
+        'mobile':
+            mobileController.text.trim(),
+        'email': user.email ?? '',
+        'address':
+            addressController.text.trim(),
+        'city': cityController.text.trim(),
+        'state': stateController.text.trim(),
+        'pincode':
+            pincodeController.text.trim(),
+        'items': orderItems,
+        'totalAmount': total,
+        'paymentMethod': 'Cash on Delivery',
+        'paymentStatus': 'Pending',
+        'orderStatus': 'Placed',
+        'createdAt':
+            FieldValue.serverTimestamp(),
+      };
+
+      final orderRef = await FirebaseFirestore
+          .instance
+          .collection('orders')
+          .add(orderData);
+
+      // Save/update address in customer profile.
+      try {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .set(
+          {
+            'uid': user.uid,
+            'name':
+                nameController.text.trim(),
+            'mobile':
+                mobileController.text.trim(),
+            'email': user.email ?? '',
+            'address':
+                addressController.text.trim(),
+            'city': cityController.text.trim(),
+            'state': stateController.text.trim(),
+            'pincode':
+                pincodeController.text.trim(),
+          },
+          SetOptions(merge: true),
+        );
+      } catch (_) {
+        // Order is already created, so profile
+        // update failure should not cancel the order.
+      }
+
+      CartController.clear();
+
+      if (!mounted) return;
+
+      await Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OrderSuccessPage(
+            orderId: orderRef.id,
+            amount: total,
+          ),
+        ),
+      );
+    } on FirebaseException catch (e) {
+      if (!mounted) return;
+
+      showMessage(
+        'Could not place order.\n${e.message ?? e.code}',
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      showMessage(
+        'Could not place order. Please try again.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          placingOrder = false;
+        });
+      }
+    }
+  }
+
+  void showMessage(String message) {
+    ScaffoldMessenger.of(context)
+        .hideCurrentSnackBar();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    mobileController.dispose();
+    addressController.dispose();
+    cityController.dispose();
+    stateController.dispose();
+    pincodeController.dispose();
+    super.dispose();
+  }
+
+  Widget field({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    TextInputType? keyboardType,
+    int maxLines = 1,
+    String? Function(String?)? validator,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: TextFormField(
+        controller: controller,
+        keyboardType: keyboardType,
+        maxLines: maxLines,
+        validator: validator,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon),
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(
+            borderRadius:
+                BorderRadius.circular(14),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = CartController.items;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Checkout',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            const Text(
+              'Delivery Address',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            field(
+              controller: nameController,
+              label: 'Full Name',
+              icon: Icons.person_outline,
+              validator: (value) {
+                if (value == null ||
+                    value.trim().isEmpty) {
+                  return 'Enter your name';
+                }
+                return null;
+              },
+            ),
+
+            field(
+              controller: mobileController,
+              label: 'Mobile Number',
+              icon: Icons.phone_outlined,
+              keyboardType:
+                  TextInputType.phone,
+              validator: (value) {
+                final mobile =
+                    value?.trim() ?? '';
+
+                if (!RegExp(
+                  r'^[0-9]{10}$',
+                ).hasMatch(mobile)) {
+                  return 'Enter valid 10 digit mobile number';
+                }
+
+                return null;
+              },
+            ),
+
+            field(
+              controller: addressController,
+              label: 'Full Address',
+              icon: Icons.home_outlined,
+              maxLines: 3,
+              validator: (value) {
+                if (value == null ||
+                    value.trim().isEmpty) {
+                  return 'Enter delivery address';
+                }
+                return null;
+              },
+            ),
+
+            field(
+              controller: cityController,
+              label: 'City',
+              icon: Icons.location_city_outlined,
+              validator: (value) {
+                if (value == null ||
+                    value.trim().isEmpty) {
+                  return 'Enter city';
+                }
+                return null;
+              },
+            ),
+
+            field(
+              controller: stateController,
+              label: 'State',
+              icon: Icons.map_outlined,
+              validator: (value) {
+                if (value == null ||
+                    value.trim().isEmpty) {
+                  return 'Enter state';
+                }
+                return null;
+              },
+            ),
+
+            field(
+              controller: pincodeController,
+              label: 'PIN Code',
+              icon: Icons.pin_drop_outlined,
+              keyboardType:
+                  TextInputType.number,
+              validator: (value) {
+                if (!RegExp(
+                  r'^[0-9]{6}$',
+                ).hasMatch(
+                  value?.trim() ?? '',
+                )) {
+                  return 'Enter valid 6 digit PIN code';
+                }
+                return null;
+              },
+            ),
+
+            const SizedBox(height: 12),
+
+            const Text(
+              'Order Summary',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            Card(
+              color: Colors.white,
+              child: Padding(
+                padding:
+                    const EdgeInsets.all(14),
+                child: Column(
+                  children: [
+                    ...items.map(
+                      (item) {
+                        return Padding(
+                          padding:
+                              const EdgeInsets.only(
+                            bottom: 12,
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  '${item.name} × ${item.quantity}',
+                                  style:
+                                      const TextStyle(
+                                    fontWeight:
+                                        FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                money(
+                                  item.totalPrice,
+                                ),
+                                style:
+                                    const TextStyle(
+                                  fontWeight:
+                                      FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+
+                    const Divider(),
+
+                    Row(
+                      mainAxisAlignment:
+                          MainAxisAlignment
+                              .spaceBetween,
+                      children: [
+                        const Text(
+                          'Total Amount',
+                          style: TextStyle(
+                            fontSize: 19,
+                            fontWeight:
+                                FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          money(
+                            CartController.total,
+                          ),
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight:
+                                FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 14),
+
+            Card(
+              color: Colors.white,
+              child: const ListTile(
+                leading: Icon(
+                  Icons.local_shipping_outlined,
+                ),
+                title: Text(
+                  'Cash on Delivery',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                subtitle: Text(
+                  'Pay when your order is delivered',
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 22),
+
+            SizedBox(
+              width: double.infinity,
+              height: 54,
+              child: FilledButton.icon(
+                onPressed: placingOrder
+                    ? null
+                    : placeOrder,
+                icon: placingOrder
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child:
+                            CircularProgressIndicator(
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(
+                        Icons.check_circle_outline,
+                      ),
+                label: Text(
+                  placingOrder
+                      ? 'Placing Order...'
+                      : 'Place Order',
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =====================================================
+// ORDER SUCCESS PAGE
+// =====================================================
+
+class OrderSuccessPage extends StatelessWidget {
+  final String orderId;
+  final double amount;
+
+  const OrderSuccessPage({
+    super.key,
+    required this.orderId,
+    required this.amount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding:
+                const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment:
+                  MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.check_circle,
+                  size: 100,
+                  color: Colors.green,
+                ),
+
+                const SizedBox(height: 24),
+
+                const Text(
+                  'Order Placed Successfully!',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 25,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                Text(
+                  'Thank you for shopping with Preesho.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                Card(
+                  color: Colors.white,
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.all(18),
+                    child: Column(
+                      children: [
+                        const Text(
+                          'Order ID',
+                          style: TextStyle(
+                            fontWeight:
+                                FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        SelectableText(
+                          orderId,
+                          textAlign:
+                              TextAlign.center,
+                        ),
+                        const SizedBox(height: 14),
+                        const Text(
+                          'Order Amount',
+                          style: TextStyle(
+                            fontWeight:
+                                FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '₹${amount.toStringAsFixed(0)}',
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight:
+                                FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 28),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton(
+                    onPressed: () {
+                      Navigator.popUntil(
+                        context,
+                        (route) => route.isFirst,
+                      );
+                    },
+                    child: const Text(
+                      'Continue Shopping',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight:
+                            FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// =====================================================
+// CART ITEM CARD
 // =====================================================
 
 class CartItemCard extends StatelessWidget {
@@ -873,7 +1541,8 @@ class CartItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 14),
+      margin:
+          const EdgeInsets.only(bottom: 14),
       color: Colors.white,
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -886,7 +1555,8 @@ class CartItemCard extends StatelessWidget {
                 width: 90,
                 height: 90,
                 child: item.imageUrl.isNotEmpty &&
-                        item.imageUrl.startsWith('http')
+                        item.imageUrl
+                            .startsWith('http')
                     ? Image.network(
                         item.imageUrl,
                         fit: BoxFit.cover,
@@ -952,7 +1622,8 @@ class CartItemCard extends StatelessWidget {
                       Text(
                         '${item.quantity}',
                         style: const TextStyle(
-                          fontWeight: FontWeight.bold,
+                          fontWeight:
+                              FontWeight.bold,
                         ),
                       ),
 
