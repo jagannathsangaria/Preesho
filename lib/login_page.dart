@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'signup_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -66,8 +67,8 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Something went wrong: $e'),
+        const SnackBar(
+          content: Text('Something went wrong. Please try again.'),
         ),
       );
     } finally {
@@ -76,6 +77,29 @@ class _LoginPageState extends State<LoginPage> {
           loading = false;
         });
       }
+    }
+  }
+
+  void openSignup() async {
+    if (loading) return;
+
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const SignupPage(),
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (result == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Account created. Please login.',
+          ),
+        ),
+      );
     }
   }
 
@@ -142,17 +166,23 @@ class _LoginPageState extends State<LoginPage> {
                     decoration: InputDecoration(
                       labelText: 'Email',
                       hintText: 'Enter your email',
-                      prefixIcon: const Icon(Icons.email_outlined),
+                      prefixIcon: const Icon(
+                        Icons.email_outlined,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
                     ),
                     validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
+                      final email = value?.trim() ?? '';
+
+                      if (email.isEmpty) {
                         return 'Please enter your email';
                       }
 
-                      if (!value.contains('@')) {
+                      if (!RegExp(
+                        r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                      ).hasMatch(email)) {
                         return 'Please enter a valid email';
                       }
 
@@ -165,10 +195,18 @@ class _LoginPageState extends State<LoginPage> {
                   TextFormField(
                     controller: passwordController,
                     obscureText: obscurePassword,
+                    textInputAction: TextInputAction.done,
+                    onFieldSubmitted: (_) {
+                      if (!loading) {
+                        login();
+                      }
+                    },
                     decoration: InputDecoration(
                       labelText: 'Password',
                       hintText: 'Enter your password',
-                      prefixIcon: const Icon(Icons.lock_outline),
+                      prefixIcon: const Icon(
+                        Icons.lock_outline,
+                      ),
                       suffixIcon: IconButton(
                         onPressed: () {
                           setState(() {
@@ -202,42 +240,37 @@ class _LoginPageState extends State<LoginPage> {
 
                   SizedBox(
                     height: 52,
-                    child: FilledButton(
+                    child: FilledButton.icon(
                       onPressed: loading ? null : login,
-                      child: loading
+                      icon: loading
                           ? const SizedBox(
-                              width: 24,
-                              height: 24,
+                              width: 22,
+                              height: 22,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
                               ),
                             )
-                          : const Text(
-                              'Login',
-                              style: TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
+                          : const Icon(Icons.login),
+                      label: Text(
+                        loading ? 'Logging in...' : 'Login',
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ),
 
                   const SizedBox(height: 16),
 
                   TextButton(
-                    onPressed: loading
-                        ? null
-                        : () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Sign Up page will be added next.',
-                                ),
-                              ),
-                            );
-                          },
+                    onPressed: loading ? null : openSignup,
                     child: const Text(
                       "Don't have an account? Sign Up",
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
