@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'admin_panel.dart';
 
 class AdminLogin extends StatefulWidget {
@@ -31,53 +30,12 @@ class _AdminLoginState extends State<AdminLogin> {
     });
 
     try {
-      // Firebase Authentication login
-      final credential =
-          await FirebaseAuth.instance.signInWithEmailAndPassword(
+      // Direct Firebase Authentication login.
+      // No Firestore admin verification here.
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
-
-      final user = credential.user;
-
-      if (user == null) {
-        throw Exception('Firebase user not found');
-      }
-
-      // Check whether the logged-in UID exists
-      // inside Firestore admins collection.
-      final adminDoc = await FirebaseFirestore.instance
-          .collection('admins')
-          .doc(user.uid)
-          .get();
-
-      if (!adminDoc.exists) {
-        await FirebaseAuth.instance.signOut();
-
-        if (!mounted) return;
-
-        showMessage(
-          'This account is not registered as an admin.',
-        );
-        return;
-      }
-
-      // Optional role check
-      final data = adminDoc.data();
-
-      final role =
-          data?['Role']?.toString().toLowerCase() ?? '';
-
-      if (role.isNotEmpty && role != 'admin') {
-        await FirebaseAuth.instance.signOut();
-
-        if (!mounted) return;
-
-        showMessage(
-          'This account does not have Admin access.',
-        );
-        return;
-      }
 
       if (!mounted) return;
 
@@ -97,22 +55,14 @@ class _AdminLoginState extends State<AdminLogin> {
       } else if (e.code == 'invalid-email') {
         message = 'Invalid email address';
       } else if (e.code == 'too-many-requests') {
-        message =
-            'Too many attempts. Try again later.';
+        message = 'Too many attempts. Try again later.';
       } else if (e.code == 'network-request-failed') {
-        message =
-            'Network error. Check your internet connection.';
+        message = 'Network error. Check your internet connection.';
       }
 
       showMessage(message);
-    } on FirebaseException catch (e) {
-      showMessage(
-        'Admin verification failed:\n${e.message ?? e.code}',
-      );
     } catch (e) {
-      showMessage(
-        'Something went wrong:\n$e',
-      );
+      showMessage('Something went wrong:\n$e');
     } finally {
       if (mounted) {
         setState(() {
@@ -158,16 +108,13 @@ class _AdminLoginState extends State<AdminLogin> {
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.stretch,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const Icon(
                     Icons.admin_panel_settings,
                     size: 70,
                   ),
-
                   const SizedBox(height: 16),
-
                   const Text(
                     'Preesho Admin',
                     textAlign: TextAlign.center,
@@ -176,9 +123,7 @@ class _AdminLoginState extends State<AdminLogin> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-
                   const SizedBox(height: 8),
-
                   const Text(
                     'Login to manage products & orders',
                     textAlign: TextAlign.center,
@@ -186,79 +131,60 @@ class _AdminLoginState extends State<AdminLogin> {
                       color: Colors.grey,
                     ),
                   ),
-
                   const SizedBox(height: 28),
-
                   TextField(
                     controller: emailController,
-                    keyboardType:
-                        TextInputType.emailAddress,
+                    keyboardType: TextInputType.emailAddress,
                     decoration: InputDecoration(
                       labelText: 'Admin Email',
                       hintText: 'admin@preesho.com',
-                      prefixIcon: const Icon(
-                        Icons.email_outlined,
-                      ),
+                      prefixIcon: const Icon(Icons.email_outlined),
                       border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 16),
-
                   TextField(
                     controller: passwordController,
                     obscureText: hidePassword,
                     decoration: InputDecoration(
                       labelText: 'Password',
-                      prefixIcon: const Icon(
-                        Icons.lock_outline,
-                      ),
+                      prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
                         onPressed: () {
                           setState(() {
-                            hidePassword =
-                                !hidePassword;
+                            hidePassword = !hidePassword;
                           });
                         },
                         icon: Icon(
                           hidePassword
                               ? Icons.visibility_outlined
-                              : Icons
-                                  .visibility_off_outlined,
+                              : Icons.visibility_off_outlined,
                         ),
                       ),
                       border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                     ),
                     onSubmitted: (_) => login(),
                   ),
-
                   const SizedBox(height: 24),
-
                   SizedBox(
                     height: 52,
                     child: FilledButton.icon(
-                      onPressed:
-                          loading ? null : login,
+                      onPressed: loading ? null : login,
                       icon: loading
                           ? const SizedBox(
                               width: 20,
                               height: 20,
-                              child:
-                                  CircularProgressIndicator(
+                              child: CircularProgressIndicator(
                                 strokeWidth: 2,
                               ),
                             )
                           : const Icon(Icons.login),
                       label: Text(
-                        loading
-                            ? 'Checking Admin...'
-                            : 'Login',
+                        loading ? 'Logging in...' : 'Login',
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
