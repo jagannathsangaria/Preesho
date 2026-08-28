@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'admin_panel.dart';
 
 class AdminLogin extends StatefulWidget {
@@ -30,10 +31,53 @@ class _AdminLoginState extends State<AdminLogin> {
     });
 
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
+      // Firebase Authentication login
+      final credential =
+          await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
+
+      final user = credential.user;
+
+      if (user == null) {
+        throw Exception('Firebase user not found');
+      }
+
+      // Check whether the logged-in UID exists
+      // inside Firestore admins collection.
+      final adminDoc = await FirebaseFirestore.instance
+          .collection('admins')
+          .doc(user.uid)
+          .get();
+
+      if (!adminDoc.exists) {
+        await FirebaseAuth.instance.signOut();
+
+        if (!mounted) return;
+
+        showMessage(
+          'This account is not registered as an admin.',
+        );
+        return;
+      }
+
+      // Optional role check
+      final data = adminDoc.data();
+
+      final role =
+          data?['Role']?.toString().toLowerCase() ?? '';
+
+      if (role.isNotEmpty && role != 'admin') {
+        await FirebaseAuth.instance.signOut();
+
+        if (!mounted) return;
+
+        showMessage(
+          'This account does not have Admin access.',
+        );
+        return;
+      }
 
       if (!mounted) return;
 
@@ -53,12 +97,22 @@ class _AdminLoginState extends State<AdminLogin> {
       } else if (e.code == 'invalid-email') {
         message = 'Invalid email address';
       } else if (e.code == 'too-many-requests') {
-        message = 'Too many attempts. Try again later.';
+        message =
+            'Too many attempts. Try again later.';
+      } else if (e.code == 'network-request-failed') {
+        message =
+            'Network error. Check your internet connection.';
       }
 
       showMessage(message);
+    } on FirebaseException catch (e) {
+      showMessage(
+        'Admin verification failed:\n${e.message ?? e.code}',
+      );
     } catch (e) {
-      showMessage('Something went wrong');
+      showMessage(
+        'Something went wrong:\n$e',
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -69,6 +123,8 @@ class _AdminLoginState extends State<AdminLogin> {
   }
 
   void showMessage(String message) {
+    if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -124,7 +180,7 @@ class _AdminLoginState extends State<AdminLogin> {
                   const SizedBox(height: 8),
 
                   const Text(
-                    'Login to manage products',
+                    'Login to manage products & orders',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.grey,
@@ -201,7 +257,7 @@ class _AdminLoginState extends State<AdminLogin> {
                           : const Icon(Icons.login),
                       label: Text(
                         loading
-                            ? 'Logging in...'
+                            ? 'Checking Admin...'
                             : 'Login',
                         style: const TextStyle(
                           fontSize: 16,
