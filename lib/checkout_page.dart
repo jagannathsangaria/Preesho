@@ -14,13 +14,36 @@ class CheckoutPage extends StatefulWidget {
 class _CheckoutPageState extends State<CheckoutPage> {
   final _formKey = GlobalKey<FormState>();
 
+  // ============================================================
+  // CUSTOMER DETAILS
+  // ============================================================
+
   final nameController = TextEditingController();
   final mobileController = TextEditingController();
+  final emailController = TextEditingController();
   final addressController = TextEditingController();
   final cityController = TextEditingController();
   final pincodeController = TextEditingController();
 
+  // ============================================================
+  // GIFT DETAILS
+  // ============================================================
+
+  final giftNameController = TextEditingController();
+  final giftMobileController = TextEditingController();
+  final giftAddressController = TextEditingController();
+  final giftCityController = TextEditingController();
+  final giftPincodeController = TextEditingController();
+
+  // ============================================================
+  // LOCATION
+  // ============================================================
+
+  final latitudeController = TextEditingController();
+  final longitudeController = TextEditingController();
+
   bool placingOrder = false;
+  bool isGift = false;
 
   @override
   void initState() {
@@ -29,27 +52,79 @@ class _CheckoutPageState extends State<CheckoutPage> {
     final user = FirebaseAuth.instance.currentUser;
 
     if (user != null) {
-      nameController.text = user.displayName ?? '';
+      mobileController.text =
+          _mobileFromFirebaseUser(user);
     }
   }
+
+  // ============================================================
+  // GET LOGIN MOBILE NUMBER
+  // ============================================================
+
+  String _mobileFromFirebaseUser(User user) {
+    final phone = user.phoneNumber ?? '';
+
+    if (phone.startsWith('+91')) {
+      return phone.substring(3);
+    }
+
+    if (phone.startsWith('+')) {
+      return phone.substring(1);
+    }
+
+    return phone;
+  }
+
+  // ============================================================
+  // DISPOSE
+  // ============================================================
 
   @override
   void dispose() {
     nameController.dispose();
     mobileController.dispose();
+    emailController.dispose();
     addressController.dispose();
     cityController.dispose();
     pincodeController.dispose();
+
+    giftNameController.dispose();
+    giftMobileController.dispose();
+    giftAddressController.dispose();
+    giftCityController.dispose();
+    giftPincodeController.dispose();
+
+    latitudeController.dispose();
+    longitudeController.dispose();
+
     super.dispose();
   }
+
+  // ============================================================
+  // MONEY
+  // ============================================================
 
   String money(double value) {
     return '₹${value.toStringAsFixed(0)}';
   }
 
   // ============================================================
+  // VALIDATE MOBILE
+  // ============================================================
+
+  String? validateMobile(String? value) {
+    final mobile = value?.trim() ?? '';
+
+    if (!RegExp(r'^[0-9]{10}$').hasMatch(mobile)) {
+      return 'Enter a valid 10 digit mobile number';
+    }
+
+    return null;
+  }
+
+  // ============================================================
   // PLACE ORDER
-  // STOCK REDUCES ONLY WHEN ORDER IS SUCCESSFULLY CREATED
+  // STOCK REDUCES ONLY AFTER SUCCESSFUL ORDER CREATION
   // ============================================================
 
   Future<void> placeOrder() async {
@@ -72,7 +147,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Please login before placing an order',
+            'Please login with your mobile number before placing an order.',
           ),
         ),
       );
@@ -86,9 +161,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
     try {
       final firestore = FirebaseFirestore.instance;
 
-      final cartItems = List<CartItem>.from(
-        CartController.items,
-      );
+      final cartItems =
+          List<CartItem>.from(CartController.items);
 
       final totalAmount = cartItems.fold<double>(
         0,
@@ -98,16 +172,18 @@ class _CheckoutPageState extends State<CheckoutPage> {
       final orderRef =
           firestore.collection('orders').doc();
 
-      final orderItems = <Map<String, dynamic>>[];
+      final orderItems =
+          <Map<String, dynamic>>[];
 
       await firestore.runTransaction(
         (transaction) async {
           // ======================================================
-          // FIRST: READ ALL PRODUCTS
+          // FIRST READ ALL PRODUCTS
           // ======================================================
 
           final productSnapshots =
-              <String, DocumentSnapshot<Map<String, dynamic>>>{};
+              <String,
+                  DocumentSnapshot<Map<String, dynamic>>>{};
 
           for (final cartItem in cartItems) {
             final productRef = firestore
@@ -150,15 +226,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
             final currentStock =
                 int.tryParse(
-                      data['Stock']
-                              ?.toString() ??
-                          '0',
+                      data['Stock']?.toString() ?? '0',
                     ) ??
                     0;
-
-            // ==================================================
-            // IMPORTANT STOCK CHECK
-            // ==================================================
 
             if (currentStock <= 0) {
               throw Exception(
@@ -166,32 +236,23 @@ class _CheckoutPageState extends State<CheckoutPage> {
               );
             }
 
-            if (currentStock <
-                cartItem.quantity) {
+            if (currentStock < cartItem.quantity) {
               throw Exception(
                 'Only $currentStock stock available for '
-                '${cartItem.name}. '
-                'Please reduce the quantity.',
+                '${cartItem.name}. Please reduce the quantity.',
               );
             }
 
             final newStock =
-                currentStock -
-                    cartItem.quantity;
-
-            if (newStock < 0) {
-              throw Exception(
-                'Insufficient stock for ${cartItem.name}.',
-              );
-            }
-
-            // ==================================================
-            // REDUCE STOCK
-            // ==================================================
+                currentStock - cartItem.quantity;
 
             final productRef = firestore
                 .collection('products')
                 .doc(cartItem.product.id);
+
+            // ==================================================
+            // REDUCE STOCK
+            // ==================================================
 
             transaction.update(
               productRef,
@@ -218,14 +279,94 @@ class _CheckoutPageState extends State<CheckoutPage> {
               'total':
                   cartItem.totalPrice,
               'imageUrl':
-                  data['Imageurl']
-                          ?.toString() ??
+                  data['Imageurl']?.toString() ??
                       cartItem.imageUrl,
             });
           }
 
           // ======================================================
-          // CREATE ORDER IN SAME TRANSACTION
+          // CUSTOMER DATA
+          // ======================================================
+
+          final customerData =
+              <String, dynamic>{
+            'name':
+                nameController.text.trim(),
+
+            'mobile':
+                mobileController.text.trim(),
+
+            'address':
+                addressController.text.trim(),
+
+            'city':
+                cityController.text.trim(),
+
+            'pincode':
+                pincodeController.text.trim(),
+          };
+
+          // ======================================================
+          // OPTIONAL EMAIL
+          // ======================================================
+
+          final email =
+              emailController.text.trim();
+
+          if (email.isNotEmpty) {
+            customerData['email'] = email;
+          }
+
+          // ======================================================
+          // OPTIONAL LOCATION
+          // ======================================================
+
+          final latitude =
+              double.tryParse(
+            latitudeController.text.trim(),
+          );
+
+          final longitude =
+              double.tryParse(
+            longitudeController.text.trim(),
+          );
+
+          if (latitude != null &&
+              longitude != null) {
+            customerData['latitude'] =
+                latitude;
+
+            customerData['longitude'] =
+                longitude;
+          }
+
+          // ======================================================
+          // GIFT DATA
+          // ======================================================
+
+          Map<String, dynamic>? giftData;
+
+          if (isGift) {
+            giftData = {
+              'name':
+                  giftNameController.text.trim(),
+
+              'mobile':
+                  giftMobileController.text.trim(),
+
+              'address':
+                  giftAddressController.text.trim(),
+
+              'city':
+                  giftCityController.text.trim(),
+
+              'pincode':
+                  giftPincodeController.text.trim(),
+            };
+          }
+
+          // ======================================================
+          // CREATE ORDER
           // ======================================================
 
           transaction.set(
@@ -234,20 +375,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
               'userId':
                   user.uid,
 
-              'customerName':
-                  nameController.text.trim(),
+              'customer':
+                  customerData,
 
-              'mobile':
-                  mobileController.text.trim(),
+              'orderFor':
+                  isGift ? 'Gift' : 'Self',
 
-              'address':
-                  addressController.text.trim(),
-
-              'city':
-                  cityController.text.trim(),
-
-              'pincode':
-                  pincodeController.text.trim(),
+              'giftRecipient':
+                  giftData,
 
               'items':
                   orderItems,
@@ -289,23 +424,20 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 ),
                 SizedBox(width: 10),
                 Expanded(
-                  child: Text(
-                    'Order Placed',
-                  ),
+                  child: Text('Order Placed'),
                 ),
               ],
             ),
             content: Text(
               'Your order has been placed successfully.\n\n'
               'Order ID:\n${orderRef.id}\n\n'
+              'Order for: ${isGift ? 'Gift' : 'Self'}\n\n'
               'Stock has been updated.',
             ),
             actions: [
               FilledButton(
                 onPressed: () {
-                  Navigator.pop(
-                    dialogContext,
-                  );
+                  Navigator.pop(dialogContext);
                 },
                 child: const Text(
                   'Continue Shopping',
@@ -325,8 +457,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Order failed:\n'
-            '${e.message ?? e.code}',
+            'Order failed:\n${e.message ?? e.code}',
           ),
           duration:
               const Duration(seconds: 5),
@@ -367,6 +498,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
     required IconData icon,
     TextInputType? keyboardType,
     int maxLines = 1,
+    bool enabled = true,
     String? Function(String?)? validator,
   }) {
     return Padding(
@@ -375,6 +507,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       ),
       child: TextFormField(
         controller: controller,
+        enabled: enabled,
         keyboardType: keyboardType,
         maxLines: maxLines,
         validator: validator,
@@ -408,13 +541,20 @@ class _CheckoutPageState extends State<CheckoutPage> {
           ),
         ),
       ),
+
       body: SafeArea(
         child: Form(
           key: _formKey,
+
           child: ListView(
             padding:
                 const EdgeInsets.all(16),
+
             children: [
+              // ==================================================
+              // DELIVERY DETAILS
+              // ==================================================
+
               const Text(
                 'Delivery Details',
                 style: TextStyle(
@@ -447,25 +587,51 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 },
               ),
 
+              // ==================================================
+              // CUSTOMER MOBILE
+              // ==================================================
+
               inputField(
                 controller:
                     mobileController,
                 label: 'Mobile Number',
                 hint:
-                    'Enter 10 digit mobile number',
+                    'Login mobile number',
                 icon:
                     Icons.phone_outlined,
                 keyboardType:
                     TextInputType.phone,
+                enabled: false,
+                validator:
+                    validateMobile,
+              ),
+
+              // ==================================================
+              // OPTIONAL EMAIL
+              // ==================================================
+
+              inputField(
+                controller:
+                    emailController,
+                label: 'Email (Optional)',
+                hint:
+                    'Enter email for order updates',
+                icon:
+                    Icons.email_outlined,
+                keyboardType:
+                    TextInputType.emailAddress,
                 validator: (value) {
-                  final mobile =
+                  final email =
                       value?.trim() ?? '';
 
+                  if (email.isEmpty) {
+                    return null;
+                  }
+
                   if (!RegExp(
-                    r'^[0-9]{10}$',
-                  ).hasMatch(mobile)) {
-                    return
-                        'Enter a valid 10 digit number';
+                    r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                  ).hasMatch(email)) {
+                    return 'Enter a valid email';
                   }
 
                   return null;
@@ -534,7 +700,363 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 },
               ),
 
-              const SizedBox(height: 10),
+              // ==================================================
+              // OPTIONAL LOCATION
+              // ==================================================
+
+              const SizedBox(height: 4),
+
+              Card(
+                child: Padding(
+                  padding:
+                      const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(
+                            Icons.location_on_outlined,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Delivery Location',
+                            style: TextStyle(
+                              fontWeight:
+                                  FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 5),
+
+                      Text(
+                        'Optional: Latitude and Longitude can help with better delivery.',
+                        style: TextStyle(
+                          color:
+                              Colors.grey.shade700,
+                          fontSize: 13,
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller:
+                                  latitudeController,
+                              keyboardType:
+                                  const TextInputType
+                                      .numberWithOptions(
+                                decimal: true,
+                                signed: true,
+                              ),
+                              decoration:
+                                  InputDecoration(
+                                labelText:
+                                    'Latitude',
+                                hintText:
+                                    'Optional',
+                                border:
+                                    OutlineInputBorder(
+                                  borderRadius:
+                                      BorderRadius
+                                          .circular(
+                                    12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(width: 10),
+
+                          Expanded(
+                            child: TextFormField(
+                              controller:
+                                  longitudeController,
+                              keyboardType:
+                                  const TextInputType
+                                      .numberWithOptions(
+                                decimal: true,
+                                signed: true,
+                              ),
+                              decoration:
+                                  InputDecoration(
+                                labelText:
+                                    'Longitude',
+                                hintText:
+                                    'Optional',
+                                border:
+                                    OutlineInputBorder(
+                                  borderRadius:
+                                      BorderRadius
+                                          .circular(
+                                    12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 14),
+
+              // ==================================================
+              // SELF / GIFT
+              // ==================================================
+
+              const Text(
+                'Who is this order for?',
+                style: TextStyle(
+                  fontSize: 19,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              Card(
+                child: Column(
+                  children: [
+                    RadioListTile<bool>(
+                      value: false,
+                      groupValue: isGift,
+                      onChanged: placingOrder
+                          ? null
+                          : (value) {
+                              setState(() {
+                                isGift = false;
+                              });
+                            },
+                      title: const Text(
+                        'For Myself',
+                        style: TextStyle(
+                          fontWeight:
+                              FontWeight.bold,
+                        ),
+                      ),
+                      subtitle: const Text(
+                        'I am ordering for myself',
+                      ),
+                    ),
+
+                    RadioListTile<bool>(
+                      value: true,
+                      groupValue: isGift,
+                      onChanged: placingOrder
+                          ? null
+                          : (value) {
+                              setState(() {
+                                isGift = true;
+                              });
+                            },
+                      title: const Text(
+                        '🎁 Gift for Someone',
+                        style: TextStyle(
+                          fontWeight:
+                              FontWeight.bold,
+                        ),
+                      ),
+                      subtitle: const Text(
+                        'I want to send this order to someone else',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // ==================================================
+              // GIFT RECIPIENT
+              // ==================================================
+
+              if (isGift) ...[
+                const SizedBox(height: 18),
+
+                Card(
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '🎁 Gift Recipient Details',
+                          style: TextStyle(
+                            fontSize: 19,
+                            fontWeight:
+                                FontWeight.bold,
+                          ),
+                        ),
+
+                        const SizedBox(height: 6),
+
+                        Text(
+                          'All recipient details are required for gift delivery.',
+                          style: TextStyle(
+                            color:
+                                Colors.grey.shade700,
+                            fontSize: 13,
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        inputField(
+                          controller:
+                              giftNameController,
+                          label:
+                              'Recipient Full Name',
+                          hint:
+                              'Enter recipient name',
+                          icon:
+                              Icons.person_outline,
+                          validator:
+                              isGift
+                                  ? (value) {
+                                      if (value ==
+                                              null ||
+                                          value
+                                              .trim()
+                                              .isEmpty) {
+                                        return
+                                            'Enter recipient name';
+                                      }
+
+                                      if (value
+                                              .trim()
+                                              .length <
+                                          2) {
+                                        return
+                                            'Enter a valid recipient name';
+                                      }
+
+                                      return null;
+                                    }
+                                  : null,
+                        ),
+
+                        inputField(
+                          controller:
+                              giftMobileController,
+                          label:
+                              'Recipient Mobile Number',
+                          hint:
+                              'Enter 10 digit mobile number',
+                          icon:
+                              Icons.phone_outlined,
+                          keyboardType:
+                              TextInputType.phone,
+                          validator:
+                              isGift
+                                  ? validateMobile
+                                  : null,
+                        ),
+
+                        inputField(
+                          controller:
+                              giftAddressController,
+                          label:
+                              'Recipient Address',
+                          hint:
+                              'House no., street, area',
+                          icon:
+                              Icons.home_outlined,
+                          maxLines: 3,
+                          validator:
+                              isGift
+                                  ? (value) {
+                                      if (value ==
+                                              null ||
+                                          value
+                                              .trim()
+                                              .length <
+                                              5) {
+                                        return
+                                            'Enter complete recipient address';
+                                      }
+
+                                      return null;
+                                    }
+                                  : null,
+                        ),
+
+                        inputField(
+                          controller:
+                              giftCityController,
+                          label:
+                              'Recipient City',
+                          hint:
+                              'Enter recipient city',
+                          icon:
+                              Icons.location_city_outlined,
+                          validator:
+                              isGift
+                                  ? (value) {
+                                      if (value ==
+                                              null ||
+                                          value
+                                              .trim()
+                                              .isEmpty) {
+                                        return
+                                            'Enter recipient city';
+                                      }
+
+                                      return null;
+                                    }
+                                  : null,
+                        ),
+
+                        inputField(
+                          controller:
+                              giftPincodeController,
+                          label:
+                              'Recipient PIN Code',
+                          hint:
+                              'Enter 6 digit PIN code',
+                          icon:
+                              Icons.pin_drop_outlined,
+                          keyboardType:
+                              TextInputType.number,
+                          validator:
+                              isGift
+                                  ? (value) {
+                                      if (!RegExp(
+                                        r'^[0-9]{6}$',
+                                      ).hasMatch(
+                                        value?.trim() ??
+                                            '',
+                                      )) {
+                                        return
+                                            'Enter a valid 6 digit PIN code';
+                                      }
+
+                                      return null;
+                                    }
+                                  : null,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 16),
+
+              // ==================================================
+              // PAYMENT
+              // ==================================================
 
               Card(
                 child: ListTile(
@@ -560,6 +1082,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
               ),
 
               const SizedBox(height: 24),
+
+              // ==================================================
+              // ORDER SUMMARY
+              // ==================================================
 
               const Text(
                 'Order Summary',
@@ -588,8 +1114,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                               children: [
                                 Expanded(
                                   child: Text(
-                                    '${item.name} × '
-                                    '${item.quantity}',
+                                    '${item.name} × ${item.quantity}',
                                   ),
                                 ),
                                 Text(
@@ -647,6 +1172,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
               ),
 
               const SizedBox(height: 22),
+
+              // ==================================================
+              // PLACE ORDER
+              // ==================================================
 
               SizedBox(
                 height: 54,
