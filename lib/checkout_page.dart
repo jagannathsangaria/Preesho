@@ -48,45 +48,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }
 
   // ============================================================
-  // CHECK CURRENT STOCK
-  // ============================================================
-
-  Future<bool> checkStockBeforeOrder() async {
-    for (final cartItem in CartController.items) {
-      final doc = await FirebaseFirestore.instance
-          .collection('products')
-          .doc(cartItem.id)
-          .get();
-
-      if (!doc.exists) {
-        return false;
-      }
-
-      final data = doc.data();
-
-      if (data == null) {
-        return false;
-      }
-
-      final active = data['Active'] == true;
-
-      final stock =
-          int.tryParse(data['Stock']?.toString() ?? '0') ?? 0;
-
-      if (!active || stock <= 0) {
-        return false;
-      }
-
-      if (cartItem.quantity > stock) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  // ============================================================
-  // PLACE ORDER
+  // PLACE ORDER + REDUCE STOCK
   // ============================================================
 
   Future<void> placeOrder() async {
@@ -108,9 +70,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'Please login before placing an order',
-          ),
+          content: Text('Please login before placing an order'),
         ),
       );
       return;
@@ -121,205 +81,137 @@ class _CheckoutPageState extends State<CheckoutPage> {
     });
 
     try {
-      // --------------------------------------------------------
-      // FIRST CHECK
-      // --------------------------------------------------------
+      final firestore = FirebaseFirestore.instance;
 
-      final stockAvailable =
-          await checkStockBeforeOrder();
+      /*
+       * IMPORTANT:
+       *
+       * Stock is NOT reduced when adding product to cart.
+       *
+       * Stock is reduced ONLY when the order is successfully placed.
+       *
+       * Firestore transaction makes this safe even if two customers
+       * try to buy the last available stock at the same time.
+       */
 
-      if (!stockAvailable) {
-        if (!mounted) return;
+      final orderItems = <Map<String, dynamic>>[];
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Some items are out of stock or have insufficient stock.',
-            ),
-          ),
-        );
+      for (final cartItem in CartController.items) {
+        final productRef = firestore
+            .collection('products')
+            .doc(cartItem.product.id);
 
-        return;
-      }
-
-      // --------------------------------------------------------
-      // CREATE ORDER + REDUCE STOCK IN ONE TRANSACTION
-      // --------------------------------------------------------
-
-      final firestore =
-          FirebaseFirestore.instance;
-
-      final orderItems = CartController.items.map((item) {
-        return {
-          'productId': item.id,
-          'name': item.name,
-          'category': item.category,
-          'price': item.numericPrice,
-          'quantity': item.quantity,
-          'total': item.totalPrice,
-          'imageUrl': item.imageUrl,
-        };
-      }).toList();
-
-      final orderRef =
-          firestore.collection('orders').doc();
-
-      await firestore.runTransaction(
-        (transaction) async {
-          // ----------------------------------------------------
-          // READ ALL PRODUCTS FIRST
-          // ----------------------------------------------------
-
-          final productSnapshots =
-              <String, DocumentSnapshot<Map<String, dynamic>>>{};
-
-          for (final cartItem
-              in CartController.items) {
-            final productRef = firestore
-                .collection('products')
-                .doc(cartItem.id);
-
-            final productSnapshot =
+        final productSnapshot =
+            await firestore.runTransaction(
+          (transaction) async {
+            final snapshot =
                 await transaction.get(productRef);
 
-            productSnapshots[cartItem.id] =
-                productSnapshot;
-          }
-
-          // ----------------------------------------------------
-          // VERIFY STOCK
-          // ----------------------------------------------------
-
-          for (final cartItem
-              in CartController.items) {
-            final snapshot =
-                productSnapshots[cartItem.id];
-
-            if (snapshot == null ||
-                !snapshot.exists) {
+            if (!snapshot.exists) {
               throw Exception(
-                'Product "${cartItem.name}" is no longer available.',
+                '${cartItem.name} is no longer available.',
               );
             }
 
             final data = snapshot.data();
 
-            if (data == null) {
-              throw Exception(
-                'Product "${cartItem.name}" is unavailable.',
-              );
-            }
+            final currentStock =
+                int.tryParse(
+                      data?['Stock']?.toString() ?? '0',
+                    ) ??
+                    0;
 
             final active =
-                data['Active'] == true;
+                data?['Active'] == true;
 
             if (!active) {
               throw Exception(
-                '"${cartItem.name}" is currently unavailable.',
+                '${cartItem.name} is currently unavailable.',
               );
             }
 
-            final currentStock =
-                int.tryParse(
-                      data['Stock']?.toString() ?? '0',
-                    ) ??
-                    0;
-
-            // NEVER ALLOW NEGATIVE STOCK
-            if (currentStock <= 0) {
+            if (currentStock < cartItem.quantity) {
               throw Exception(
-                '"${cartItem.name}" is out of stock.',
+                'Only $currentStock stock available for '
+                '${cartItem.name}. Please update your cart.',
               );
             }
-
-            if (cartItem.quantity >
-                currentStock) {
-              throw Exception(
-                'Only $currentStock "${cartItem.name}" available.',
-              );
-            }
-          }
-
-          // ----------------------------------------------------
-          // REDUCE STOCK
-          // ----------------------------------------------------
-
-          for (final cartItem
-              in CartController.items) {
-            final snapshot =
-                productSnapshots[cartItem.id]!;
-
-            final data =
-                snapshot.data()!;
-
-            final currentStock =
-                int.tryParse(
-                      data['Stock']?.toString() ?? '0',
-                    ) ??
-                    0;
 
             final newStock =
                 currentStock - cartItem.quantity;
 
-            // EXTRA SAFETY: NEVER BELOW ZERO
+            // Never allow stock below zero.
             if (newStock < 0) {
               throw Exception(
-                'Insufficient stock for "${cartItem.name}".',
+                'Insufficient stock for ${cartItem.name}.',
               );
             }
-
-            final productRef =
-                firestore
-                    .collection('products')
-                    .doc(cartItem.id);
 
             transaction.update(
               productRef,
               {
-                'Stock': newStock.toString(),
+                'Stock': newStock,
               },
             );
-          }
 
-          // ----------------------------------------------------
-          // CREATE ORDER
-          // ----------------------------------------------------
+            return snapshot;
+          },
+        );
 
-          final orderData = {
-            'userId': user.uid,
-            'customerName':
-                nameController.text.trim(),
-            'mobile':
-                mobileController.text.trim(),
-            'address':
-                addressController.text.trim(),
-            'city':
-                cityController.text.trim(),
-            'pincode':
-                pincodeController.text.trim(),
-            'items': orderItems,
-            'totalAmount':
-                CartController.total,
-            'status': 'Placed',
-            'paymentMethod':
-                'Cash on Delivery',
-            'createdAt':
-                FieldValue.serverTimestamp(),
-          };
+        final productData =
+            productSnapshot.data() ?? {};
 
-          transaction.set(
-            orderRef,
-            orderData,
-          );
-        },
-      );
+        orderItems.add({
+          'productId': cartItem.product.id,
+          'name': cartItem.name,
+          'category': cartItem.category,
+          'price': cartItem.numericPrice,
+          'quantity': cartItem.quantity,
+          'total': cartItem.totalPrice,
+          'imageUrl':
+              productData['Imageurl']?.toString() ??
+                  cartItem.imageUrl,
+        });
+      }
 
-      // --------------------------------------------------------
-      // ORDER SUCCESS
-      // --------------------------------------------------------
+      // ========================================================
+      // CREATE ORDER
+      // ========================================================
+
+      final orderData = {
+        'userId': user.uid,
+        'customerName':
+            nameController.text.trim(),
+        'mobile':
+            mobileController.text.trim(),
+        'address':
+            addressController.text.trim(),
+        'city':
+            cityController.text.trim(),
+        'pincode':
+            pincodeController.text.trim(),
+
+        'items': orderItems,
+
+        'totalAmount':
+            CartController.total,
+
+        'status': 'Placed',
+
+        'paymentMethod':
+            'Cash on Delivery',
+
+        'createdAt':
+            FieldValue.serverTimestamp(),
+      };
+
+      final orderRef = await firestore
+          .collection('orders')
+          .add(orderData);
 
       if (!mounted) return;
 
+      // Clear cart ONLY after successful order.
       CartController.clear();
 
       await showDialog(
@@ -341,8 +233,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
             ),
             content: Text(
               'Your order has been placed successfully.\n\n'
-              'Stock has been updated.\n\n'
-              'Order ID:\n${orderRef.id}',
+              'Order ID:\n${orderRef.id}\n\n'
+              'Stock has been updated.',
             ),
             actions: [
               FilledButton(
@@ -369,22 +261,23 @@ class _CheckoutPageState extends State<CheckoutPage> {
           content: Text(
             'Order failed:\n${e.message ?? e.code}',
           ),
+          duration:
+              const Duration(seconds: 4),
         ),
       );
     } catch (e) {
       if (!mounted) return;
 
-      final message =
-          e.toString().replaceFirst(
-                'Exception: ',
-                '',
-              );
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            message,
+            e.toString().replaceFirst(
+              'Exception: ',
+              '',
+            ),
           ),
+          duration:
+              const Duration(seconds: 4),
         ),
       );
     } finally {
@@ -410,7 +303,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
     String? Function(String?)? validator,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.only(
+        bottom: 14,
+      ),
       child: TextFormField(
         controller: controller,
         keyboardType: keyboardType,
@@ -421,7 +316,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
           hintText: hint,
           prefixIcon: Icon(icon),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius:
+                BorderRadius.circular(14),
           ),
         ),
       ),
@@ -436,8 +332,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
   Widget build(BuildContext context) {
     final items = CartController.items;
 
-    final hasItems = items.isNotEmpty;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -447,12 +341,18 @@ class _CheckoutPageState extends State<CheckoutPage> {
           ),
         ),
       ),
+
       body: SafeArea(
         child: Form(
           key: _formKey,
           child: ListView(
-            padding: const EdgeInsets.all(16),
+            padding:
+                const EdgeInsets.all(16),
             children: [
+              // ==================================================
+              // DELIVERY DETAILS
+              // ==================================================
+
               const Text(
                 'Delivery Details',
                 style: TextStyle(
@@ -467,7 +367,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 controller: nameController,
                 label: 'Full Name',
                 hint: 'Enter your full name',
-                icon: Icons.person_outline,
+                icon:
+                    Icons.person_outline,
                 validator: (value) {
                   if (value == null ||
                       value.trim().isEmpty) {
@@ -485,8 +386,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
               inputField(
                 controller: mobileController,
                 label: 'Mobile Number',
-                hint: 'Enter 10 digit mobile number',
-                icon: Icons.phone_outlined,
+                hint:
+                    'Enter 10 digit mobile number',
+                icon:
+                    Icons.phone_outlined,
                 keyboardType:
                     TextInputType.phone,
                 validator: (value) {
@@ -500,7 +403,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   if (!RegExp(
                     r'^[0-9]{10}$',
                   ).hasMatch(mobile)) {
-                    return 'Enter a valid 10 digit number';
+                    return
+                        'Enter a valid 10 digit number';
                   }
 
                   return null;
@@ -510,17 +414,21 @@ class _CheckoutPageState extends State<CheckoutPage> {
               inputField(
                 controller: addressController,
                 label: 'Address',
-                hint: 'House no., street, area',
-                icon: Icons.home_outlined,
+                hint:
+                    'House no., street, area',
+                icon:
+                    Icons.home_outlined,
                 maxLines: 3,
                 validator: (value) {
                   if (value == null ||
                       value.trim().isEmpty) {
-                    return 'Enter delivery address';
+                    return
+                        'Enter delivery address';
                   }
 
                   if (value.trim().length < 5) {
-                    return 'Enter a complete address';
+                    return
+                        'Enter a complete address';
                   }
 
                   return null;
@@ -544,10 +452,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
               ),
 
               inputField(
-                controller: pincodeController,
+                controller:
+                    pincodeController,
                 label: 'PIN Code',
-                hint: 'Enter 6 digit PIN code',
-                icon: Icons.pin_drop_outlined,
+                hint:
+                    'Enter 6 digit PIN code',
+                icon:
+                    Icons.pin_drop_outlined,
                 keyboardType:
                     TextInputType.number,
                 validator: (value) {
@@ -557,7 +468,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   if (!RegExp(
                     r'^[0-9]{6}$',
                   ).hasMatch(pincode)) {
-                    return 'Enter a valid 6 digit PIN code';
+                    return
+                        'Enter a valid 6 digit PIN code';
                   }
 
                   return null;
@@ -565,6 +477,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
               ),
 
               const SizedBox(height: 10),
+
+              // ==================================================
+              // PAYMENT
+              // ==================================================
 
               Card(
                 child: ListTile(
@@ -574,13 +490,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   title: const Text(
                     'Cash on Delivery',
                     style: TextStyle(
-                      fontWeight: FontWeight.bold,
+                      fontWeight:
+                          FontWeight.bold,
                     ),
                   ),
                   subtitle: const Text(
                     'Pay when your order is delivered',
                   ),
-                  trailing: const Icon(
+                  trailing:
+                      const Icon(
                     Icons.check_circle,
                     color: Colors.green,
                   ),
@@ -588,6 +506,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
               ),
 
               const SizedBox(height: 24),
+
+              // ==================================================
+              // ORDER SUMMARY
+              // ==================================================
 
               const Text(
                 'Order Summary',
@@ -620,8 +542,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                     style:
                                         const TextStyle(
                                       fontWeight:
-                                          FontWeight
-                                              .w500,
+                                          FontWeight.w500,
                                     ),
                                   ),
                                 ),
@@ -678,11 +599,16 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
               const SizedBox(height: 22),
 
+              // ==================================================
+              // PLACE ORDER
+              // ==================================================
+
               SizedBox(
                 height: 54,
-                child: FilledButton.icon(
+                child:
+                    FilledButton.icon(
                   onPressed:
-                      !hasItems || placingOrder
+                      placingOrder
                           ? null
                           : placeOrder,
                   icon: placingOrder
@@ -695,11 +621,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           ),
                         )
                       : const Icon(
-                          Icons.shopping_bag_outlined,
+                          Icons
+                              .shopping_bag_outlined,
                         ),
                   label: Text(
                     placingOrder
-                        ? 'Confirming Order...'
+                        ? 'Placing Order...'
                         : 'Place Order',
                     style:
                         const TextStyle(
@@ -714,7 +641,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
               const SizedBox(height: 12),
 
               const Text(
-                'Stock is reduced only after the order is successfully confirmed.',
+                'Stock is reserved only when the order is placed. '
+                'Adding an item to your cart does not reduce stock.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.grey,
@@ -722,10 +650,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 ),
               ),
 
-              const SizedBox(height: 12),
+              const SizedBox(height: 5),
 
               const Text(
-                'By placing this order, you agree to receive your order at the address provided above.',
+                'By placing this order, you agree to receive your '
+                'order at the address provided above.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.grey,
