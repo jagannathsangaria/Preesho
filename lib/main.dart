@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import 'admin_login.dart';
-import 'account_page.dart';
-import 'login_page.dart';
 import 'checkout_page.dart';
+import 'login_page.dart';
+import 'admin_login.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,23 +14,179 @@ Future<void> main() async {
     runApp(const PreeshoApp());
   } catch (e) {
     runApp(
-      PreeshoApp(
-        firebaseError: true,
-        errorMessage: e.toString(),
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Text(
+                'Firebase initialization failed:\n\n$e',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
 }
 
-class PreeshoApp extends StatelessWidget {
-  final bool firebaseError;
-  final String errorMessage;
+// ============================================================
+// PRODUCT MODEL
+// ============================================================
 
-  const PreeshoApp({
-    super.key,
-    this.firebaseError = false,
-    this.errorMessage = '',
+class Product {
+  final String id;
+  final String name;
+  final String category;
+  final String price;
+  final int stock;
+  final String imageUrl;
+  final String description;
+  final bool active;
+
+  Product({
+    required this.id,
+    required this.name,
+    required this.category,
+    required this.price,
+    required this.stock,
+    required this.imageUrl,
+    required this.description,
+    required this.active,
   });
+
+  double get numericPrice {
+    return double.tryParse(
+          price.replaceAll(RegExp(r'[^0-9.]'), ''),
+        ) ??
+        0;
+  }
+}
+
+// ============================================================
+// CART ITEM
+// ============================================================
+
+class CartItem {
+  final Product product;
+  int quantity;
+
+  CartItem({
+    required this.product,
+    this.quantity = 1,
+  });
+
+  String get id => product.id;
+
+  String get name => product.name;
+
+  String get category => product.category;
+
+  String get imageUrl => product.imageUrl;
+
+  double get numericPrice => product.numericPrice;
+
+  double get totalPrice => numericPrice * quantity;
+
+  int get availableStock => product.stock;
+}
+
+// ============================================================
+// CART CONTROLLER
+// ============================================================
+
+class CartController {
+  static final List<CartItem> items = [];
+
+  static double get total {
+    return items.fold(
+      0,
+      (sum, item) => sum + item.totalPrice,
+    );
+  }
+
+  static CartItem? findItem(String productId) {
+    try {
+      return items.firstWhere(
+        (item) => item.id == productId,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static bool addProduct(Product product) {
+    if (product.stock <= 0) {
+      return false;
+    }
+
+    final existing = findItem(product.id);
+
+    if (existing != null) {
+      if (existing.quantity >= product.stock) {
+        return false;
+      }
+
+      existing.quantity++;
+      return true;
+    }
+
+    items.add(
+      CartItem(
+        product: product,
+        quantity: 1,
+      ),
+    );
+
+    return true;
+  }
+
+  static bool increaseQuantity(String productId) {
+    final item = findItem(productId);
+
+    if (item == null) return false;
+
+    if (item.quantity >= item.availableStock) {
+      return false;
+    }
+
+    item.quantity++;
+    return true;
+  }
+
+  static bool decreaseQuantity(String productId) {
+    final item = findItem(productId);
+
+    if (item == null) return false;
+
+    if (item.quantity > 1) {
+      item.quantity--;
+    } else {
+      items.remove(item);
+    }
+
+    return true;
+  }
+
+  static void removeProduct(String productId) {
+    items.removeWhere(
+      (item) => item.id == productId,
+    );
+  }
+
+  static void clear() {
+    items.clear();
+  }
+}
+
+// ============================================================
+// APP
+// ============================================================
+
+class PreeshoApp extends StatelessWidget {
+  const PreeshoApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -42,421 +196,206 @@ class PreeshoApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorSchemeSeed: Colors.deepPurple,
-        scaffoldBackgroundColor: const Color(0xffF7F7F9),
       ),
-      home: firebaseError
-          ? FirebaseErrorPage(error: errorMessage)
-          : const HomePage(),
+      home: const MainShell(),
     );
   }
 }
 
-// =====================================================
-// CART ITEM
-// =====================================================
+// ============================================================
+// MAIN SHELL
+// ============================================================
 
-class CartItem {
-  final String id;
-  final String name;
-  final String category;
-  final String price;
-  final String imageUrl;
-  int quantity;
+class MainShell extends StatefulWidget {
+  const MainShell({super.key});
 
-  CartItem({
-    required this.id,
-    required this.name,
-    required this.category,
-    required this.price,
-    required this.imageUrl,
-    this.quantity = 1,
-  });
-
-  double get numericPrice {
-    final value = price
-        .replaceAll('₹', '')
-        .replaceAll(',', '')
-        .trim();
-
-    return double.tryParse(value) ?? 0;
-  }
-
-  double get totalPrice => numericPrice * quantity;
+  @override
+  State<MainShell> createState() => _MainShellState();
 }
 
-// =====================================================
-// CART CONTROLLER
-// =====================================================
+class _MainShellState extends State<MainShell> {
+  int index = 0;
 
-class CartController {
-  static final List<CartItem> items = [];
-
-  static void addProduct({
-    required String id,
-    required String name,
-    required String category,
-    required String price,
-    required String imageUrl,
-  }) {
-    final index = items.indexWhere(
-      (item) => item.id == id,
-    );
-
-    if (index >= 0) {
-      items[index].quantity++;
-    } else {
-      items.add(
-        CartItem(
-          id: id,
-          name: name,
-          category: category,
-          price: price,
-          imageUrl: imageUrl,
-        ),
-      );
-    }
+  void refresh() {
+    setState(() {});
   }
-
-  static void increase(String id) {
-    final index = items.indexWhere(
-      (item) => item.id == id,
-    );
-
-    if (index >= 0) {
-      items[index].quantity++;
-    }
-  }
-
-  static void decrease(String id) {
-    final index = items.indexWhere(
-      (item) => item.id == id,
-    );
-
-    if (index >= 0) {
-      if (items[index].quantity > 1) {
-        items[index].quantity--;
-      } else {
-        items.removeAt(index);
-      }
-    }
-  }
-
-  static void remove(String id) {
-    items.removeWhere(
-      (item) => item.id == id,
-    );
-  }
-
-  static double get total {
-    return items.fold(
-      0,
-      (sum, item) => sum + item.totalPrice,
-    );
-  }
-
-  static int get count {
-    return items.fold(
-      0,
-      (sum, item) => sum + item.quantity,
-    );
-  }
-}
-
-// =====================================================
-// FIREBASE ERROR
-// =====================================================
-
-class FirebaseErrorPage extends StatelessWidget {
-  final String error;
-
-  const FirebaseErrorPage({
-    super.key,
-    required this.error,
-  });
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Preesho'),
+    final pages = [
+      HomePage(
+        onCartChanged: refresh,
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.error_outline,
-                  size: 70,
-                  color: Colors.red,
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  'Firebase Connection Error',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 15),
-                SelectableText(
-                  error,
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
+      CategoriesPage(
+        onCartChanged: refresh,
+      ),
+      CartPage(
+        onCartChanged: refresh,
+      ),
+      const ProfilePage(),
+    ];
+
+    return Scaffold(
+      body: pages[index],
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: index,
+        onDestinationSelected: (i) {
+          setState(() {
+            index = i;
+          });
+        },
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Home',
           ),
-        ),
+          NavigationDestination(
+            icon: Icon(Icons.category_outlined),
+            selectedIcon: Icon(Icons.category),
+            label: 'Categories',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.shopping_cart_outlined),
+            selectedIcon: Icon(Icons.shopping_cart),
+            label: 'Cart',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Profile',
+          ),
+        ],
       ),
     );
   }
 }
 
-// =====================================================
-// HOME PAGE
-// =====================================================
+// ============================================================
+// FIRESTORE PRODUCT STREAM
+// ============================================================
 
-class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+class ProductStream extends StatelessWidget {
+  final Widget Function(List<Product> products) builder;
 
-  @override
-  State<HomePage> createState() => _HomePageState();
-}
+  const ProductStream({
+    super.key,
+    required this.builder,
+  });
 
-class _HomePageState extends State<HomePage> {
-  String searchText = '';
-
-  String field(
-    Map<String, dynamic> data,
-    String key,
+  Product productFromDocument(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
   ) {
-    final value = data[key];
+    final data = doc.data();
 
-    if (value == null) {
-      return '';
-    }
-
-    return value.toString();
-  }
-
-  Future<void> openAccount() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const AccountPage(),
-      ),
+    return Product(
+      id: doc.id,
+      name: data['Name']?.toString() ?? '',
+      category: data['Category']?.toString() ?? '',
+      price: data['Price']?.toString() ?? '0',
+      stock: int.tryParse(
+            data['Stock']?.toString() ?? '0',
+          ) ??
+          0,
+      imageUrl: data['Imageurl']?.toString() ?? '',
+      description: data['Description']?.toString() ?? '',
+      active: data['Active'] == true,
     );
-
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
-  Future<void> openLogin() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const LoginPage(),
-      ),
-    );
-
-    if (mounted) {
-      setState(() {});
-    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
+    return StreamBuilder<
+        QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('products')
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState ==
+            ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(),
+          );
+        }
 
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Text(
+                'Unable to load products.\n\n${snapshot.error}',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          );
+        }
+
+        final docs = snapshot.data?.docs ?? [];
+
+        final products = docs
+            .map(productFromDocument)
+            .where((product) => product.active)
+            .toList();
+
+        return builder(products);
+      },
+    );
+  }
+}
+
+// ============================================================
+// HOME PAGE
+// ============================================================
+
+class HomePage extends StatelessWidget {
+  final VoidCallback onCartChanged;
+
+  const HomePage({
+    super.key,
+    required this.onCartChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
         title: const Text(
           'Preesho',
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            fontSize: 24,
           ),
         ),
         actions: [
           IconButton(
-            tooltip:
-                user == null ? 'Login' : 'My Account',
-            icon: Icon(
-              user == null
-                  ? Icons.person_outline
-                  : Icons.person,
-            ),
-            onPressed:
-                user == null ? openLogin : openAccount,
-          ),
-
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              IconButton(
-                tooltip: 'Cart',
-                icon: const Icon(
-                  Icons.shopping_cart_outlined,
-                ),
-                onPressed: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const CartPage(),
-                    ),
-                  );
-
-                  if (mounted) {
-                    setState(() {});
-                  }
-                },
-              ),
-              if (CartController.count > 0)
-                Positioned(
-                  right: 5,
-                  top: 5,
-                  child: Container(
-                    padding: const EdgeInsets.all(5),
-                    decoration: const BoxDecoration(
-                      color: Colors.red,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Text(
-                      '${CartController.count}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-
-          IconButton(
-            tooltip: 'Admin',
-            icon: const Icon(
-              Icons.admin_panel_settings_outlined,
-            ),
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const AdminLogin(),
+              showSearch(
+                context: context,
+                delegate: ProductSearch(
+                  onCartChanged,
                 ),
               );
             },
+            icon: const Icon(Icons.search),
+          ),
+          IconButton(
+            onPressed: () {},
+            icon: const Icon(
+              Icons.notifications_none,
+            ),
           ),
         ],
       ),
-
-      body: StreamBuilder<
-          QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance
-            .collection('products')
-            .where(
-              'Active',
-              isEqualTo: true,
-            )
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState ==
-              ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
-          }
-
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Text(
-                  'Products error:\n${snapshot.error}',
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            );
-          }
-
-          final docs = snapshot.data?.docs ?? [];
-
-          final filtered = docs.where((doc) {
-            if (searchText.trim().isEmpty) {
-              return true;
-            }
-
-            final data = doc.data();
-
-            final name = field(
-              data,
-              'Name',
-            ).toLowerCase();
-
-            final category = field(
-              data,
-              'Category',
-            ).toLowerCase();
-
-            final search =
-                searchText.trim().toLowerCase();
-
-            return name.contains(search) ||
-                category.contains(search);
-          }).toList();
-
+      body: ProductStream(
+        builder: (products) {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              TextField(
-                onChanged: (value) {
-                  setState(() {
-                    searchText = value;
-                  });
-                },
-                decoration: InputDecoration(
-                  hintText: 'Search products...',
-                  prefixIcon: const Icon(
-                    Icons.search,
-                  ),
-                  suffixIcon:
-                      searchText.isNotEmpty
-                          ? IconButton(
-                              icon:
-                                  const Icon(Icons.clear),
-                              onPressed: () {
-                                setState(() {
-                                  searchText = '';
-                                });
-                              },
-                            )
-                          : null,
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius:
-                        BorderRadius.circular(16),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 18),
-
               Container(
                 padding: const EdgeInsets.all(22),
                 decoration: BoxDecoration(
                   borderRadius:
                       BorderRadius.circular(22),
-                  gradient:
-                      const LinearGradient(
+                  gradient: const LinearGradient(
                     colors: [
                       Color(0xff5E35B1),
                       Color(0xff8E24AA),
@@ -471,62 +410,81 @@ class _HomePageState extends State<HomePage> {
                       'Welcome to Preesho',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 26,
+                        fontSize: 25,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    SizedBox(height: 8),
+                    SizedBox(height: 7),
                     Text(
                       'Shop smarter. Shop faster.',
                       style: TextStyle(
                         color: Colors.white70,
-                        fontSize: 15,
                       ),
                     ),
                   ],
                 ),
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 22),
 
               const Text(
-                'Latest Products',
+                'Categories',
                 style: TextStyle(
-                  fontSize: 21,
+                  fontSize: 20,
                   fontWeight: FontWeight.bold,
                 ),
               ),
 
-              const SizedBox(height: 14),
+              const SizedBox(height: 10),
 
-              if (filtered.isEmpty)
+              SizedBox(
+                height: 90,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: const [
+                    CategoryCard(
+                      icon: Icons.phone_android,
+                      text: 'Electronics',
+                    ),
+                    CategoryCard(
+                      icon: Icons.checkroom,
+                      text: 'Fashion',
+                    ),
+                    CategoryCard(
+                      icon: Icons.home,
+                      text: 'Home',
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 18),
+
+              const Text(
+                'Products',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              if (products.isEmpty)
                 const Padding(
                   padding: EdgeInsets.all(30),
                   child: Center(
                     child: Text(
-                      'No products found',
+                      'No products available',
                     ),
                   ),
                 ),
 
-              ...filtered.map(
-                (doc) {
-                  final data = doc.data();
-
-                  return ProductCard(
-                    id: doc.id,
-                    name: field(data, 'Name'),
-                    category:
-                        field(data, 'Category'),
-                    price: field(data, 'Price'),
-                    stock: field(data, 'Stock'),
-                    imageUrl:
-                        field(data, 'Imageurl'),
-                    onCartChanged: () {
-                      setState(() {});
-                    },
-                  );
-                },
+              ...products.map(
+                (product) => ProductTile(
+                  product: product,
+                  onCartChanged: onCartChanged,
+                ),
               ),
             ],
           );
@@ -536,228 +494,689 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-// =====================================================
-// PRODUCT CARD
-// =====================================================
+// ============================================================
+// CATEGORY CARD
+// ============================================================
 
-class ProductCard extends StatelessWidget {
-  final String id;
-  final String name;
-  final String category;
-  final String price;
-  final String stock;
-  final String imageUrl;
-  final VoidCallback onCartChanged;
+class CategoryCard extends StatelessWidget {
+  final IconData icon;
+  final String text;
 
-  const ProductCard({
+  const CategoryCard({
     super.key,
-    required this.id,
-    required this.name,
-    required this.category,
-    required this.price,
-    required this.stock,
-    required this.imageUrl,
-    required this.onCartChanged,
+    required this.icon,
+    required this.text,
   });
-
-  String displayPrice() {
-    if (price.trim().isEmpty) {
-      return 'Price unavailable';
-    }
-
-    if (price.trim().startsWith('₹')) {
-      return price.trim();
-    }
-
-    return '₹${price.trim()}';
-  }
-
-  bool get hasValidPrice {
-    final clean = price
-        .replaceAll('₹', '')
-        .replaceAll(',', '')
-        .trim();
-
-    return double.tryParse(clean) != null;
-  }
-
-  bool get isOutOfStock {
-    final value = int.tryParse(stock.trim());
-
-    if (value == null) {
-      return false;
-    }
-
-    return value <= 0;
-  }
 
   @override
   Widget build(BuildContext context) {
-    final canAdd =
-        hasValidPrice && !isOutOfStock;
+    return Card(
+      child: SizedBox(
+        width: 115,
+        child: Column(
+          mainAxisAlignment:
+              MainAxisAlignment.center,
+          children: [
+            Icon(icon),
+            const SizedBox(height: 5),
+            Text(
+              text,
+              style: const TextStyle(
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// CATEGORIES PAGE
+// ============================================================
+
+class CategoriesPage extends StatelessWidget {
+  final VoidCallback onCartChanged;
+
+  const CategoriesPage({
+    super.key,
+    required this.onCartChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Categories'),
+      ),
+      body: ProductStream(
+        builder: (products) {
+          final categories = products
+              .map((p) => p.category)
+              .where((c) => c.isNotEmpty)
+              .toSet()
+              .toList();
+
+          if (categories.isEmpty) {
+            return const Center(
+              child: Text('No categories available'),
+            );
+          }
+
+          return ListView(
+            children: categories.map((category) {
+              final categoryProducts = products
+                  .where(
+                    (p) => p.category == category,
+                  )
+                  .toList();
+
+              return ExpansionTile(
+                title: Text(category),
+                leading:
+                    const Icon(Icons.category),
+                children: categoryProducts
+                    .map(
+                      (product) => ProductTile(
+                        product: product,
+                        onCartChanged:
+                            onCartChanged,
+                      ),
+                    )
+                    .toList(),
+              );
+            }).toList(),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ============================================================
+// PRODUCT TILE
+// ============================================================
+
+class ProductTile extends StatelessWidget {
+  final Product product;
+  final VoidCallback onCartChanged;
+
+  const ProductTile({
+    super.key,
+    required this.product,
+    required this.onCartChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cartItem =
+        CartController.findItem(product.id);
+
+    final cartQuantity =
+        cartItem?.quantity ?? 0;
+
+    final outOfStock = product.stock <= 0;
 
     return Card(
-      elevation: 2,
-      margin:
-          const EdgeInsets.only(bottom: 16),
-      color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.circular(18),
+      margin: const EdgeInsets.only(
+        bottom: 12,
       ),
-      clipBehavior:
-          Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: double.infinity,
-            height: 210,
-            child:
-                imageUrl.isNotEmpty &&
-                        imageUrl.startsWith(
-                            'http')
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Row(
+          children: [
+            // IMAGE
+            SizedBox(
+              width: 75,
+              height: 75,
+              child: ClipRRect(
+                borderRadius:
+                    BorderRadius.circular(12),
+                child: product.imageUrl.isNotEmpty
                     ? Image.network(
-                        imageUrl,
+                        product.imageUrl,
                         fit: BoxFit.cover,
                         errorBuilder:
-                            (
-                          context,
-                          error,
-                          stackTrace,
-                        ) {
-                          return const ProductImagePlaceholder();
+                            (context, error, stack) {
+                          return const ColoredBox(
+                            color: Colors.black12,
+                            child: Icon(
+                              Icons.image_not_supported,
+                            ),
+                          );
                         },
                       )
-                    : const ProductImagePlaceholder(),
-          ),
+                    : const ColoredBox(
+                        color: Colors.black12,
+                        child: Icon(
+                          Icons.shopping_bag_outlined,
+                        ),
+                      ),
+              ),
+            ),
 
-          Padding(
-            padding:
-                const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+            const SizedBox(width: 12),
+
+            // DETAILS
+            Expanded(
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    product.name.isEmpty
+                        ? 'Unnamed Product'
+                        : product.name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+
+                  const SizedBox(height: 4),
+
+                  Text(
+                    product.category,
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+
+                  const SizedBox(height: 4),
+
+                  Text(
+                    '₹${product.numericPrice.toStringAsFixed(0)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+
+                  const SizedBox(height: 4),
+
+                  Text(
+                    outOfStock
+                        ? 'Out of Stock'
+                        : 'Stock: ${product.stock}',
+                    style: TextStyle(
+                      color: outOfStock
+                          ? Colors.red
+                          : Colors.green,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // ADD / QUANTITY
+            if (outOfStock)
+              const SizedBox(
+                width: 95,
+                child: Text(
+                  'Out of Stock',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.red,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              )
+            else if (cartQuantity == 0)
+              IconButton.filled(
+                onPressed: () {
+                  final added =
+                      CartController.addProduct(
+                    product,
+                  );
+
+                  if (added) {
+                    onCartChanged();
+
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(
+                      const SnackBar(
+                        content:
+                            Text('Added to cart'),
+                        duration:
+                            Duration(seconds: 1),
+                      ),
+                    );
+                  }
+                },
+                icon: const Icon(
+                  Icons.add_shopping_cart,
+                ),
+              )
+            else
+              Row(
+                mainAxisSize:
+                    MainAxisSize.min,
+                children: [
+                  IconButton(
+                    onPressed: () {
+                      CartController
+                          .decreaseQuantity(
+                        product.id,
+                      );
+                      onCartChanged();
+                    },
+                    icon: const Icon(
+                      Icons.remove_circle_outline,
+                    ),
+                  ),
+
+                  Text(
+                    '$cartQuantity',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+
+                  IconButton(
+                    onPressed:
+                        cartQuantity >=
+                                product.stock
+                            ? null
+                            : () {
+                                CartController
+                                    .increaseQuantity(
+                                  product.id,
+                                );
+                                onCartChanged();
+                              },
+                    icon: const Icon(
+                      Icons.add_circle_outline,
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// CART PAGE
+// ============================================================
+
+class CartPage extends StatefulWidget {
+  final VoidCallback onCartChanged;
+
+  const CartPage({
+    super.key,
+    required this.onCartChanged,
+  });
+
+  @override
+  State<CartPage> createState() =>
+      _CartPageState();
+}
+
+class _CartPageState extends State<CartPage> {
+  @override
+  Widget build(BuildContext context) {
+    final items = CartController.items;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('My Cart'),
+      ),
+      body: items.isEmpty
+          ? const Center(
+              child: Text(
+                'Your cart is empty',
+              ),
+            )
+          : Column(
               children: [
-                Text(
-                  name.isEmpty
-                      ? 'Unnamed Product'
-                      : name,
-                  style:
-                      const TextStyle(
-                    fontSize: 19,
-                    fontWeight:
-                        FontWeight.bold,
+                Expanded(
+                  child: ListView.builder(
+                    padding:
+                        const EdgeInsets.all(12),
+                    itemCount: items.length,
+                    itemBuilder:
+                        (context, index) {
+                      final item = items[index];
+
+                      return Card(
+                        margin:
+                            const EdgeInsets.only(
+                          bottom: 12,
+                        ),
+                        child: Padding(
+                          padding:
+                              const EdgeInsets.all(
+                            10,
+                          ),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 70,
+                                height: 70,
+                                child: ClipRRect(
+                                  borderRadius:
+                                      BorderRadius
+                                          .circular(
+                                    10,
+                                  ),
+                                  child: item.imageUrl
+                                          .isNotEmpty
+                                      ? Image.network(
+                                          item.imageUrl,
+                                          fit: BoxFit
+                                              .cover,
+                                          errorBuilder:
+                                              (
+                                            context,
+                                            error,
+                                            stack,
+                                          ) {
+                                            return const Icon(
+                                              Icons
+                                                  .shopping_bag_outlined,
+                                            );
+                                          },
+                                        )
+                                      : const Icon(
+                                          Icons
+                                              .shopping_bag_outlined,
+                                        ),
+                                ),
+                              ),
+
+                              const SizedBox(
+                                width: 12,
+                              ),
+
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment
+                                          .start,
+                                  children: [
+                                    Text(
+                                      item.name,
+                                      style:
+                                          const TextStyle(
+                                        fontWeight:
+                                            FontWeight
+                                                .bold,
+                                      ),
+                                    ),
+
+                                    const SizedBox(
+                                      height: 5,
+                                    ),
+
+                                    Text(
+                                      '₹${item.numericPrice.toStringAsFixed(0)}',
+                                    ),
+
+                                    const SizedBox(
+                                      height: 8,
+                                    ),
+
+                                    Row(
+                                      children: [
+                                        IconButton(
+                                          onPressed: () {
+                                            setState(() {
+                                              CartController
+                                                  .decreaseQuantity(
+                                                item.id,
+                                              );
+                                            });
+                                            widget
+                                                .onCartChanged();
+                                          },
+                                          icon:
+                                              const Icon(
+                                            Icons
+                                                .remove_circle_outline,
+                                          ),
+                                        ),
+
+                                        Text(
+                                          '${item.quantity}',
+                                          style:
+                                              const TextStyle(
+                                            fontWeight:
+                                                FontWeight
+                                                    .bold,
+                                          ),
+                                        ),
+
+                                        IconButton(
+                                          onPressed: item.quantity >=
+                                                  item.availableStock
+                                              ? null
+                                              : () {
+                                                  setState(
+                                                    () {
+                                                      CartController
+                                                          .increaseQuantity(
+                                                        item.id,
+                                                      );
+                                                    },
+                                                  );
+                                                  widget
+                                                      .onCartChanged();
+                                                },
+                                          icon:
+                                              const Icon(
+                                            Icons
+                                                .add_circle_outline,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              IconButton(
+                                onPressed: () {
+                                  setState(() {
+                                    CartController
+                                        .removeProduct(
+                                      item.id,
+                                    );
+                                  });
+                                  widget
+                                      .onCartChanged();
+                                },
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  color: Colors.red,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
 
-                const SizedBox(height: 7),
-
-                Text(category),
-
-                const SizedBox(height: 10),
-
-                Row(
-                  mainAxisAlignment:
-                      MainAxisAlignment
-                          .spaceBetween,
-                  children: [
-                    Text(
-                      displayPrice(),
-                      style:
-                          const TextStyle(
-                        fontSize: 22,
-                        fontWeight:
-                            FontWeight.bold,
+                Container(
+                  padding:
+                      const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      top: BorderSide(
+                        color:
+                            Colors.grey.shade300,
                       ),
                     ),
-                    Text(
-                      stock.isEmpty
-                          ? ''
-                          : isOutOfStock
-                              ? 'Out of stock'
-                              : 'Stock: $stock',
-                      style: TextStyle(
-                        color: isOutOfStock
-                            ? Colors.red
-                            : Colors.grey.shade700,
-                        fontWeight:
-                            FontWeight.w500,
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment:
+                            MainAxisAlignment
+                                .spaceBetween,
+                        children: [
+                          const Text(
+                            'Total',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight:
+                                  FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            '₹${CartController.total.toStringAsFixed(0)}',
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight:
+                                  FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ],
-                ),
 
-                const SizedBox(height: 14),
+                      const SizedBox(
+                        height: 12,
+                      ),
 
-                SizedBox(
-                  width: double.infinity,
-                  child:
-                      FilledButton.icon(
-                    onPressed: canAdd
-                        ? () {
-                            CartController
-                                .addProduct(
-                              id: id,
-                              name: name,
-                              category:
-                                  category,
-                              price: price,
-                              imageUrl:
-                                  imageUrl,
-                            );
-
-                            onCartChanged();
-
-                            ScaffoldMessenger
-                                .of(context)
-                                .hideCurrentSnackBar();
-
-                            ScaffoldMessenger
-                                .of(context)
-                                .showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  '${name.isEmpty ? 'Product' : name} added to cart',
-                                ),
-                                action:
-                                    SnackBarAction(
-                                  label:
-                                      'VIEW CART',
-                                  onPressed:
-                                      () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder:
-                                            (_) =>
-                                                const CartPage(),
-                                      ),
-                                    );
-                                  },
-                                ),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: FilledButton(
+                          onPressed: () async {
+                            final result =
+                                await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    const CheckoutPage(),
                               ),
                             );
-                          }
-                        : null,
-                    icon: Icon(
-                      isOutOfStock
-                          ? Icons
-                              .block_outlined
-                          : Icons
-                              .shopping_cart_outlined,
-                    ),
-                    label: Text(
-                      isOutOfStock
-                          ? 'Out of Stock'
-                          : !hasValidPrice
-                              ? 'Price Unavailable'
-                              : 'Add to Cart',
-                    ),
+
+                            if (result == true) {
+                              setState(() {});
+                              widget
+                                  .onCartChanged();
+                            }
+                          },
+                          child: const Text(
+                            'Proceed to Checkout',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight:
+                                  FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
+            ),
+    );
+  }
+}
+
+// ============================================================
+// PROFILE PAGE
+// ============================================================
+
+class ProfilePage extends StatelessWidget {
+  const ProfilePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('My Profile'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const CircleAvatar(
+            radius: 42,
+            child: Icon(
+              Icons.person,
+              size: 45,
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          const Center(
+            child: Text(
+              'Preesho Customer',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          ListTile(
+            leading:
+                const Icon(Icons.login),
+            title: const Text(
+              'Login / Sign Up',
+            ),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      const LoginPage(),
+                ),
+              );
+            },
+          ),
+
+          const ListTile(
+            leading:
+                Icon(Icons.location_on_outlined),
+            title: Text(
+              'Saved Addresses',
+            ),
+          ),
+
+          const ListTile(
+            leading:
+                Icon(Icons.receipt_long),
+            title: Text(
+              'My Orders',
+            ),
+          ),
+
+          ListTile(
+            leading: const Icon(
+              Icons.admin_panel_settings_outlined,
+            ),
+            title: const Text(
+              'Admin Login',
+            ),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      const AdminLogin(),
+                ),
+              );
+            },
+          ),
+
+          const ListTile(
+            leading:
+                Icon(Icons.help_outline),
+            title: Text(
+              'Help & Support',
             ),
           ),
         ],
@@ -766,439 +1185,113 @@ class ProductCard extends StatelessWidget {
   }
 }
 
-// =====================================================
-// CART PAGE
-// =====================================================
+// ============================================================
+// SEARCH
+// ============================================================
 
-class CartPage extends StatefulWidget {
-  const CartPage({super.key});
+class ProductSearch
+    extends SearchDelegate<Product?> {
+  final VoidCallback onCartChanged;
+
+  ProductSearch(this.onCartChanged);
 
   @override
-  State<CartPage> createState() =>
-      _CartPageState();
-}
-
-class _CartPageState extends State<CartPage> {
-  String money(double value) {
-    return '₹${value.toStringAsFixed(0)}';
+  List<Widget>? buildActions(
+    BuildContext context,
+  ) {
+    return [
+      IconButton(
+        onPressed: () {
+          query = '';
+        },
+        icon: const Icon(Icons.clear),
+      ),
+    ];
   }
 
-  Future<void> openCheckout() async {
-    if (CartController.items.isEmpty) {
-      return;
-    }
+  @override
+  Widget buildLeading(
+    BuildContext context,
+  ) {
+    return IconButton(
+      onPressed: () {
+        close(context, null);
+      },
+      icon: const Icon(Icons.arrow_back),
+    );
+  }
 
-    final user =
-        FirebaseAuth.instance.currentUser;
+  @override
+  Widget buildResults(
+    BuildContext context,
+  ) {
+    return ProductStream(
+      builder: (products) {
+        final results = products
+            .where(
+              (product) => product.name
+                  .toLowerCase()
+                  .contains(
+                    query.toLowerCase(),
+                  ),
+            )
+            .toList();
 
-    if (user == null) {
-      final result = await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const LoginPage(),
+        return _searchList(
+          context,
+          results,
+        );
+      },
+    );
+  }
+
+  @override
+  Widget buildSuggestions(
+    BuildContext context,
+  ) {
+    return ProductStream(
+      builder: (products) {
+        final results = products
+            .where(
+              (product) => product.name
+                  .toLowerCase()
+                  .contains(
+                    query.toLowerCase(),
+                  ),
+            )
+            .toList();
+
+        return _searchList(
+          context,
+          results,
+        );
+      },
+    );
+  }
+
+  Widget _searchList(
+    BuildContext context,
+    List<Product> products,
+  ) {
+    if (products.isEmpty) {
+      return const Center(
+        child: Text(
+          'No products found',
         ),
       );
-
-      if (!mounted) return;
-
-      if (result != true &&
-          FirebaseAuth.instance.currentUser ==
-              null) {
-        return;
-      }
     }
 
-    if (!mounted) return;
-
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const CheckoutPage(),
-      ),
-    );
-
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final items = CartController.items;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'My Cart',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-      body: items.isEmpty
-          ? const EmptyCart()
-          : Column(
-              children: [
-                Expanded(
-                  child:
-                      ListView.builder(
-                    padding:
-                        const EdgeInsets.all(
-                            16),
-                    itemCount:
-                        items.length,
-                    itemBuilder:
-                        (context, index) {
-                      final item =
-                          items[index];
-
-                      return CartItemCard(
-                        item: item,
-                        onChanged: () {
-                          setState(() {});
-                        },
-                      );
-                    },
-                  ),
-                ),
-
-                Container(
-                  padding:
-                      const EdgeInsets.all(
-                          18),
-                  decoration:
-                      BoxDecoration(
-                    color: Colors.white,
-                    boxShadow: [
-                      BoxShadow(
-                        blurRadius: 12,
-                        color: Colors.black
-                            .withOpacity(
-                                0.08),
-                      ),
-                    ],
-                  ),
-                  child: SafeArea(
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment:
-                              MainAxisAlignment
-                                  .spaceBetween,
-                          children: [
-                            const Text(
-                              'Total',
-                              style:
-                                  TextStyle(
-                                fontSize: 19,
-                                fontWeight:
-                                    FontWeight
-                                        .bold,
-                              ),
-                            ),
-                            Text(
-                              money(
-                                CartController
-                                    .total,
-                              ),
-                              style:
-                                  const TextStyle(
-                                fontSize: 23,
-                                fontWeight:
-                                    FontWeight
-                                        .bold,
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(
-                            height: 14),
-
-                        SizedBox(
-                          width:
-                              double.infinity,
-                          child:
-                              FilledButton(
-                            onPressed:
-                                openCheckout,
-                            child:
-                                const Padding(
-                              padding:
-                                  EdgeInsets
-                                      .symmetric(
-                                vertical: 14,
-                              ),
-                              child: Text(
-                                'Proceed to Checkout',
-                                style:
-                                    TextStyle(
-                                  fontSize:
-                                      17,
-                                  fontWeight:
-                                      FontWeight
-                                          .bold,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+    return ListView(
+      padding: const EdgeInsets.all(12),
+      children: products
+          .map(
+            (product) => ProductTile(
+              product: product,
+              onCartChanged:
+                  onCartChanged,
             ),
-    );
-  }
-}
-
-// =====================================================
-// CART ITEM CARD
-// =====================================================
-
-class CartItemCard
-    extends StatelessWidget {
-  final CartItem item;
-  final VoidCallback onChanged;
-
-  const CartItemCard({
-    super.key,
-    required this.item,
-    required this.onChanged,
-  });
-
-  String money(double value) {
-    return '₹${value.toStringAsFixed(0)}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin:
-          const EdgeInsets.only(bottom: 14),
-      color: Colors.white,
-      child: Padding(
-        padding:
-            const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius:
-                  BorderRadius.circular(12),
-              child: SizedBox(
-                width: 90,
-                height: 90,
-                child: item.imageUrl
-                            .isNotEmpty &&
-                        item.imageUrl
-                            .startsWith(
-                                'http')
-                    ? Image.network(
-                        item.imageUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder:
-                            (
-                          context,
-                          error,
-                          stackTrace,
-                        ) {
-                          return const ProductImagePlaceholder();
-                        },
-                      )
-                    : const ProductImagePlaceholder(),
-              ),
-            ),
-
-            const SizedBox(width: 12),
-
-            Expanded(
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.name.isEmpty
-                        ? 'Unnamed Product'
-                        : item.name,
-                    maxLines: 2,
-                    overflow:
-                        TextOverflow.ellipsis,
-                    style:
-                        const TextStyle(
-                      fontWeight:
-                          FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-
-                  const SizedBox(height: 5),
-
-                  Text(item.category),
-
-                  const SizedBox(height: 5),
-
-                  Text(
-                    money(
-                      item.numericPrice,
-                    ),
-                    style:
-                        const TextStyle(
-                      fontWeight:
-                          FontWeight.bold,
-                      fontSize: 17,
-                    ),
-                  ),
-
-                  Row(
-                    children: [
-                      IconButton(
-                        onPressed: () {
-                          CartController
-                              .decrease(
-                            item.id,
-                          );
-                          onChanged();
-                        },
-                        icon:
-                            const Icon(
-                          Icons
-                              .remove_circle_outline,
-                        ),
-                      ),
-
-                      Text(
-                        '${item.quantity}',
-                        style:
-                            const TextStyle(
-                          fontWeight:
-                              FontWeight
-                                  .bold,
-                        ),
-                      ),
-
-                      IconButton(
-                        onPressed: () {
-                          CartController
-                              .increase(
-                            item.id,
-                          );
-                          onChanged();
-                        },
-                        icon:
-                            const Icon(
-                          Icons
-                              .add_circle_outline,
-                        ),
-                      ),
-
-                      const Spacer(),
-
-                      IconButton(
-                        onPressed: () {
-                          CartController
-                              .remove(
-                            item.id,
-                          );
-                          onChanged();
-                        },
-                        icon:
-                            const Icon(
-                          Icons
-                              .delete_outline,
-                          color:
-                              Colors.red,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// =====================================================
-// EMPTY CART
-// =====================================================
-
-class EmptyCart extends StatelessWidget {
-  const EmptyCart({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding:
-            const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment:
-              MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons
-                  .shopping_cart_outlined,
-              size: 90,
-              color:
-                  Colors.grey.shade400,
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Your cart is empty',
-              style:
-                  TextStyle(
-                fontSize: 24,
-                fontWeight:
-                    FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Add some products to your cart.',
-            ),
-            const SizedBox(height: 24),
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(
-                    context);
-              },
-              child: const Text(
-                'Continue Shopping',
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// =====================================================
-// IMAGE PLACEHOLDER
-// =====================================================
-
-class ProductImagePlaceholder
-    extends StatelessWidget {
-  const ProductImagePlaceholder({
-    super.key,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color:
-          const Color(0xffEEEEF2),
-      child: const Center(
-        child: Icon(
-          Icons.image_outlined,
-          size: 55,
-          color: Colors.grey,
-        ),
-      ),
+          )
+          .toList(),
     );
   }
 }
