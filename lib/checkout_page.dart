@@ -49,12 +49,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
   // ============================================================
   // PLACE ORDER
-  // STOCK IS REDUCED ONLY AFTER ALL STOCK IS VERIFIED
+  // STOCK REDUCES ONLY WHEN ORDER IS SUCCESSFULLY CREATED
   // ============================================================
 
   Future<void> placeOrder() async {
-    if (placingOrder) return;
-
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -92,33 +90,24 @@ class _CheckoutPageState extends State<CheckoutPage> {
         CartController.items,
       );
 
-      final orderItems = <Map<String, dynamic>>[];
-
-      // ========================================================
-      // IMPORTANT
-      //
-      // Everything below happens inside ONE transaction.
-      //
-      // 1. Read current stock
-      // 2. Verify every product
-      // 3. Verify requested quantity
-      // 4. Reduce stock
-      // 5. Create order
-      //
-      // If anything fails, Firestore transaction rolls back.
-      // ========================================================
+      final totalAmount = cartItems.fold<double>(
+        0,
+        (sum, item) => sum + item.totalPrice,
+      );
 
       final orderRef =
           firestore.collection('orders').doc();
 
+      final orderItems = <Map<String, dynamic>>[];
+
       await firestore.runTransaction(
         (transaction) async {
+          // ======================================================
+          // FIRST: READ ALL PRODUCTS
+          // ======================================================
+
           final productSnapshots =
               <String, DocumentSnapshot<Map<String, dynamic>>>{};
-
-          // ======================================================
-          // STEP 1: READ ALL PRODUCTS
-          // ======================================================
 
           for (final cartItem in cartItems) {
             final productRef = firestore
@@ -128,25 +117,27 @@ class _CheckoutPageState extends State<CheckoutPage> {
             final snapshot =
                 await transaction.get(productRef);
 
-            if (!snapshot.exists) {
-              throw Exception(
-                '${cartItem.name} is no longer available.',
-              );
-            }
-
             productSnapshots[cartItem.product.id] =
                 snapshot;
           }
 
           // ======================================================
-          // STEP 2: VERIFY STOCK FOR EVERY PRODUCT
+          // CHECK STOCK + PREPARE ORDER ITEMS
           // ======================================================
 
           for (final cartItem in cartItems) {
-            final snapshot =
-                productSnapshots[cartItem.product.id]!;
+            final productSnapshot =
+                productSnapshots[cartItem.product.id];
 
-            final data = snapshot.data() ?? {};
+            if (productSnapshot == null ||
+                !productSnapshot.exists) {
+              throw Exception(
+                '${cartItem.name} is no longer available.',
+              );
+            }
+
+            final data =
+                productSnapshot.data() ?? {};
 
             final active =
                 data['Active'] == true;
@@ -159,66 +150,48 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
             final currentStock =
                 int.tryParse(
-                      data['Stock']?.toString() ?? '0',
+                      data['Stock']
+                              ?.toString() ??
+                          '0',
                     ) ??
                     0;
 
-            // Never allow negative stock.
-            if (currentStock < 0) {
+            // ==================================================
+            // IMPORTANT STOCK CHECK
+            // ==================================================
+
+            if (currentStock <= 0) {
               throw Exception(
-                'Invalid stock for ${cartItem.name}.',
+                '${cartItem.name} is Out of Stock.',
               );
             }
 
-            if (currentStock == 0) {
+            if (currentStock <
+                cartItem.quantity) {
               throw Exception(
-                '${cartItem.name} is out of stock.',
+                'Only $currentStock stock available for '
+                '${cartItem.name}. '
+                'Please reduce the quantity.',
               );
             }
-
-            if (cartItem.quantity <= 0) {
-              throw Exception(
-                'Invalid quantity for ${cartItem.name}.',
-              );
-            }
-
-            if (cartItem.quantity > currentStock) {
-              throw Exception(
-                'Only $currentStock ${cartItem.name} '
-                'available. Please update your cart.',
-              );
-            }
-          }
-
-          // ======================================================
-          // STEP 3: REDUCE STOCK
-          // ======================================================
-
-          for (final cartItem in cartItems) {
-            final productRef = firestore
-                .collection('products')
-                .doc(cartItem.product.id);
-
-            final snapshot =
-                productSnapshots[cartItem.product.id]!;
-
-            final data = snapshot.data() ?? {};
-
-            final currentStock =
-                int.tryParse(
-                      data['Stock']?.toString() ?? '0',
-                    ) ??
-                    0;
 
             final newStock =
-                currentStock - cartItem.quantity;
+                currentStock -
+                    cartItem.quantity;
 
-            // Extra safety.
             if (newStock < 0) {
               throw Exception(
                 'Insufficient stock for ${cartItem.name}.',
               );
             }
+
+            // ==================================================
+            // REDUCE STOCK
+            // ==================================================
+
+            final productRef = firestore
+                .collection('products')
+                .doc(cartItem.product.id);
 
             transaction.update(
               productRef,
@@ -227,31 +200,39 @@ class _CheckoutPageState extends State<CheckoutPage> {
               },
             );
 
-            // ====================================================
+            // ==================================================
             // ORDER ITEM
-            // ====================================================
+            // ==================================================
 
             orderItems.add({
-              'productId': cartItem.product.id,
-              'name': cartItem.name,
-              'category': cartItem.category,
-              'price': cartItem.numericPrice,
-              'quantity': cartItem.quantity,
-              'total': cartItem.totalPrice,
+              'productId':
+                  cartItem.product.id,
+              'name':
+                  cartItem.name,
+              'category':
+                  cartItem.category,
+              'price':
+                  cartItem.numericPrice,
+              'quantity':
+                  cartItem.quantity,
+              'total':
+                  cartItem.totalPrice,
               'imageUrl':
-                  data['Imageurl']?.toString() ??
+                  data['Imageurl']
+                          ?.toString() ??
                       cartItem.imageUrl,
             });
           }
 
           // ======================================================
-          // STEP 4: CREATE ORDER
+          // CREATE ORDER IN SAME TRANSACTION
           // ======================================================
 
           transaction.set(
             orderRef,
             {
-              'userId': user.uid,
+              'userId':
+                  user.uid,
 
               'customerName':
                   nameController.text.trim(),
@@ -268,37 +249,31 @@ class _CheckoutPageState extends State<CheckoutPage> {
               'pincode':
                   pincodeController.text.trim(),
 
-              'items': orderItems,
+              'items':
+                  orderItems,
 
               'totalAmount':
-                  cartItems.fold<double>(
-                0,
-                (sum, item) =>
-                    sum + item.totalPrice,
-              ),
+                  totalAmount,
 
-              'status': 'Placed',
+              'status':
+                  'Placed',
 
               'paymentMethod':
                   'Cash on Delivery',
 
               'createdAt':
                   FieldValue.serverTimestamp(),
-
-              'updatedAt':
-                  FieldValue.serverTimestamp(),
             },
           );
         },
       );
 
-      // ========================================================
-      // SUCCESS
-      // ========================================================
-
       if (!mounted) return;
 
-      // Cart clear ONLY after successful transaction.
+      // ========================================================
+      // CLEAR CART ONLY AFTER SUCCESS
+      // ========================================================
+
       CartController.clear();
 
       await showDialog(
@@ -314,19 +289,23 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 ),
                 SizedBox(width: 10),
                 Expanded(
-                  child: Text('Order Placed'),
+                  child: Text(
+                    'Order Placed',
+                  ),
                 ),
               ],
             ),
             content: Text(
               'Your order has been placed successfully.\n\n'
               'Order ID:\n${orderRef.id}\n\n'
-              'Stock has been updated successfully.',
+              'Stock has been updated.',
             ),
             actions: [
               FilledButton(
                 onPressed: () {
-                  Navigator.pop(dialogContext);
+                  Navigator.pop(
+                    dialogContext,
+                  );
                 },
                 child: const Text(
                   'Continue Shopping',
@@ -346,9 +325,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Order failed:\n${e.message ?? e.code}',
+            'Order failed:\n'
+            '${e.message ?? e.code}',
           ),
-          duration: const Duration(seconds: 4),
+          duration:
+              const Duration(seconds: 5),
         ),
       );
     } catch (e) {
@@ -362,7 +343,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
               '',
             ),
           ),
-          duration: const Duration(seconds: 4),
+          duration:
+              const Duration(seconds: 5),
         ),
       );
     } finally {
@@ -401,7 +383,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
           hintText: hint,
           prefixIcon: Icon(icon),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius:
+                BorderRadius.circular(14),
           ),
         ),
       ),
@@ -416,8 +399,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
   Widget build(BuildContext context) {
     final items = CartController.items;
 
-    final cartEmpty = items.isEmpty;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -427,17 +408,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
           ),
         ),
       ),
-
       body: SafeArea(
         child: Form(
           key: _formKey,
           child: ListView(
-            padding: const EdgeInsets.all(16),
+            padding:
+                const EdgeInsets.all(16),
             children: [
-              // ==================================================
-              // DELIVERY DETAILS
-              // ==================================================
-
               const Text(
                 'Delivery Details',
                 style: TextStyle(
@@ -449,10 +426,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
               const SizedBox(height: 14),
 
               inputField(
-                controller: nameController,
+                controller:
+                    nameController,
                 label: 'Full Name',
-                hint: 'Enter your full name',
-                icon: Icons.person_outline,
+                hint:
+                    'Enter your full name',
+                icon:
+                    Icons.person_outline,
                 validator: (value) {
                   if (value == null ||
                       value.trim().isEmpty) {
@@ -468,23 +448,24 @@ class _CheckoutPageState extends State<CheckoutPage> {
               ),
 
               inputField(
-                controller: mobileController,
+                controller:
+                    mobileController,
                 label: 'Mobile Number',
-                hint: 'Enter 10 digit mobile number',
-                icon: Icons.phone_outlined,
-                keyboardType: TextInputType.phone,
+                hint:
+                    'Enter 10 digit mobile number',
+                icon:
+                    Icons.phone_outlined,
+                keyboardType:
+                    TextInputType.phone,
                 validator: (value) {
                   final mobile =
                       value?.trim() ?? '';
 
-                  if (mobile.isEmpty) {
-                    return 'Enter mobile number';
-                  }
-
                   if (!RegExp(
                     r'^[0-9]{10}$',
                   ).hasMatch(mobile)) {
-                    return 'Enter a valid 10 digit number';
+                    return
+                        'Enter a valid 10 digit number';
                   }
 
                   return null;
@@ -492,19 +473,19 @@ class _CheckoutPageState extends State<CheckoutPage> {
               ),
 
               inputField(
-                controller: addressController,
+                controller:
+                    addressController,
                 label: 'Address',
-                hint: 'House no., street, area',
-                icon: Icons.home_outlined,
+                hint:
+                    'House no., street, area',
+                icon:
+                    Icons.home_outlined,
                 maxLines: 3,
                 validator: (value) {
                   if (value == null ||
-                      value.trim().isEmpty) {
-                    return 'Enter delivery address';
-                  }
-
-                  if (value.trim().length < 5) {
-                    return 'Enter a complete address';
+                      value.trim().length < 5) {
+                    return
+                        'Enter a complete address';
                   }
 
                   return null;
@@ -512,10 +493,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
               ),
 
               inputField(
-                controller: cityController,
+                controller:
+                    cityController,
                 label: 'City',
-                hint: 'Enter your city',
-                icon: Icons.location_city_outlined,
+                hint:
+                    'Enter your city',
+                icon:
+                    Icons.location_city_outlined,
                 validator: (value) {
                   if (value == null ||
                       value.trim().isEmpty) {
@@ -527,19 +511,23 @@ class _CheckoutPageState extends State<CheckoutPage> {
               ),
 
               inputField(
-                controller: pincodeController,
+                controller:
+                    pincodeController,
                 label: 'PIN Code',
-                hint: 'Enter 6 digit PIN code',
-                icon: Icons.pin_drop_outlined,
-                keyboardType: TextInputType.number,
+                hint:
+                    'Enter 6 digit PIN code',
+                icon:
+                    Icons.pin_drop_outlined,
+                keyboardType:
+                    TextInputType.number,
                 validator: (value) {
-                  final pincode =
-                      value?.trim() ?? '';
-
                   if (!RegExp(
                     r'^[0-9]{6}$',
-                  ).hasMatch(pincode)) {
-                    return 'Enter a valid 6 digit PIN code';
+                  ).hasMatch(
+                    value?.trim() ?? '',
+                  )) {
+                    return
+                        'Enter a valid 6 digit PIN code';
                   }
 
                   return null;
@@ -547,10 +535,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
               ),
 
               const SizedBox(height: 10),
-
-              // ==================================================
-              // PAYMENT
-              // ==================================================
 
               Card(
                 child: ListTile(
@@ -560,13 +544,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   title: const Text(
                     'Cash on Delivery',
                     style: TextStyle(
-                      fontWeight: FontWeight.bold,
+                      fontWeight:
+                          FontWeight.bold,
                     ),
                   ),
                   subtitle: const Text(
                     'Pay when your order is delivered',
                   ),
-                  trailing: const Icon(
+                  trailing:
+                      const Icon(
                     Icons.check_circle,
                     color: Colors.green,
                   ),
@@ -574,10 +560,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
               ),
 
               const SizedBox(height: 24),
-
-              // ==================================================
-              // ORDER SUMMARY
-              // ==================================================
 
               const Text(
                 'Order Summary',
@@ -591,98 +573,86 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
               Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: cartEmpty
-                      ? const Padding(
-                          padding: EdgeInsets.all(20),
-                          child: Center(
-                            child: Text(
-                              'Your cart is empty',
+                  padding:
+                      const EdgeInsets.all(14),
+                  child: Column(
+                    children: [
+                      ...items.map(
+                        (item) {
+                          return Padding(
+                            padding:
+                                const EdgeInsets.only(
+                              bottom: 12,
                             ),
-                          ),
-                        )
-                      : Column(
-                          children: [
-                            ...items.map(
-                              (item) {
-                                return Padding(
-                                  padding:
-                                      const EdgeInsets.only(
-                                    bottom: 12,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          '${item.name} × ${item.quantity}',
-                                          style:
-                                              const TextStyle(
-                                            fontWeight:
-                                                FontWeight.w500,
-                                          ),
-                                        ),
-                                      ),
-                                      Text(
-                                        money(
-                                          item.totalPrice,
-                                        ),
-                                        style:
-                                            const TextStyle(
-                                          fontWeight:
-                                              FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
-
-                            const Divider(),
-
-                            const SizedBox(height: 6),
-
-                            Row(
-                              mainAxisAlignment:
-                                  MainAxisAlignment.spaceBetween,
+                            child: Row(
                               children: [
-                                const Text(
-                                  'Total Amount',
-                                  style: TextStyle(
-                                    fontSize: 19,
-                                    fontWeight:
-                                        FontWeight.bold,
+                                Expanded(
+                                  child: Text(
+                                    '${item.name} × '
+                                    '${item.quantity}',
                                   ),
                                 ),
                                 Text(
                                   money(
-                                    CartController.total,
+                                    item.totalPrice,
                                   ),
                                   style:
                                       const TextStyle(
-                                    fontSize: 22,
                                     fontWeight:
                                         FontWeight.bold,
                                   ),
                                 ),
                               ],
                             ),
-                          ],
-                        ),
+                          );
+                        },
+                      ),
+
+                      const Divider(),
+
+                      Row(
+                        mainAxisAlignment:
+                            MainAxisAlignment
+                                .spaceBetween,
+                        children: [
+                          const Text(
+                            'Total Amount',
+                            style: TextStyle(
+                              fontSize: 19,
+                              fontWeight:
+                                  FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            money(
+                              items.fold<double>(
+                                0,
+                                (sum, item) =>
+                                    sum +
+                                    item.totalPrice,
+                              ),
+                            ),
+                            style:
+                                const TextStyle(
+                              fontSize: 22,
+                              fontWeight:
+                                  FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
 
               const SizedBox(height: 22),
 
-              // ==================================================
-              // PLACE ORDER BUTTON
-              // ==================================================
-
               SizedBox(
                 height: 54,
                 child: FilledButton.icon(
                   onPressed:
-                      placingOrder || cartEmpty
+                      placingOrder
                           ? null
                           : placeOrder,
                   icon: placingOrder
@@ -695,17 +665,18 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           ),
                         )
                       : const Icon(
-                          Icons.shopping_bag_outlined,
+                          Icons
+                              .shopping_bag_outlined,
                         ),
                   label: Text(
                     placingOrder
                         ? 'Placing Order...'
-                        : cartEmpty
-                            ? 'Cart is Empty'
-                            : 'Place Order',
-                    style: const TextStyle(
+                        : 'Place Order',
+                    style:
+                        const TextStyle(
                       fontSize: 17,
-                      fontWeight: FontWeight.bold,
+                      fontWeight:
+                          FontWeight.bold,
                     ),
                   ),
                 ),
@@ -714,8 +685,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
               const SizedBox(height: 12),
 
               const Text(
-                'Stock is reduced only after the order is successfully confirmed. '
-                'Adding an item to your cart does not reduce stock.',
+                'Stock is reduced only when your order is successfully placed.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.grey,
@@ -726,8 +696,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
               const SizedBox(height: 5),
 
               const Text(
-                'If the available stock is less than your requested quantity, '
-                'the order will not be placed.',
+                'Adding an item to Cart does not reduce stock.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.grey,
@@ -735,7 +704,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 ),
               ),
 
-              const SizedBox(height: 10),
+              const SizedBox(height: 20),
             ],
           ),
         ),
