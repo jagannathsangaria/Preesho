@@ -14,25 +14,25 @@ class _LoginPageState extends State<LoginPage> {
   final mobileController = TextEditingController();
   final otpController = TextEditingController();
 
-  String? verificationId;
-
   bool loading = false;
   bool otpSent = false;
+
+  String? verificationId;
 
   // ============================================================
   // SEND OTP
   // ============================================================
 
   Future<void> sendOtp() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
 
-    final mobile = mobileController.text.trim();
+    FocusScope.of(context).unfocus();
 
     setState(() {
       loading = true;
     });
+
+    final mobile = mobileController.text.trim();
 
     try {
       await FirebaseAuth.instance.verifyPhoneNumber(
@@ -41,8 +41,9 @@ class _LoginPageState extends State<LoginPage> {
         verificationCompleted:
             (PhoneAuthCredential credential) async {
           try {
-            await FirebaseAuth.instance
-                .signInWithCredential(credential);
+            await FirebaseAuth.instance.signInWithCredential(
+              credential,
+            );
 
             if (!mounted) return;
 
@@ -51,9 +52,9 @@ class _LoginPageState extends State<LoginPage> {
             if (!mounted) return;
 
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
+              SnackBar(
                 content: Text(
-                  'Automatic verification failed. Please enter OTP.',
+                  'Automatic verification failed: $e',
                 ),
               ),
             );
@@ -66,30 +67,37 @@ class _LoginPageState extends State<LoginPage> {
           String message = 'OTP could not be sent.';
 
           if (e.code == 'invalid-phone-number') {
-            message = 'Please enter a valid 10 digit mobile number.';
+            message = 'Please enter a valid mobile number.';
           } else if (e.code == 'too-many-requests') {
             message =
-                'Too many OTP requests. Please try again later.';
+                'Too many attempts. Please try again later.';
+          } else if (e.code == 'quota-exceeded') {
+            message =
+                'SMS limit reached. Please try again later.';
           } else if (e.code == 'network-request-failed') {
-            message = 'Internet connection problem.';
+            message =
+                'Internet connection problem.';
+          } else if (e.message != null &&
+              e.message!.isNotEmpty) {
+            message = e.message!;
           }
 
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(message),
+              duration: const Duration(seconds: 5),
             ),
           );
-
-          setState(() {
-            loading = false;
-          });
         },
 
-        codeSent: (String id, int? resendToken) {
+        codeSent: (
+          String verificationIdValue,
+          int? resendToken,
+        ) {
           if (!mounted) return;
 
           setState(() {
-            verificationId = id;
+            verificationId = verificationIdValue;
             otpSent = true;
             loading = false;
           });
@@ -103,30 +111,28 @@ class _LoginPageState extends State<LoginPage> {
           );
         },
 
-        codeAutoRetrievalTimeout: (String id) {
-          verificationId = id;
-
-          if (mounted) {
-            setState(() {
-              loading = false;
-            });
-          }
+        codeAutoRetrievalTimeout: (
+          String verificationIdValue,
+        ) {
+          verificationId = verificationIdValue;
         },
       );
     } catch (e) {
       if (!mounted) return;
 
-      setState(() {
-        loading = false;
-      });
-
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
-            'Something went wrong. Please try again.',
+            'Something went wrong: $e',
           ),
         ),
       );
+    } finally {
+      if (mounted) {
+        setState(() {
+          loading = false;
+        });
+      }
     }
   }
 
@@ -137,7 +143,8 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> verifyOtp() async {
     final otp = otpController.text.trim();
 
-    if (otp.length != 6) {
+    if (otp.length != 6 ||
+        !RegExp(r'^[0-9]{6}$').hasMatch(otp)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -158,6 +165,8 @@ class _LoginPageState extends State<LoginPage> {
       );
       return;
     }
+
+    FocusScope.of(context).unfocus();
 
     setState(() {
       loading = true;
@@ -191,30 +200,29 @@ class _LoginPageState extends State<LoginPage> {
       String message = 'OTP verification failed.';
 
       if (e.code == 'invalid-verification-code') {
-        message = 'Incorrect OTP. Please check and try again.';
+        message = 'Incorrect OTP. Please try again.';
       } else if (e.code == 'session-expired') {
         message =
             'OTP expired. Please request a new OTP.';
+      } else if (e.code == 'invalid-verification-id') {
+        message =
+            'Verification expired. Please request a new OTP.';
       } else if (e.code == 'too-many-requests') {
         message =
             'Too many attempts. Please try again later.';
+      } else if (e.message != null &&
+          e.message!.isNotEmpty) {
+        message = e.message!;
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(message),
+          duration: const Duration(seconds: 5),
         ),
       );
-
-      setState(() {
-        loading = false;
-      });
     } catch (e) {
       if (!mounted) return;
-
-      setState(() {
-        loading = false;
-      });
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -223,19 +231,26 @@ class _LoginPageState extends State<LoginPage> {
           ),
         ),
       );
+    } finally {
+      if (mounted) {
+        setState(() {
+          loading = false;
+        });
+      }
     }
   }
 
   // ============================================================
-  // CHANGE NUMBER
+  // CHANGE MOBILE NUMBER
   // ============================================================
 
-  void changeNumber() {
+  void changeMobile() {
+    if (loading) return;
+
     setState(() {
       otpSent = false;
       verificationId = null;
       otpController.clear();
-      loading = false;
     });
   }
 
@@ -298,7 +313,9 @@ class _LoginPageState extends State<LoginPage> {
                   const SizedBox(height: 8),
 
                   Text(
-                    'Login with your mobile number',
+                    otpSent
+                        ? 'Enter the OTP sent to your mobile'
+                        : 'Login using your mobile number',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.grey.shade700,
@@ -337,7 +354,7 @@ class _LoginPageState extends State<LoginPage> {
                           value?.trim() ?? '';
 
                       if (mobile.isEmpty) {
-                        return 'Please enter mobile number';
+                        return 'Please enter your mobile number';
                       }
 
                       if (!RegExp(
@@ -351,23 +368,31 @@ class _LoginPageState extends State<LoginPage> {
                     },
                   ),
 
+                  const SizedBox(height: 16),
+
                   // ==================================================
                   // OTP
                   // ==================================================
 
-                  if (otpSent) ...[
-                    const SizedBox(height: 16),
-
+                  if (otpSent)
                     TextFormField(
                       controller: otpController,
+                      enabled: !loading,
                       keyboardType:
                           TextInputType.number,
                       maxLength: 6,
 
+                      textAlign: TextAlign.center,
+
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 6,
+                      ),
+
                       decoration: InputDecoration(
                         labelText: 'OTP',
-                        hintText:
-                            'Enter 6 digit OTP',
+                        hintText: 'Enter 6 digit OTP',
                         prefixIcon: const Icon(
                           Icons.lock_outline,
                         ),
@@ -377,27 +402,24 @@ class _LoginPageState extends State<LoginPage> {
                               BorderRadius.circular(14),
                         ),
                       ),
+
+                      validator: (value) {
+                        final otp =
+                            value?.trim() ?? '';
+
+                        if (otp.length != 6 ||
+                            !RegExp(
+                              r'^[0-9]{6}$',
+                            ).hasMatch(otp)) {
+                          return
+                              'Enter a valid 6 digit OTP';
+                        }
+
+                        return null;
+                      },
                     ),
 
-                    const SizedBox(height: 10),
-
-                    Align(
-                      alignment:
-                          Alignment.centerRight,
-
-                      child: TextButton(
-                        onPressed:
-                            loading
-                                ? null
-                                : changeNumber,
-                        child: const Text(
-                          'Change Mobile Number',
-                        ),
-                      ),
-                    ),
-                  ],
-
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 24),
 
                   // ==================================================
                   // BUTTON
@@ -407,12 +429,11 @@ class _LoginPageState extends State<LoginPage> {
                     height: 52,
 
                     child: FilledButton.icon(
-                      onPressed:
-                          loading
-                              ? null
-                              : otpSent
-                                  ? verifyOtp
-                                  : sendOtp,
+                      onPressed: loading
+                          ? null
+                          : otpSent
+                              ? verifyOtp
+                              : sendOtp,
 
                       icon: loading
                           ? const SizedBox(
@@ -425,31 +446,50 @@ class _LoginPageState extends State<LoginPage> {
                             )
                           : Icon(
                               otpSent
-                                  ? Icons.verified_outlined
+                                  ? Icons.verified
                                   : Icons.sms_outlined,
                             ),
 
                       label: Text(
                         loading
-                            ? 'Please wait...'
+                            ? otpSent
+                                ? 'Verifying...'
+                                : 'Sending OTP...'
                             : otpSent
                                 ? 'Verify OTP'
                                 : 'Send OTP',
 
-                        style:
-                            const TextStyle(
+                        style: const TextStyle(
                           fontSize: 17,
-                          fontWeight:
-                              FontWeight.bold,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
                   ),
 
+                  const SizedBox(height: 12),
+
+                  // ==================================================
+                  // CHANGE NUMBER
+                  // ==================================================
+
+                  if (otpSent)
+                    TextButton(
+                      onPressed:
+                          loading ? null : changeMobile,
+
+                      child: const Text(
+                        'Change Mobile Number',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+
                   const SizedBox(height: 20),
 
                   const Text(
-                    'Mobile number verification is required to continue.',
+                    'Your mobile number is required for login and order updates.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.grey,
