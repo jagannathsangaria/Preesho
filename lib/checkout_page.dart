@@ -30,9 +30,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
     if (user != null) {
       nameController.text = user.displayName ?? '';
-      if (user.email != null) {
-        // Email is available through Firebase Auth.
-      }
     }
   }
 
@@ -49,6 +46,48 @@ class _CheckoutPageState extends State<CheckoutPage> {
   String money(double value) {
     return '₹${value.toStringAsFixed(0)}';
   }
+
+  // ============================================================
+  // CHECK CURRENT STOCK
+  // ============================================================
+
+  Future<bool> checkStockBeforeOrder() async {
+    for (final cartItem in CartController.items) {
+      final doc = await FirebaseFirestore.instance
+          .collection('products')
+          .doc(cartItem.id)
+          .get();
+
+      if (!doc.exists) {
+        return false;
+      }
+
+      final data = doc.data();
+
+      if (data == null) {
+        return false;
+      }
+
+      final active = data['Active'] == true;
+
+      final stock =
+          int.tryParse(data['Stock']?.toString() ?? '0') ?? 0;
+
+      if (!active || stock <= 0) {
+        return false;
+      }
+
+      if (cartItem.quantity > stock) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  // ============================================================
+  // PLACE ORDER
+  // ============================================================
 
   Future<void> placeOrder() async {
     if (!_formKey.currentState!.validate()) {
@@ -69,7 +108,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please login before placing an order'),
+          content: Text(
+            'Please login before placing an order',
+          ),
         ),
       );
       return;
@@ -80,6 +121,34 @@ class _CheckoutPageState extends State<CheckoutPage> {
     });
 
     try {
+      // --------------------------------------------------------
+      // FIRST CHECK
+      // --------------------------------------------------------
+
+      final stockAvailable =
+          await checkStockBeforeOrder();
+
+      if (!stockAvailable) {
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Some items are out of stock or have insufficient stock.',
+            ),
+          ),
+        );
+
+        return;
+      }
+
+      // --------------------------------------------------------
+      // CREATE ORDER + REDUCE STOCK IN ONE TRANSACTION
+      // --------------------------------------------------------
+
+      final firestore =
+          FirebaseFirestore.instance;
+
       final orderItems = CartController.items.map((item) {
         return {
           'productId': item.id,
@@ -92,27 +161,166 @@ class _CheckoutPageState extends State<CheckoutPage> {
         };
       }).toList();
 
-      final orderData = {
-        'userId': user.uid,
-        'customerName': nameController.text.trim(),
-        'mobile': mobileController.text.trim(),
-        'address': addressController.text.trim(),
-        'city': cityController.text.trim(),
-        'pincode': pincodeController.text.trim(),
-        'items': orderItems,
-        'totalAmount': CartController.total,
-        'status': 'Placed',
-        'paymentMethod': 'Cash on Delivery',
-        'createdAt': FieldValue.serverTimestamp(),
-      };
+      final orderRef =
+          firestore.collection('orders').doc();
 
-      final orderRef = await FirebaseFirestore.instance
-          .collection('orders')
-          .add(orderData);
+      await firestore.runTransaction(
+        (transaction) async {
+          // ----------------------------------------------------
+          // READ ALL PRODUCTS FIRST
+          // ----------------------------------------------------
+
+          final productSnapshots =
+              <String, DocumentSnapshot<Map<String, dynamic>>>{};
+
+          for (final cartItem
+              in CartController.items) {
+            final productRef = firestore
+                .collection('products')
+                .doc(cartItem.id);
+
+            final productSnapshot =
+                await transaction.get(productRef);
+
+            productSnapshots[cartItem.id] =
+                productSnapshot;
+          }
+
+          // ----------------------------------------------------
+          // VERIFY STOCK
+          // ----------------------------------------------------
+
+          for (final cartItem
+              in CartController.items) {
+            final snapshot =
+                productSnapshots[cartItem.id];
+
+            if (snapshot == null ||
+                !snapshot.exists) {
+              throw Exception(
+                'Product "${cartItem.name}" is no longer available.',
+              );
+            }
+
+            final data = snapshot.data();
+
+            if (data == null) {
+              throw Exception(
+                'Product "${cartItem.name}" is unavailable.',
+              );
+            }
+
+            final active =
+                data['Active'] == true;
+
+            if (!active) {
+              throw Exception(
+                '"${cartItem.name}" is currently unavailable.',
+              );
+            }
+
+            final currentStock =
+                int.tryParse(
+                      data['Stock']?.toString() ?? '0',
+                    ) ??
+                    0;
+
+            // NEVER ALLOW NEGATIVE STOCK
+            if (currentStock <= 0) {
+              throw Exception(
+                '"${cartItem.name}" is out of stock.',
+              );
+            }
+
+            if (cartItem.quantity >
+                currentStock) {
+              throw Exception(
+                'Only $currentStock "${cartItem.name}" available.',
+              );
+            }
+          }
+
+          // ----------------------------------------------------
+          // REDUCE STOCK
+          // ----------------------------------------------------
+
+          for (final cartItem
+              in CartController.items) {
+            final snapshot =
+                productSnapshots[cartItem.id]!;
+
+            final data =
+                snapshot.data()!;
+
+            final currentStock =
+                int.tryParse(
+                      data['Stock']?.toString() ?? '0',
+                    ) ??
+                    0;
+
+            final newStock =
+                currentStock - cartItem.quantity;
+
+            // EXTRA SAFETY: NEVER BELOW ZERO
+            if (newStock < 0) {
+              throw Exception(
+                'Insufficient stock for "${cartItem.name}".',
+              );
+            }
+
+            final productRef =
+                firestore
+                    .collection('products')
+                    .doc(cartItem.id);
+
+            transaction.update(
+              productRef,
+              {
+                'Stock': newStock.toString(),
+              },
+            );
+          }
+
+          // ----------------------------------------------------
+          // CREATE ORDER
+          // ----------------------------------------------------
+
+          final orderData = {
+            'userId': user.uid,
+            'customerName':
+                nameController.text.trim(),
+            'mobile':
+                mobileController.text.trim(),
+            'address':
+                addressController.text.trim(),
+            'city':
+                cityController.text.trim(),
+            'pincode':
+                pincodeController.text.trim(),
+            'items': orderItems,
+            'totalAmount':
+                CartController.total,
+            'status': 'Placed',
+            'paymentMethod':
+                'Cash on Delivery',
+            'createdAt':
+                FieldValue.serverTimestamp(),
+          };
+
+          transaction.set(
+            orderRef,
+            orderData,
+          );
+        },
+      );
+
+      // --------------------------------------------------------
+      // ORDER SUCCESS
+      // --------------------------------------------------------
 
       if (!mounted) return;
 
-      CartController.items.clear();
+      CartController.clear();
 
       await showDialog(
         context: context,
@@ -126,11 +334,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   color: Colors.green,
                 ),
                 SizedBox(width: 10),
-                Text('Order Placed'),
+                Expanded(
+                  child: Text('Order Placed'),
+                ),
               ],
             ),
             content: Text(
               'Your order has been placed successfully.\n\n'
+              'Stock has been updated.\n\n'
               'Order ID:\n${orderRef.id}',
             ),
             actions: [
@@ -138,7 +349,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 onPressed: () {
                   Navigator.pop(dialogContext);
                 },
-                child: const Text('Continue Shopping'),
+                child: const Text(
+                  'Continue Shopping',
+                ),
               ),
             ],
           );
@@ -161,10 +374,16 @@ class _CheckoutPageState extends State<CheckoutPage> {
     } catch (e) {
       if (!mounted) return;
 
+      final message =
+          e.toString().replaceFirst(
+                'Exception: ',
+                '',
+              );
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Something went wrong:\n$e',
+            message,
           ),
         ),
       );
@@ -176,6 +395,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
       }
     }
   }
+
+  // ============================================================
+  // INPUT FIELD
+  // ============================================================
 
   Widget inputField({
     required TextEditingController controller,
@@ -205,9 +428,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
     );
   }
 
+  // ============================================================
+  // BUILD
+  // ============================================================
+
   @override
   Widget build(BuildContext context) {
     final items = CartController.items;
+
+    final hasItems = items.isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -224,7 +453,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // DELIVERY ADDRESS
               const Text(
                 'Delivery Details',
                 style: TextStyle(
@@ -241,7 +469,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 hint: 'Enter your full name',
                 icon: Icons.person_outline,
                 validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
+                  if (value == null ||
+                      value.trim().isEmpty) {
                     return 'Enter your name';
                   }
 
@@ -258,15 +487,19 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 label: 'Mobile Number',
                 hint: 'Enter 10 digit mobile number',
                 icon: Icons.phone_outlined,
-                keyboardType: TextInputType.phone,
+                keyboardType:
+                    TextInputType.phone,
                 validator: (value) {
-                  final mobile = value?.trim() ?? '';
+                  final mobile =
+                      value?.trim() ?? '';
 
                   if (mobile.isEmpty) {
                     return 'Enter mobile number';
                   }
 
-                  if (!RegExp(r'^[0-9]{10}$').hasMatch(mobile)) {
+                  if (!RegExp(
+                    r'^[0-9]{10}$',
+                  ).hasMatch(mobile)) {
                     return 'Enter a valid 10 digit number';
                   }
 
@@ -281,7 +514,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 icon: Icons.home_outlined,
                 maxLines: 3,
                 validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
+                  if (value == null ||
+                      value.trim().isEmpty) {
                     return 'Enter delivery address';
                   }
 
@@ -297,9 +531,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 controller: cityController,
                 label: 'City',
                 hint: 'Enter your city',
-                icon: Icons.location_city_outlined,
+                icon:
+                    Icons.location_city_outlined,
                 validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
+                  if (value == null ||
+                      value.trim().isEmpty) {
                     return 'Enter city';
                   }
 
@@ -312,11 +548,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 label: 'PIN Code',
                 hint: 'Enter 6 digit PIN code',
                 icon: Icons.pin_drop_outlined,
-                keyboardType: TextInputType.number,
+                keyboardType:
+                    TextInputType.number,
                 validator: (value) {
-                  final pincode = value?.trim() ?? '';
+                  final pincode =
+                      value?.trim() ?? '';
 
-                  if (!RegExp(r'^[0-9]{6}$').hasMatch(pincode)) {
+                  if (!RegExp(
+                    r'^[0-9]{6}$',
+                  ).hasMatch(pincode)) {
                     return 'Enter a valid 6 digit PIN code';
                   }
 
@@ -326,7 +566,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
               const SizedBox(height: 10),
 
-              // PAYMENT
               Card(
                 child: ListTile(
                   leading: const Icon(
@@ -350,7 +589,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
               const SizedBox(height: 24),
 
-              // ORDER SUMMARY
               const Text(
                 'Order Summary',
                 style: TextStyle(
@@ -363,13 +601,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
               Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(14),
+                  padding:
+                      const EdgeInsets.all(14),
                   child: Column(
                     children: [
                       ...items.map(
                         (item) {
                           return Padding(
-                            padding: const EdgeInsets.only(
+                            padding:
+                                const EdgeInsets.only(
                               bottom: 12,
                             ),
                             child: Row(
@@ -377,15 +617,22 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                 Expanded(
                                   child: Text(
                                     '${item.name} × ${item.quantity}',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w500,
+                                    style:
+                                        const TextStyle(
+                                      fontWeight:
+                                          FontWeight
+                                              .w500,
                                     ),
                                   ),
                                 ),
                                 Text(
-                                  money(item.totalPrice),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
+                                  money(
+                                    item.totalPrice,
+                                  ),
+                                  style:
+                                      const TextStyle(
+                                    fontWeight:
+                                        FontWeight.bold,
                                   ),
                                 ),
                               ],
@@ -400,20 +647,26 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
                       Row(
                         mainAxisAlignment:
-                            MainAxisAlignment.spaceBetween,
+                            MainAxisAlignment
+                                .spaceBetween,
                         children: [
                           const Text(
                             'Total Amount',
                             style: TextStyle(
                               fontSize: 19,
-                              fontWeight: FontWeight.bold,
+                              fontWeight:
+                                  FontWeight.bold,
                             ),
                           ),
                           Text(
-                            money(CartController.total),
-                            style: const TextStyle(
+                            money(
+                              CartController.total,
+                            ),
+                            style:
+                                const TextStyle(
                               fontSize: 22,
-                              fontWeight: FontWeight.bold,
+                              fontWeight:
+                                  FontWeight.bold,
                             ),
                           ),
                         ],
@@ -425,17 +678,19 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
               const SizedBox(height: 22),
 
-              // PLACE ORDER
               SizedBox(
                 height: 54,
                 child: FilledButton.icon(
                   onPressed:
-                      placingOrder ? null : placeOrder,
+                      !hasItems || placingOrder
+                          ? null
+                          : placeOrder,
                   icon: placingOrder
                       ? const SizedBox(
                           width: 22,
                           height: 22,
-                          child: CircularProgressIndicator(
+                          child:
+                              CircularProgressIndicator(
                             strokeWidth: 2,
                           ),
                         )
@@ -444,11 +699,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
                         ),
                   label: Text(
                     placingOrder
-                        ? 'Placing Order...'
+                        ? 'Confirming Order...'
                         : 'Place Order',
-                    style: const TextStyle(
+                    style:
+                        const TextStyle(
                       fontSize: 17,
-                      fontWeight: FontWeight.bold,
+                      fontWeight:
+                          FontWeight.bold,
                     ),
                   ),
                 ),
@@ -457,8 +714,18 @@ class _CheckoutPageState extends State<CheckoutPage> {
               const SizedBox(height: 12),
 
               const Text(
-                'By placing this order, you agree to receive your '
-                'order at the address provided above.',
+                'Stock is reduced only after the order is successfully confirmed.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 12,
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              const Text(
+                'By placing this order, you agree to receive your order at the address provided above.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.grey,
