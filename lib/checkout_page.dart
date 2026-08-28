@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:geolocator/geolocator.dart';
 
 import 'main.dart';
 
@@ -28,7 +28,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   final pincodeController = TextEditingController();
 
   // ============================================================
-  // GIFT RECIPIENT DETAILS
+  // GIFT DETAILS
   // ============================================================
 
   final giftNameController = TextEditingController();
@@ -41,92 +41,156 @@ class _CheckoutPageState extends State<CheckoutPage> {
   // LOCATION
   // ============================================================
 
-  final latitudeController = TextEditingController();
-  final longitudeController = TextEditingController();
+  double? latitude;
+  double? longitude;
 
+  bool gettingLocation = false;
   bool placingOrder = false;
 
-  // false = Myself
+  // false = Self
   // true = Gift
   bool isGift = false;
 
   @override
   void initState() {
     super.initState();
-
-    loadCustomerData();
+    loadCustomerDetails();
   }
 
   // ============================================================
   // LOAD CUSTOMER DATA
   // ============================================================
 
-  Future<void> loadCustomerData() async {
+  Future<void> loadCustomerDetails() async {
     final user = FirebaseAuth.instance.currentUser;
 
     if (user == null) return;
 
-    final snapshot = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .get();
+    // Firebase Auth mobile number
+    final authMobile = user.phoneNumber ?? '';
 
-    final data = snapshot.data() ?? {};
-
-    if (!mounted) return;
-
-    setState(() {
-      nameController.text =
-          data['name']?.toString() ??
-              user.displayName ??
-              '';
-
-      mobileController.text =
-          cleanMobile(
-        data['mobile']?.toString() ??
-            user.phoneNumber ??
-            '',
+    if (authMobile.isNotEmpty) {
+      final cleanMobile = authMobile.replaceAll(
+        RegExp(r'^\+91'),
+        '',
       );
 
+      mobileController.text = cleanMobile;
+    }
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (!doc.exists) return;
+
+      final data = doc.data() ?? {};
+
+      nameController.text =
+          data['name']?.toString() ??
+          user.displayName ??
+          '';
+
       emailController.text =
-          data['email']?.toString() ?? '';
+          data['email']?.toString() ??
+          user.email ??
+          '';
 
-      addressController.text =
-          data['address']?.toString() ?? '';
+      final savedMobile =
+          data['mobile']?.toString() ?? '';
 
-      cityController.text =
-          data['city']?.toString() ?? '';
+      if (savedMobile.isNotEmpty) {
+        mobileController.text = savedMobile;
+      }
+    } catch (_) {
+      nameController.text = user.displayName ?? '';
+      emailController.text = user.email ?? '';
+    }
 
-      pincodeController.text =
-          data['pincode']?.toString() ?? '';
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  // ============================================================
+  // GET CURRENT LOCATION
+  // LOCATION IS OPTIONAL
+  // ============================================================
+
+  Future<void> getLocation() async {
+    if (gettingLocation) return;
+
+    setState(() {
+      gettingLocation = true;
     });
-  }
 
-  // ============================================================
-  // CLEAN MOBILE
-  // ============================================================
+    try {
+      bool serviceEnabled =
+          await Geolocator.isLocationServiceEnabled();
 
-  String cleanMobile(String value) {
-    String mobile = value.trim();
+      if (!serviceEnabled) {
+        showMessage(
+          'Location service is turned off. You can continue without location.',
+        );
+        return;
+      }
 
-    if (mobile.startsWith('+91')) {
-      mobile = mobile.substring(3);
+      LocationPermission permission =
+          await Geolocator.checkPermission();
+
+      if (permission == LocationPermission.denied) {
+        permission =
+            await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied) {
+        showMessage(
+          'Location permission denied. Location is optional.',
+        );
+        return;
+      }
+
+      if (permission ==
+          LocationPermission.deniedForever) {
+        showMessage(
+          'Location permission permanently denied. You can continue without location.',
+        );
+        return;
+      }
+
+      final position =
+          await Geolocator.getCurrentPosition(
+        locationSettings:
+            const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        latitude = position.latitude;
+        longitude = position.longitude;
+      });
+
+      showMessage(
+        'Location captured successfully.',
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      showMessage(
+        'Unable to get location. You can continue without it.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          gettingLocation = false;
+        });
+      }
     }
-
-    if (mobile.startsWith('91') &&
-        mobile.length == 12) {
-      mobile = mobile.substring(2);
-    }
-
-    return mobile;
-  }
-
-  // ============================================================
-  // MONEY
-  // ============================================================
-
-  String money(double value) {
-    return '₹${value.toStringAsFixed(0)}';
   }
 
   // ============================================================
@@ -139,11 +203,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
     }
 
     if (CartController.items.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Your cart is empty'),
-        ),
-      );
+      showMessage('Your cart is empty.');
       return;
     }
 
@@ -151,95 +211,25 @@ class _CheckoutPageState extends State<CheckoutPage> {
         FirebaseAuth.instance.currentUser;
 
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Please login with your mobile number before placing an order.',
-          ),
-        ),
+      showMessage(
+        'Please login with your mobile number before placing an order.',
       );
       return;
     }
 
     // ==========================================================
-    // RULE 1: CUSTOMER MOBILE MUST BE 10 DIGITS
+    // GIFT VALIDATION
     // ==========================================================
-
-    final customerMobile =
-        cleanMobile(mobileController.text);
-
-    if (!RegExp(
-      r'^[0-9]{10}$',
-    ).hasMatch(customerMobile)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Customer mobile number must be exactly 10 digits.',
-          ),
-        ),
-      );
-      return;
-    }
-
-    // ==========================================================
-    // GIFT MOBILE VALIDATION
-    // ==========================================================
-
-    String giftMobile = '';
 
     if (isGift) {
-      giftMobile =
-          cleanMobile(giftMobileController.text);
+      final giftMobile =
+          giftMobileController.text.trim();
 
       if (!RegExp(
         r'^[0-9]{10}$',
       ).hasMatch(giftMobile)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Gift recipient mobile number must be exactly 10 digits.',
-            ),
-          ),
-        );
-        return;
-      }
-    }
-
-    // ==========================================================
-    // OPTIONAL LOCATION
-    // ==========================================================
-
-    final latitude =
-        latitudeController.text.trim();
-
-    final longitude =
-        longitudeController.text.trim();
-
-    if (latitude.isNotEmpty) {
-      final lat = double.tryParse(latitude);
-
-      if (lat == null || lat < -90 || lat > 90) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Please enter a valid latitude.',
-            ),
-          ),
-        );
-        return;
-      }
-    }
-
-    if (longitude.isNotEmpty) {
-      final lng = double.tryParse(longitude);
-
-      if (lng == null || lng < -180 || lng > 180) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Please enter a valid longitude.',
-            ),
-          ),
+        showMessage(
+          'Gift recipient mobile number must be exactly 10 digits.',
         );
         return;
       }
@@ -272,7 +262,29 @@ class _CheckoutPageState extends State<CheckoutPage> {
           <Map<String, dynamic>>[];
 
       // ==========================================================
-      // FIRESTORE TRANSACTION
+      // WHATSAPP NUMBERS
+      // ==========================================================
+
+      final customerMobile =
+          mobileController.text.trim();
+
+      final giftMobile =
+          isGift
+              ? giftMobileController.text.trim()
+              : '';
+
+      // Customer WhatsApp number
+      final customerWhatsApp =
+          '+91$customerMobile';
+
+      // Gift recipient WhatsApp number
+      final giftWhatsApp =
+          isGift && giftMobile.isNotEmpty
+              ? '+91$giftMobile'
+              : '';
+
+      // ==========================================================
+      // TRANSACTION
       // ==========================================================
 
       await firestore.runTransaction(
@@ -282,9 +294,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   DocumentSnapshot<
                       Map<String, dynamic>>>{};
 
-          // ======================================================
-          // READ PRODUCTS FIRST
-          // ======================================================
+          // ------------------------------------------------------
+          // READ ALL PRODUCTS FIRST
+          // ------------------------------------------------------
 
           for (final cartItem in cartItems) {
             final productRef =
@@ -302,9 +314,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 snapshot;
           }
 
-          // ======================================================
-          // CHECK STOCK + UPDATE STOCK
-          // ======================================================
+          // ------------------------------------------------------
+          // CHECK STOCK
+          // ------------------------------------------------------
 
           for (final cartItem in cartItems) {
             final productSnapshot =
@@ -367,10 +379,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
               },
             );
 
-            // ====================================================
-            // ORDER ITEM
-            // ====================================================
-
             orderItems.add({
               'productId':
                   cartItem.product.id,
@@ -392,187 +400,155 @@ class _CheckoutPageState extends State<CheckoutPage> {
           }
 
           // ======================================================
-          // WHATSAPP RECIPIENTS
-          // ======================================================
-
-          final whatsappRecipients =
-              <Map<String, dynamic>>[
-            {
-              'type': 'customer',
-              'mobile': customerMobile,
-            },
-          ];
-
-          if (isGift) {
-            whatsappRecipients.add({
-              'type': 'gift_recipient',
-              'mobile': giftMobile,
-            });
-          }
-
-          // ======================================================
-          // ORDER DATA
-          // ======================================================
-
-          final orderData =
-              <String, dynamic>{
-            'userId': user.uid,
-
-            'customerName':
-                nameController.text.trim(),
-
-            'mobile':
-                customerMobile,
-
-            'email':
-                emailController.text.trim(),
-
-            'address':
-                addressController.text.trim(),
-
-            'city':
-                cityController.text.trim(),
-
-            'pincode':
-                pincodeController.text.trim(),
-
-            // ==================================================
-            // SELF / GIFT
-            // ==================================================
-
-            'orderFor':
-                isGift ? 'Gift' : 'Myself',
-
-            'isGift':
-                isGift,
-
-            // ==================================================
-            // GIFT DETAILS
-            // ==================================================
-
-            'giftRecipient':
-                isGift
-                    ? {
-                        'name':
-                            giftNameController
-                                .text
-                                .trim(),
-                        'mobile':
-                            giftMobile,
-                        'address':
-                            giftAddressController
-                                .text
-                                .trim(),
-                        'city':
-                            giftCityController
-                                .text
-                                .trim(),
-                        'pincode':
-                            giftPincodeController
-                                .text
-                                .trim(),
-                      }
-                    : null,
-
-            // ==================================================
-            // OPTIONAL GPS
-            // ==================================================
-
-            'deliveryLocation':
-                latitude.isNotEmpty &&
-                        longitude.isNotEmpty
-                    ? {
-                        'latitude':
-                            double.parse(
-                          latitude,
-                        ),
-                        'longitude':
-                            double.parse(
-                          longitude,
-                        ),
-                      }
-                    : null,
-
-            // ==================================================
-            // PRODUCTS
-            // ==================================================
-
-            'items':
-                orderItems,
-
-            'totalAmount':
-                totalAmount,
-
-            'status':
-                'Placed',
-
-            'paymentMethod':
-                'Cash on Delivery',
-
-            // ==================================================
-            // WHATSAPP DATA
-            // ==================================================
-
-            'whatsappRecipients':
-                whatsappRecipients,
-
-            'whatsappStatus':
-                'Pending',
-
-            'createdAt':
-                FieldValue.serverTimestamp(),
-          };
-
-          // ======================================================
           // CREATE ORDER
           // ======================================================
 
           transaction.set(
             orderRef,
-            orderData,
+            {
+              // --------------------------------------------------
+              // BASIC ORDER
+              // --------------------------------------------------
+
+              'userId': user.uid,
+
+              'customerName':
+                  nameController.text.trim(),
+
+              'customerMobile':
+                  customerMobile,
+
+              'customerWhatsApp':
+                  customerWhatsApp,
+
+              'customerEmail':
+                  emailController.text.trim(),
+
+              'customerAddress':
+                  addressController.text.trim(),
+
+              'customerCity':
+                  cityController.text.trim(),
+
+              'customerPincode':
+                  pincodeController.text.trim(),
+
+              // --------------------------------------------------
+              // SELF / GIFT
+              // --------------------------------------------------
+
+              'orderFor':
+                  isGift ? 'Gift' : 'Self',
+
+              'isGift':
+                  isGift,
+
+              // --------------------------------------------------
+              // GIFT RECIPIENT
+              // --------------------------------------------------
+
+              'giftRecipient':
+                  isGift
+                      ? {
+                          'name':
+                              giftNameController.text.trim(),
+                          'mobile':
+                              giftMobile,
+                          'whatsApp':
+                              giftWhatsApp,
+                          'address':
+                              giftAddressController
+                                  .text
+                                  .trim(),
+                          'city':
+                              giftCityController
+                                  .text
+                                  .trim(),
+                          'pincode':
+                              giftPincodeController
+                                  .text
+                                  .trim(),
+                        }
+                      : null,
+
+              // --------------------------------------------------
+              // LOCATION
+              // OPTIONAL
+              // --------------------------------------------------
+
+              'deliveryLocation':
+                  latitude != null &&
+                          longitude != null
+                      ? {
+                          'latitude':
+                              latitude,
+                          'longitude':
+                              longitude,
+                        }
+                      : null,
+
+              'latitude':
+                  latitude,
+
+              'longitude':
+                  longitude,
+
+              // --------------------------------------------------
+              // ITEMS
+              // --------------------------------------------------
+
+              'items':
+                  orderItems,
+
+              'totalAmount':
+                  totalAmount,
+
+              // --------------------------------------------------
+              // PAYMENT
+              // --------------------------------------------------
+
+              'status':
+                  'Placed',
+
+              'paymentMethod':
+                  'Cash on Delivery',
+
+              // --------------------------------------------------
+              // WHATSAPP READY DATA
+              // --------------------------------------------------
+
+              'whatsappNotifications':
+                  {
+                'customer':
+                    customerWhatsApp,
+                'giftRecipient':
+                    giftWhatsApp,
+                'sendToCustomer':
+                    true,
+                'sendToGiftRecipient':
+                    isGift,
+                'apiStatus':
+                    'Pending',
+              },
+
+              // --------------------------------------------------
+              // TIMESTAMP
+              // --------------------------------------------------
+
+              'createdAt':
+                  FieldValue.serverTimestamp(),
+            },
           );
         },
       );
 
       if (!mounted) return;
 
-      // ========================================================
-      // SAVE CUSTOMER PROFILE
-      // ========================================================
-
-      await firestore
-          .collection('users')
-          .doc(user.uid)
-          .set(
-        {
-          'uid': user.uid,
-          'name':
-              nameController.text.trim(),
-          'mobile':
-              customerMobile,
-          'email':
-              emailController.text.trim(),
-          'address':
-              addressController.text.trim(),
-          'city':
-              cityController.text.trim(),
-          'pincode':
-              pincodeController.text.trim(),
-          'updatedAt':
-              FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
-
-      // ========================================================
+      // ==========================================================
       // CLEAR CART ONLY AFTER SUCCESS
-      // ========================================================
+      // ==========================================================
 
       CartController.clear();
-
-      // ========================================================
-      // SUCCESS DIALOG
-      // ========================================================
 
       await showDialog(
         context: context,
@@ -594,11 +570,16 @@ class _CheckoutPageState extends State<CheckoutPage> {
               ],
             ),
             content: Text(
-              'Your order has been placed successfully.\n\n'
-              'Order ID:\n${orderRef.id}\n\n'
-              'Order for: '
-              '${isGift ? 'Gift' : 'Myself'}\n\n'
-              'Stock has been updated.',
+              isGift
+                  ? 'Your gift order has been placed successfully.\n\n'
+                    'Order ID:\n${orderRef.id}\n\n'
+                    'Customer WhatsApp:\n$customerWhatsApp\n\n'
+                    'Gift Recipient WhatsApp:\n$giftWhatsApp\n\n'
+                    'Stock has been updated.'
+                  : 'Your order has been placed successfully.\n\n'
+                    'Order ID:\n${orderRef.id}\n\n'
+                    'WhatsApp:\n$customerWhatsApp\n\n'
+                    'Stock has been updated.',
             ),
             actions: [
               FilledButton(
@@ -622,29 +603,16 @@ class _CheckoutPageState extends State<CheckoutPage> {
     } on FirebaseException catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Order failed:\n'
-            '${e.message ?? e.code}',
-          ),
-          duration:
-              const Duration(seconds: 5),
-        ),
+      showMessage(
+        'Order failed:\n${e.message ?? e.code}',
       );
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            e.toString().replaceFirst(
-              'Exception: ',
-              '',
-            ),
-          ),
-          duration:
-              const Duration(seconds: 5),
+      showMessage(
+        e.toString().replaceFirst(
+          'Exception: ',
+          '',
         ),
       );
     } finally {
@@ -671,9 +639,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
     String? Function(String?)? validator,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(
-        bottom: 14,
-      ),
+      padding:
+          const EdgeInsets.only(bottom: 14),
       child: TextFormField(
         controller: controller,
         keyboardType: keyboardType,
@@ -691,6 +658,47 @@ class _CheckoutPageState extends State<CheckoutPage> {
         ),
       ),
     );
+  }
+
+  // ============================================================
+  // MESSAGE
+  // ============================================================
+
+  void showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+        .hideCurrentSnackBar();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration:
+            const Duration(seconds: 4),
+      ),
+    );
+  }
+
+  // ============================================================
+  // DISPOSE
+  // ============================================================
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    mobileController.dispose();
+    emailController.dispose();
+    addressController.dispose();
+    cityController.dispose();
+    pincodeController.dispose();
+
+    giftNameController.dispose();
+    giftMobileController.dispose();
+    giftAddressController.dispose();
+    giftCityController.dispose();
+    giftPincodeController.dispose();
+
+    super.dispose();
   }
 
   // ============================================================
@@ -718,15 +726,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
           ),
         ),
       ),
-
       body: SafeArea(
         child: Form(
           key: _formKey,
-
           child: ListView(
             padding:
                 const EdgeInsets.all(16),
-
             children: [
               // ==================================================
               // DELIVERY DETAILS
@@ -736,8 +741,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 'Delivery Details',
                 style: TextStyle(
                   fontSize: 21,
-                  fontWeight:
-                      FontWeight.bold,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
 
@@ -753,18 +757,18 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     Icons.person_outline,
                 validator: (value) {
                   if (value == null ||
-                      value.trim().length < 2) {
-                    return
-                        'Enter your name';
+                      value.trim().isEmpty) {
+                    return 'Enter your name';
+                  }
+
+                  if (value.trim().length <
+                      2) {
+                    return 'Enter a valid name';
                   }
 
                   return null;
                 },
               ),
-
-              // ==================================================
-              // MOBILE - VERIFIED
-              // ==================================================
 
               inputField(
                 controller:
@@ -778,24 +782,19 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     TextInputType.phone,
                 enabled: false,
                 validator: (value) {
+                  final mobile =
+                      value?.trim() ?? '';
+
                   if (!RegExp(
                     r'^[0-9]{10}$',
-                  ).hasMatch(
-                    cleanMobile(
-                      value ?? '',
-                    ),
-                  )) {
+                  ).hasMatch(mobile)) {
                     return
-                        'Invalid mobile number';
+                        'Mobile number must be 10 digits';
                   }
 
                   return null;
                 },
               ),
-
-              // ==================================================
-              // EMAIL OPTIONAL
-              // ==================================================
 
               inputField(
                 controller:
@@ -819,8 +818,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   if (!RegExp(
                     r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
                   ).hasMatch(email)) {
-                    return
-                        'Enter a valid email';
+                    return 'Enter a valid email';
                   }
 
                   return null;
@@ -838,9 +836,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 maxLines: 3,
                 validator: (value) {
                   if (value == null ||
-                      value.trim().length < 5) {
+                      value.trim().length <
+                          5) {
                     return
-                        'Enter complete address';
+                        'Enter a complete address';
                   }
 
                   return null;
@@ -851,7 +850,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 controller:
                     cityController,
                 label: 'City',
-                hint: 'Enter city',
+                hint:
+                    'Enter your city',
                 icon:
                     Icons.location_city_outlined,
                 validator: (value) {
@@ -881,92 +881,115 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     value?.trim() ?? '',
                   )) {
                     return
-                        'Enter valid 6 digit PIN';
+                        'Enter a valid 6 digit PIN code';
                   }
 
                   return null;
                 },
               ),
 
-              const SizedBox(height: 8),
-
               // ==================================================
-              // RULE 2: OPTIONAL GPS
+              // LOCATION
               // ==================================================
 
-              const Text(
-                'Delivery Location (Optional)',
-                style: TextStyle(
-                  fontSize: 19,
-                  fontWeight:
-                      FontWeight.bold,
+              Card(
+                child: Padding(
+                  padding:
+                      const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(
+                            Icons.location_on,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Delivery Location',
+                            style:
+                                TextStyle(
+                              fontWeight:
+                                  FontWeight.bold,
+                              fontSize: 17,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(
+                          height: 6),
+
+                      const Text(
+                        'GPS location is optional but can help with better delivery.',
+                        style:
+                            TextStyle(
+                          color: Colors.grey,
+                          fontSize: 13,
+                        ),
+                      ),
+
+                      const SizedBox(
+                          height: 10),
+
+                      if (latitude != null &&
+                          longitude != null)
+                        Text(
+                          'Latitude: ${latitude!.toStringAsFixed(6)}\n'
+                          'Longitude: ${longitude!.toStringAsFixed(6)}',
+                          style:
+                              const TextStyle(
+                            fontWeight:
+                                FontWeight.w600,
+                          ),
+                        ),
+
+                      const SizedBox(
+                          height: 8),
+
+                      OutlinedButton.icon(
+                        onPressed:
+                            gettingLocation
+                                ? null
+                                : getLocation,
+                        icon: gettingLocation
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child:
+                                    CircularProgressIndicator(
+                                  strokeWidth:
+                                      2,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.my_location,
+                              ),
+                        label: Text(
+                          gettingLocation
+                              ? 'Getting Location...'
+                              : latitude != null
+                                  ? 'Update Location'
+                                  : 'Add Current Location',
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
 
-              const SizedBox(height: 5),
-
-              const Text(
-                'Latitude and longitude can help us locate the delivery address more accurately.',
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 12,
-                ),
-              ),
-
-              const SizedBox(height: 12),
-
-              Row(
-                children: [
-                  Expanded(
-                    child: inputField(
-                      controller:
-                          latitudeController,
-                      label: 'Latitude',
-                      hint: 'e.g. 29.92',
-                      icon:
-                          Icons.my_location,
-                      keyboardType:
-                          const TextInputType
-                              .numberWithOptions(
-                        decimal: true,
-                        signed: true,
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(width: 10),
-
-                  Expanded(
-                    child: inputField(
-                      controller:
-                          longitudeController,
-                      label: 'Longitude',
-                      hint: 'e.g. 74.88',
-                      icon:
-                          Icons.location_on_outlined,
-                      keyboardType:
-                          const TextInputType
-                              .numberWithOptions(
-                        decimal: true,
-                        signed: true,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 8),
+              const SizedBox(height: 18),
 
               // ==================================================
-              // RULE 3: ORDER FOR MYSELF / GIFT
+              // SELF / GIFT
               // ==================================================
 
               const Text(
-                'Who is this order for?',
+                'Order For',
                 style: TextStyle(
-                  fontSize: 19,
-                  fontWeight:
-                      FontWeight.bold,
+                  fontSize: 21,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
 
@@ -978,60 +1001,41 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     RadioListTile<bool>(
                       value: false,
                       groupValue: isGift,
-                      onChanged:
-                          placingOrder
-                              ? null
-                              : (value) {
-                                  setState(() {
-                                    isGift =
-                                        false;
-                                  });
-                                },
+                      onChanged: (value) {
+                        setState(() {
+                          isGift = false;
+                        });
+                      },
                       title: const Text(
-                        'Myself',
+                        'For Myself',
                         style:
                             TextStyle(
                           fontWeight:
                               FontWeight.bold,
                         ),
                       ),
-                      subtitle:
-                          const Text(
-                        'Deliver to my address',
-                      ),
-                      secondary:
-                          const Icon(
-                        Icons.person,
+                      subtitle: const Text(
+                        'Deliver the order to me',
                       ),
                     ),
-
                     RadioListTile<bool>(
                       value: true,
                       groupValue: isGift,
-                      onChanged:
-                          placingOrder
-                              ? null
-                              : (value) {
-                                  setState(() {
-                                    isGift =
-                                        true;
-                                  });
-                                },
+                      onChanged: (value) {
+                        setState(() {
+                          isGift = true;
+                        });
+                      },
                       title: const Text(
-                        'Gift for someone',
+                        'Gift Someone',
                         style:
                             TextStyle(
                           fontWeight:
                               FontWeight.bold,
                         ),
                       ),
-                      subtitle:
-                          const Text(
-                        'Enter recipient details',
-                      ),
-                      secondary:
-                          const Icon(
-                        Icons.card_giftcard,
+                      subtitle: const Text(
+                        'Send this order to someone else',
                       ),
                     ),
                   ],
@@ -1043,22 +1047,20 @@ class _CheckoutPageState extends State<CheckoutPage> {
               // ==================================================
 
               if (isGift) ...[
-                const SizedBox(height: 14),
+                const SizedBox(height: 18),
 
                 Card(
                   child: Padding(
                     padding:
-                        const EdgeInsets.all(
-                      14,
-                    ),
+                        const EdgeInsets.all(14),
                     child: Column(
                       crossAxisAlignment:
-                          CrossAxisAlignment
-                              .start,
+                          CrossAxisAlignment.start,
                       children: [
                         const Text(
                           'Gift Recipient Details',
-                          style: TextStyle(
+                          style:
+                              TextStyle(
                             fontSize: 19,
                             fontWeight:
                                 FontWeight.bold,
@@ -1066,8 +1068,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                         ),
 
                         const SizedBox(
-                          height: 14,
-                        ),
+                            height: 14),
 
                         inputField(
                           controller:
@@ -1086,9 +1087,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
                             if (value ==
                                     null ||
-                                value.trim()
-                                        .length <
-                                    2) {
+                                value
+                                    .trim()
+                                    .isEmpty) {
                               return
                                   'Enter recipient name';
                             }
@@ -1101,7 +1102,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           controller:
                               giftMobileController,
                           label:
-                              'Recipient Mobile',
+                              'Recipient Mobile Number',
                           hint:
                               '10 digit mobile number',
                           icon:
@@ -1114,15 +1115,16 @@ class _CheckoutPageState extends State<CheckoutPage> {
                               return null;
                             }
 
+                            final mobile =
+                                value?.trim() ??
+                                    '';
+
                             if (!RegExp(
                               r'^[0-9]{10}$',
                             ).hasMatch(
-                              cleanMobile(
-                                value ?? '',
-                              ),
-                            )) {
+                                mobile)) {
                               return
-                                  'Enter valid 10 digit mobile';
+                                  'Enter a valid 10 digit number';
                             }
 
                             return null;
@@ -1147,7 +1149,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
                             if (value ==
                                     null ||
-                                value.trim()
+                                value
+                                        .trim()
                                         .length <
                                     5) {
                               return
@@ -1166,7 +1169,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           hint:
                               'Enter recipient city',
                           icon:
-                              Icons.location_city,
+                              Icons.location_city_outlined,
                           validator:
                               (value) {
                             if (!isGift) {
@@ -1175,7 +1178,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
                             if (value ==
                                     null ||
-                                value.trim()
+                                value
+                                    .trim()
                                     .isEmpty) {
                               return
                                   'Enter recipient city';
@@ -1209,11 +1213,23 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                   '',
                             )) {
                               return
-                                  'Enter valid 6 digit PIN';
+                                  'Enter a valid 6 digit PIN code';
                             }
 
                             return null;
                           },
+                        ),
+
+                        const SizedBox(
+                            height: 4),
+
+                        const Text(
+                          'Gift recipient will also receive the order information on WhatsApp once the WhatsApp API is connected.',
+                          style:
+                              TextStyle(
+                            color: Colors.grey,
+                            fontSize: 12,
+                          ),
                         ),
                       ],
                     ),
@@ -1221,7 +1237,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 ),
               ],
 
-              const SizedBox(height: 10),
+              const SizedBox(height: 20),
 
               // ==================================================
               // PAYMENT
@@ -1229,19 +1245,18 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
               Card(
                 child: ListTile(
-                  leading:
-                      const Icon(
+                  leading: const Icon(
                     Icons.payments_outlined,
                   ),
                   title: const Text(
                     'Cash on Delivery',
-                    style: TextStyle(
+                    style:
+                        TextStyle(
                       fontWeight:
                           FontWeight.bold,
                     ),
                   ),
-                  subtitle:
-                      const Text(
+                  subtitle: const Text(
                     'Pay when your order is delivered',
                   ),
                   trailing:
@@ -1262,8 +1277,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 'Order Summary',
                 style: TextStyle(
                   fontSize: 21,
-                  fontWeight:
-                      FontWeight.bold,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
 
@@ -1272,17 +1286,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
               Card(
                 child: Padding(
                   padding:
-                      const EdgeInsets.all(
-                    14,
-                  ),
+                      const EdgeInsets.all(14),
                   child: Column(
                     children: [
                       ...items.map(
                         (item) {
                           return Padding(
                             padding:
-                                const EdgeInsets
-                                    .only(
+                                const EdgeInsets.only(
                               bottom: 12,
                             ),
                             child: Row(
@@ -1293,14 +1304,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                   ),
                                 ),
                                 Text(
-                                  money(
-                                    item.totalPrice,
-                                  ),
+                                  '₹${item.totalPrice.toStringAsFixed(0)}',
                                   style:
                                       const TextStyle(
                                     fontWeight:
-                                        FontWeight
-                                            .bold,
+                                        FontWeight.bold,
                                   ),
                                 ),
                               ],
@@ -1318,21 +1326,20 @@ class _CheckoutPageState extends State<CheckoutPage> {
                         children: [
                           const Text(
                             'Total Amount',
-                            style: TextStyle(
+                            style:
+                                TextStyle(
                               fontSize: 19,
                               fontWeight:
-                                  FontWeight
-                                      .bold,
+                                  FontWeight.bold,
                             ),
                           ),
                           Text(
-                            money(total),
+                            '₹${total.toStringAsFixed(0)}',
                             style:
                                 const TextStyle(
                               fontSize: 22,
                               fontWeight:
-                                  FontWeight
-                                      .bold,
+                                  FontWeight.bold,
                             ),
                           ),
                         ],
@@ -1350,13 +1357,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
               SizedBox(
                 height: 54,
-                child:
-                    FilledButton.icon(
+                child: FilledButton.icon(
                   onPressed:
                       placingOrder
                           ? null
                           : placeOrder,
-
                   icon: placingOrder
                       ? const SizedBox(
                           width: 22,
@@ -1370,12 +1375,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           Icons
                               .shopping_bag_outlined,
                         ),
-
                   label: Text(
                     placingOrder
                         ? 'Placing Order...'
-                        : 'Place Order',
-
+                        : isGift
+                            ? 'Place Gift Order'
+                            : 'Place Order',
                     style:
                         const TextStyle(
                       fontSize: 17,
@@ -1390,7 +1395,20 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
               const Text(
                 'Stock is reduced only after the order is successfully created.',
-                textAlign: TextAlign.center,
+                textAlign:
+                    TextAlign.center,
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 12,
+                ),
+              ),
+
+              const SizedBox(height: 5),
+
+              const Text(
+                'WhatsApp numbers are saved with the order for notification.',
+                textAlign:
+                    TextAlign.center,
                 style: TextStyle(
                   color: Colors.grey,
                   fontSize: 12,
@@ -1403,26 +1421,5 @@ class _CheckoutPageState extends State<CheckoutPage> {
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    nameController.dispose();
-    mobileController.dispose();
-    emailController.dispose();
-    addressController.dispose();
-    cityController.dispose();
-    pincodeController.dispose();
-
-    giftNameController.dispose();
-    giftMobileController.dispose();
-    giftAddressController.dispose();
-    giftCityController.dispose();
-    giftPincodeController.dispose();
-
-    latitudeController.dispose();
-    longitudeController.dispose();
-
-    super.dispose();
   }
 }
