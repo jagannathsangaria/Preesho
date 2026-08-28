@@ -26,9 +26,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
   final cityController = TextEditingController();
   final pincodeController = TextEditingController();
 
+  // Optional customer email
+  final emailController = TextEditingController();
+
   // ============================================================
   // GIFT DETAILS
   // ============================================================
+
+  bool isGift = false;
 
   final giftNameController = TextEditingController();
   final giftMobileController = TextEditingController();
@@ -36,19 +41,19 @@ class _CheckoutPageState extends State<CheckoutPage> {
   final giftCityController = TextEditingController();
   final giftPincodeController = TextEditingController();
 
-  bool placingOrder = false;
-  bool gettingLocation = false;
-
-  // true = self
-  // false = gift
-  bool isSelfOrder = true;
-
   // ============================================================
-  // OPTIONAL LOCATION
+  // LOCATION
   // ============================================================
 
   double? latitude;
   double? longitude;
+  bool gettingLocation = false;
+
+  bool placingOrder = false;
+
+  // ============================================================
+  // INIT
+  // ============================================================
 
   @override
   void initState() {
@@ -58,53 +63,60 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
     if (user != null) {
       nameController.text = user.displayName ?? '';
+      emailController.text = user.email ?? '';
+    }
 
-      // If Firebase phone authentication is being used,
-      // Firebase may already contain the customer's phone.
-      final phone = user.phoneNumber ?? '';
+    loadCustomerData();
+  }
 
-      if (phone.isNotEmpty) {
-        String cleanPhone = phone.replaceAll('+91', '');
+  // ============================================================
+  // LOAD CUSTOMER DATA
+  // ============================================================
 
-        if (cleanPhone.length == 10) {
-          mobileController.text = cleanPhone;
+  Future<void> loadCustomerData() async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) return;
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (!snapshot.exists) return;
+
+      final data = snapshot.data();
+
+      if (data == null) return;
+
+      if (!mounted) return;
+
+      setState(() {
+        if (nameController.text.trim().isEmpty) {
+          nameController.text =
+              data['name']?.toString() ?? '';
         }
-      }
+
+        mobileController.text =
+            data['mobile']?.toString() ?? '';
+
+        emailController.text =
+            data['email']?.toString() ??
+                FirebaseAuth.instance.currentUser?.email ??
+                '';
+      });
+    } catch (_) {
+      // Customer data loading failure should not block checkout.
     }
   }
 
-  @override
-  void dispose() {
-    nameController.dispose();
-    mobileController.dispose();
-    addressController.dispose();
-    cityController.dispose();
-    pincodeController.dispose();
-
-    giftNameController.dispose();
-    giftMobileController.dispose();
-    giftAddressController.dispose();
-    giftCityController.dispose();
-    giftPincodeController.dispose();
-
-    super.dispose();
-  }
-
   // ============================================================
-  // MONEY
-  // ============================================================
-
-  String money(double value) {
-    return '₹${value.toStringAsFixed(0)}';
-  }
-
-  // ============================================================
-  // GET OPTIONAL LOCATION
+  // GET LOCATION
+  // LOCATION IS OPTIONAL
   // ============================================================
 
   Future<void> getCurrentLocation() async {
-    if (gettingLocation) return;
-
     setState(() {
       gettingLocation = true;
     });
@@ -114,16 +126,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
           await Geolocator.isLocationServiceEnabled();
 
       if (!serviceEnabled) {
-        if (!mounted) return;
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Location service is disabled. You can continue without location.',
-            ),
-          ),
+        showMessage(
+          'Location service is turned off. You can continue without location.',
         );
-
         return;
       }
 
@@ -136,18 +141,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
       }
 
       if (permission == LocationPermission.denied ||
-          permission ==
-              LocationPermission.deniedForever) {
-        if (!mounted) return;
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Location permission not available. Location is optional.',
-            ),
-          ),
+          permission == LocationPermission.deniedForever) {
+        showMessage(
+          'Location permission not available. Location is optional.',
         );
-
         return;
       }
 
@@ -166,22 +163,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
         longitude = position.longitude;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Location added successfully.',
-          ),
-        ),
+      showMessage(
+        'Location added successfully.',
       );
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Could not get location. You can continue without it.',
-          ),
-        ),
+      showMessage(
+        'Could not get location. You can continue without it.',
       );
     } finally {
       if (mounted) {
@@ -193,39 +182,39 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }
 
   // ============================================================
-  // WHATSAPP NUMBER
+  // MONEY
   // ============================================================
 
-  String whatsappNumber(String mobile) {
-    String number =
-        mobile.replaceAll(RegExp(r'[^0-9]'), '');
-
-    if (number.startsWith('91') &&
-        number.length == 12) {
-      return number;
-    }
-
-    if (number.length == 10) {
-      return '91$number';
-    }
-
-    return number;
+  String money(double value) {
+    return '₹${value.toStringAsFixed(0)}';
   }
 
   // ============================================================
-  // OPEN WHATSAPP
+  // WHATSAPP
+  //
+  // Opens WhatsApp with order information.
+  // This is NOT WhatsApp Business API yet.
   // ============================================================
 
   Future<void> openWhatsApp({
     required String mobile,
     required String message,
   }) async {
-    final number = whatsappNumber(mobile);
+    final cleanMobile =
+        mobile.replaceAll(RegExp(r'[^0-9]'), '');
 
-    if (number.isEmpty) return;
+    if (cleanMobile.length != 10) {
+      showMessage(
+        'Invalid WhatsApp mobile number.',
+      );
+      return;
+    }
+
+    final whatsappNumber =
+        '91$cleanMobile';
 
     final uri = Uri.parse(
-      'https://wa.me/$number?text=${Uri.encodeComponent(message)}',
+      'https://wa.me/$whatsappNumber?text=${Uri.encodeComponent(message)}',
     );
 
     try {
@@ -235,24 +224,16 @@ class _CheckoutPageState extends State<CheckoutPage> {
       );
 
       if (!launched && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'WhatsApp could not be opened.',
-            ),
-          ),
+        showMessage(
+          'WhatsApp could not be opened.',
         );
       }
     } catch (_) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Unable to open WhatsApp.',
-          ),
-        ),
-      );
+      if (mounted) {
+        showMessage(
+          'WhatsApp could not be opened.',
+        );
+      }
     }
   }
 
@@ -260,24 +241,24 @@ class _CheckoutPageState extends State<CheckoutPage> {
   // WHATSAPP MESSAGE
   // ============================================================
 
-  String createWhatsAppMessage({
+  String buildWhatsAppMessage({
     required String orderId,
-    required bool gift,
     required String receiverName,
     required String receiverMobile,
     required String receiverAddress,
     required String receiverCity,
     required String receiverPincode,
     required double totalAmount,
+    required bool gift,
   }) {
     final items = CartController.items;
 
-    final itemText = items.map((item) {
-      return '• ${item.name} x${item.quantity} - ${money(item.totalPrice)}';
+    final itemLines = items.map((item) {
+      return '• ${item.name} × ${item.quantity} - ${money(item.totalPrice)}';
     }).join('\n');
 
     return '''
-Preesho Order Confirmation 🛍️
+Preesho Order Confirmation
 
 Order ID:
 $orderId
@@ -289,32 +270,24 @@ Customer Mobile:
 ${mobileController.text.trim()}
 
 Order Type:
-${gift ? 'Gift Order 🎁' : 'Self Order'}
+${gift ? 'Gift Order' : 'Self Order'}
 
-${gift ? '''
-Gift Recipient:
+Delivery To:
 $receiverName
-
-Recipient Mobile:
 $receiverMobile
-
-Delivery Address:
 $receiverAddress
 $receiverCity - $receiverPincode
-''' : '''
-Delivery Address:
-${addressController.text.trim()}
-${cityController.text.trim()} - ${pincodeController.text.trim()}
-'''}
 
 Items:
-$itemText
+$itemLines
 
 Total Amount:
 ${money(totalAmount)}
 
 Payment:
 Cash on Delivery
+
+${latitude != null && longitude != null ? 'Delivery Location:\nLatitude: $latitude\nLongitude: $longitude\n' : ''}
 
 Thank you for shopping with Preesho.
 ''';
@@ -330,12 +303,8 @@ Thank you for shopping with Preesho.
     }
 
     if (CartController.items.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Your cart is empty.',
-          ),
-        ),
+      showMessage(
+        'Your cart is empty.',
       );
       return;
     }
@@ -344,12 +313,8 @@ Thank you for shopping with Preesho.
         FirebaseAuth.instance.currentUser;
 
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Please login with your mobile number before placing an order.',
-          ),
-        ),
+      showMessage(
+        'Please login with mobile number and OTP before placing an order.',
       );
       return;
     }
@@ -380,15 +345,44 @@ Thank you for shopping with Preesho.
       final orderItems =
           <Map<String, dynamic>>[];
 
+      // ========================================================
+      // DELIVERY DETAILS
+      // ========================================================
+
+      final deliveryName = isGift
+          ? giftNameController.text.trim()
+          : nameController.text.trim();
+
+      final deliveryMobile = isGift
+          ? giftMobileController.text.trim()
+          : mobileController.text.trim();
+
+      final deliveryAddress = isGift
+          ? giftAddressController.text.trim()
+          : addressController.text.trim();
+
+      final deliveryCity = isGift
+          ? giftCityController.text.trim()
+          : cityController.text.trim();
+
+      final deliveryPincode = isGift
+          ? giftPincodeController.text.trim()
+          : pincodeController.text.trim();
+
+      // ========================================================
+      // FIRESTORE TRANSACTION
+      // STOCK + ORDER CREATED TOGETHER
+      // ========================================================
+
       await firestore.runTransaction(
         (transaction) async {
-          // ======================================================
-          // READ ALL PRODUCTS FIRST
-          // ======================================================
-
           final productSnapshots =
               <String,
                   DocumentSnapshot<Map<String, dynamic>>>{};
+
+          // ----------------------------------------------------
+          // READ ALL PRODUCTS FIRST
+          // ----------------------------------------------------
 
           for (final cartItem in cartItems) {
             final productRef = firestore
@@ -405,24 +399,24 @@ Thank you for shopping with Preesho.
                 snapshot;
           }
 
-          // ======================================================
-          // CHECK STOCK + CREATE ORDER ITEMS
-          // ======================================================
+          // ----------------------------------------------------
+          // CHECK STOCK
+          // ----------------------------------------------------
 
           for (final cartItem in cartItems) {
-            final productSnapshot =
+            final snapshot =
                 productSnapshots[
                     cartItem.product.id];
 
-            if (productSnapshot == null ||
-                !productSnapshot.exists) {
+            if (snapshot == null ||
+                !snapshot.exists) {
               throw Exception(
                 '${cartItem.name} is no longer available.',
               );
             }
 
             final data =
-                productSnapshot.data() ?? {};
+                snapshot.data() ?? {};
 
             final active =
                 data['Active'] == true;
@@ -458,9 +452,12 @@ Thank you for shopping with Preesho.
                 currentStock -
                     cartItem.quantity;
 
-            final productRef = firestore
-                .collection('products')
-                .doc(cartItem.product.id);
+            final productRef =
+                firestore
+                    .collection('products')
+                    .doc(
+                      cartItem.product.id,
+                    );
 
             transaction.update(
               productRef,
@@ -489,112 +486,96 @@ Thank you for shopping with Preesho.
             });
           }
 
-          // ======================================================
-          // CUSTOMER DATA
-          // ======================================================
+          // ----------------------------------------------------
+          // CREATE ORDER
+          // ----------------------------------------------------
 
-          final customerData =
+          final orderData =
               <String, dynamic>{
-            'name':
+            'userId':
+                user.uid,
+
+            'customerName':
                 nameController.text.trim(),
-            'mobile':
+
+            'customerMobile':
                 mobileController.text.trim(),
-            'address':
-                addressController.text.trim(),
-            'city':
-                cityController.text.trim(),
-            'pincode':
-                pincodeController.text.trim(),
+
+            'customerEmail':
+                emailController.text.trim(),
+
+            'orderType':
+                isGift ? 'Gift' : 'Self',
+
+            'deliveryName':
+                deliveryName,
+
+            'deliveryMobile':
+                deliveryMobile,
+
+            'deliveryAddress':
+                deliveryAddress,
+
+            'deliveryCity':
+                deliveryCity,
+
+            'deliveryPincode':
+                deliveryPincode,
+
+            'isGift':
+                isGift,
+
+            'items':
+                orderItems,
+
+            'totalAmount':
+                totalAmount,
+
+            'status':
+                'Placed',
+
+            'paymentMethod':
+                'Cash on Delivery',
+
+            'createdAt':
+                FieldValue.serverTimestamp(),
           };
 
-          // ======================================================
-          // GIFT DATA
-          // ======================================================
+          // ----------------------------------------------------
+          // OPTIONAL LOCATION
+          // ----------------------------------------------------
 
-          final giftData =
-              isSelfOrder
-                  ? null
-                  : <String, dynamic>{
-                      'name':
-                          giftNameController.text.trim(),
-                      'mobile':
-                          giftMobileController.text.trim(),
-                      'address':
-                          giftAddressController.text.trim(),
-                      'city':
-                          giftCityController.text.trim(),
-                      'pincode':
-                          giftPincodeController.text.trim(),
-                    };
+          if (latitude != null &&
+              longitude != null) {
+            orderData['latitude'] =
+                latitude;
 
-          // ======================================================
-          // CREATE ORDER
-          // ======================================================
+            orderData['longitude'] =
+                longitude;
+          }
+
+          // ----------------------------------------------------
+          // GIFT RECIPIENT DETAILS
+          // ----------------------------------------------------
+
+          if (isGift) {
+            orderData['giftRecipient'] = {
+              'name':
+                  giftNameController.text.trim(),
+              'mobile':
+                  giftMobileController.text.trim(),
+              'address':
+                  giftAddressController.text.trim(),
+              'city':
+                  giftCityController.text.trim(),
+              'pincode':
+                  giftPincodeController.text.trim(),
+            };
+          }
 
           transaction.set(
             orderRef,
-            {
-              'userId':
-                  user.uid,
-
-              'customerName':
-                  nameController.text.trim(),
-
-              'mobile':
-                  mobileController.text.trim(),
-
-              'address':
-                  addressController.text.trim(),
-
-              'city':
-                  cityController.text.trim(),
-
-              'pincode':
-                  pincodeController.text.trim(),
-
-              'customer':
-                  customerData,
-
-              'orderType':
-                  isSelfOrder
-                      ? 'Self'
-                      : 'Gift',
-
-              'isGift':
-                  !isSelfOrder,
-
-              'giftRecipient':
-                  giftData,
-
-              'items':
-                  orderItems,
-
-              'totalAmount':
-                  totalAmount,
-
-              'status':
-                  'Placed',
-
-              'paymentMethod':
-                  'Cash on Delivery',
-
-              // ==================================================
-              // OPTIONAL LOCATION
-              // ==================================================
-
-              'latitude':
-                  latitude,
-
-              'longitude':
-                  longitude,
-
-              'locationAdded':
-                  latitude != null &&
-                      longitude != null,
-
-              'createdAt':
-                  FieldValue.serverTimestamp(),
-            },
+            orderData,
           );
         },
       );
@@ -602,46 +583,28 @@ Thank you for shopping with Preesho.
       if (!mounted) return;
 
       // ========================================================
-      // CLEAR CART AFTER SUCCESS
+      // CLEAR CART ONLY AFTER SUCCESS
       // ========================================================
 
       CartController.clear();
 
-      final recipientName =
-          isSelfOrder
-              ? nameController.text.trim()
-              : giftNameController.text.trim();
+      // ========================================================
+      // WHATSAPP MESSAGE
+      // ========================================================
 
-      final recipientMobile =
-          isSelfOrder
-              ? mobileController.text.trim()
-              : giftMobileController.text.trim();
-
-      final recipientAddress =
-          isSelfOrder
-              ? addressController.text.trim()
-              : giftAddressController.text.trim();
-
-      final recipientCity =
-          isSelfOrder
-              ? cityController.text.trim()
-              : giftCityController.text.trim();
-
-      final recipientPincode =
-          isSelfOrder
-              ? pincodeController.text.trim()
-              : giftPincodeController.text.trim();
-
-      final message =
-          createWhatsAppMessage(
+      final whatsappMessage =
+          buildWhatsAppMessage(
         orderId: orderRef.id,
-        gift: !isSelfOrder,
-        receiverName: recipientName,
-        receiverMobile: recipientMobile,
-        receiverAddress: recipientAddress,
-        receiverCity: recipientCity,
-        receiverPincode: recipientPincode,
+        receiverName: deliveryName,
+        receiverMobile: deliveryMobile,
+        receiverAddress:
+            deliveryAddress,
+        receiverCity:
+            deliveryCity,
+        receiverPincode:
+            deliveryPincode,
         totalAmount: totalAmount,
+        gift: isGift,
       );
 
       // ========================================================
@@ -671,11 +634,59 @@ Thank you for shopping with Preesho.
               child: Text(
                 'Your order has been placed successfully.\n\n'
                 'Order ID:\n${orderRef.id}\n\n'
-                'Stock has been updated.\n\n'
-                'WhatsApp confirmation is ready for sharing.',
+                'Stock has been updated.',
               ),
             ),
             actions: [
+              if (!isGift)
+                TextButton(
+                  onPressed: () async {
+                    await openWhatsApp(
+                      mobile:
+                          mobileController.text
+                              .trim(),
+                      message:
+                          whatsappMessage,
+                    );
+                  },
+                  child: const Text(
+                    'WhatsApp',
+                  ),
+                ),
+
+              if (isGift)
+                TextButton(
+                  onPressed: () async {
+                    await openWhatsApp(
+                      mobile:
+                          mobileController.text
+                              .trim(),
+                      message:
+                          whatsappMessage,
+                    );
+                  },
+                  child: const Text(
+                    'Customer WhatsApp',
+                  ),
+                ),
+
+              if (isGift)
+                TextButton(
+                  onPressed: () async {
+                    await openWhatsApp(
+                      mobile:
+                          giftMobileController
+                              .text
+                              .trim(),
+                      message:
+                          whatsappMessage,
+                    );
+                  },
+                  child: const Text(
+                    'Gift WhatsApp',
+                  ),
+                ),
+
               FilledButton(
                 onPressed: () {
                   Navigator.pop(
@@ -683,131 +694,10 @@ Thank you for shopping with Preesho.
                   );
                 },
                 child: const Text(
-                  'Continue',
+                  'Continue Shopping',
                 ),
               ),
             ],
-          );
-        },
-      );
-
-      if (!mounted) return;
-
-      // ========================================================
-      // WHATSAPP OPTIONS
-      // ========================================================
-
-      await showModalBottomSheet(
-        context: context,
-        builder: (sheetContext) {
-          return SafeArea(
-            child: Padding(
-              padding:
-                  const EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize:
-                    MainAxisSize.min,
-                crossAxisAlignment:
-                    CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Share Order on WhatsApp',
-                    textAlign:
-                        TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight:
-                          FontWeight.bold,
-                    ),
-                  ),
-
-                  const SizedBox(
-                    height: 8,
-                  ),
-
-                  const Text(
-                    'Choose which number should receive the order information.',
-                    textAlign:
-                        TextAlign.center,
-                  ),
-
-                  const SizedBox(
-                    height: 20,
-                  ),
-
-                  FilledButton.icon(
-                    onPressed: () async {
-                      Navigator.pop(
-                        sheetContext,
-                      );
-
-                      await openWhatsApp(
-                        mobile:
-                            mobileController
-                                .text
-                                .trim(),
-                        message:
-                            message,
-                      );
-                    },
-                    icon: const Icon(
-                      Icons.person,
-                    ),
-                    label: Text(
-                      'Customer WhatsApp\n${mobileController.text.trim()}',
-                      textAlign:
-                          TextAlign.center,
-                    ),
-                  ),
-
-                  const SizedBox(
-                    height: 12,
-                  ),
-
-                  if (!isSelfOrder)
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        Navigator.pop(
-                          sheetContext,
-                        );
-
-                        await openWhatsApp(
-                          mobile:
-                              giftMobileController
-                                  .text
-                                  .trim(),
-                          message:
-                              message,
-                        );
-                      },
-                      icon: const Icon(
-                        Icons.card_giftcard,
-                      ),
-                      label: Text(
-                        'Gift Recipient WhatsApp\n${giftMobileController.text.trim()}',
-                        textAlign:
-                            TextAlign.center,
-                      ),
-                    ),
-
-                  const SizedBox(
-                    height: 12,
-                  ),
-
-                  TextButton(
-                    onPressed: () {
-                      Navigator.pop(
-                        sheetContext,
-                      );
-                    },
-                    child:
-                        const Text(
-                      'Skip WhatsApp',
-                    ),
-                  ),
-                ],
-              ),
-            ),
           );
         },
       );
@@ -821,29 +711,17 @@ Thank you for shopping with Preesho.
     } on FirebaseException catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Order failed:\n${e.message ?? e.code}',
-          ),
-          duration:
-              const Duration(seconds: 5),
-        ),
+      showMessage(
+        'Order failed:\n${e.message ?? e.code}',
       );
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            e.toString().replaceFirst(
+      showMessage(
+        e.toString().replaceFirst(
               'Exception: ',
               '',
             ),
-          ),
-          duration:
-              const Duration(seconds: 5),
-        ),
       );
     } finally {
       if (mounted) {
@@ -852,6 +730,24 @@ Thank you for shopping with Preesho.
         });
       }
     }
+  }
+
+  // ============================================================
+  // MESSAGE
+  // ============================================================
+
+  void showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+        .hideCurrentSnackBar();
+
+    ScaffoldMessenger.of(context)
+        .showSnackBar(
+      SnackBar(
+        content: Text(message),
+      ),
+    );
   }
 
   // ============================================================
@@ -880,14 +776,10 @@ Thank you for shopping with Preesho.
         decoration: InputDecoration(
           labelText: label,
           hintText: hint,
-          prefixIcon:
-              Icon(icon),
+          prefixIcon: Icon(icon),
           counterText:
-              maxLength != null
-                  ? ''
-                  : null,
-          border:
-              OutlineInputBorder(
+              maxLength != null ? '' : null,
+          border: OutlineInputBorder(
             borderRadius:
                 BorderRadius.circular(14),
           ),
@@ -897,57 +789,22 @@ Thank you for shopping with Preesho.
   }
 
   // ============================================================
-  // MOBILE VALIDATOR
-  // ============================================================
-
-  String? validateMobile(
-    String? value,
-  ) {
-    final mobile =
-        value?.trim() ?? '';
-
-    if (mobile.isEmpty) {
-      return 'Mobile number is required';
-    }
-
-    if (!RegExp(
-      r'^[0-9]{10}$',
-    ).hasMatch(mobile)) {
-      return 'Enter exactly 10 digit mobile number';
-    }
-
-    return null;
-  }
-
-  // ============================================================
   // BUILD
   // ============================================================
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final items =
-        CartController.items;
-
-    final total =
-        items.fold<double>(
-      0,
-      (sum, item) =>
-          sum + item.totalPrice,
-    );
+  Widget build(BuildContext context) {
+    final items = CartController.items;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text(
           'Checkout',
           style: TextStyle(
-            fontWeight:
-                FontWeight.bold,
+            fontWeight: FontWeight.bold,
           ),
         ),
       ),
-
       body: SafeArea(
         child: Form(
           key: _formKey,
@@ -963,40 +820,91 @@ Thank you for shopping with Preesho.
                 'Delivery Details',
                 style: TextStyle(
                   fontSize: 21,
-                  fontWeight:
-                      FontWeight.bold,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
 
-              const SizedBox(
-                height: 14,
-              ),
+              const SizedBox(height: 14),
 
               inputField(
                 controller:
                     nameController,
-                label:
-                    'Full Name',
+                label: 'Full Name',
                 hint:
                     'Enter your full name',
                 icon:
                     Icons.person_outline,
-                validator:
-                    (value) {
+                validator: (value) {
                   if (value == null ||
-                      value
-                          .trim()
-                          .isEmpty) {
-                    return
-                        'Enter your name';
+                      value.trim().isEmpty) {
+                    return 'Enter your name';
                   }
 
-                  if (value
-                          .trim()
-                          .length <
+                  if (value.trim().length <
                       2) {
+                    return 'Enter a valid name';
+                  }
+
+                  return null;
+                },
+              ),
+
+              // ==================================================
+              // CUSTOMER MOBILE
+              // ==================================================
+
+              inputField(
+                controller:
+                    mobileController,
+                label: 'Mobile Number',
+                hint:
+                    '10 digit mobile number',
+                icon:
+                    Icons.phone_outlined,
+                keyboardType:
+                    TextInputType.phone,
+                maxLength: 10,
+                validator: (value) {
+                  final mobile =
+                      value?.trim() ?? '';
+
+                  if (!RegExp(
+                    r'^[0-9]{10}$',
+                  ).hasMatch(mobile)) {
                     return
-                        'Enter a valid name';
+                        'Enter a valid 10 digit mobile number';
+                  }
+
+                  return null;
+                },
+              ),
+
+              // ==================================================
+              // EMAIL OPTIONAL
+              // ==================================================
+
+              inputField(
+                controller:
+                    emailController,
+                label: 'Email (Optional)',
+                hint:
+                    'Enter email if available',
+                icon:
+                    Icons.email_outlined,
+                keyboardType:
+                    TextInputType.emailAddress,
+                validator: (value) {
+                  final email =
+                      value?.trim() ?? '';
+
+                  if (email.isEmpty) {
+                    return null;
+                  }
+
+                  if (!RegExp(
+                    r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                  ).hasMatch(email)) {
+                    return 'Enter a valid email';
                   }
 
                   return null;
@@ -1005,36 +913,16 @@ Thank you for shopping with Preesho.
 
               inputField(
                 controller:
-                    mobileController,
-                label:
-                    'Mobile Number',
-                hint:
-                    'Enter 10 digit mobile number',
-                icon:
-                    Icons.phone_outlined,
-                keyboardType:
-                    TextInputType.phone,
-                maxLength: 10,
-                validator:
-                    validateMobile,
-              ),
-
-              inputField(
-                controller:
                     addressController,
-                label:
-                    'Address',
+                label: 'Address',
                 hint:
                     'House no., street, area',
                 icon:
                     Icons.home_outlined,
                 maxLines: 3,
-                validator:
-                    (value) {
+                validator: (value) {
                   if (value == null ||
-                      value
-                              .trim()
-                              .length <
+                      value.trim().length <
                           5) {
                     return
                         'Enter a complete address';
@@ -1047,20 +935,15 @@ Thank you for shopping with Preesho.
               inputField(
                 controller:
                     cityController,
-                label:
-                    'City',
+                label: 'City',
                 hint:
                     'Enter your city',
                 icon:
                     Icons.location_city_outlined,
-                validator:
-                    (value) {
+                validator: (value) {
                   if (value == null ||
-                      value
-                          .trim()
-                          .isEmpty) {
-                    return
-                        'Enter city';
+                      value.trim().isEmpty) {
+                    return 'Enter city';
                   }
 
                   return null;
@@ -1070,8 +953,7 @@ Thank you for shopping with Preesho.
               inputField(
                 controller:
                     pincodeController,
-                label:
-                    'PIN Code',
+                label: 'PIN Code',
                 hint:
                     'Enter 6 digit PIN code',
                 icon:
@@ -1079,13 +961,11 @@ Thank you for shopping with Preesho.
                 keyboardType:
                     TextInputType.number,
                 maxLength: 6,
-                validator:
-                    (value) {
+                validator: (value) {
                   if (!RegExp(
                     r'^[0-9]{6}$',
                   ).hasMatch(
-                    value?.trim() ??
-                        '',
+                    value?.trim() ?? '',
                   )) {
                     return
                         'Enter a valid 6 digit PIN code';
@@ -1102,9 +982,7 @@ Thank you for shopping with Preesho.
               Card(
                 child: Padding(
                   padding:
-                      const EdgeInsets.all(
-                    14,
-                  ),
+                      const EdgeInsets.all(14),
                   child: Column(
                     crossAxisAlignment:
                         CrossAxisAlignment.start,
@@ -1114,9 +992,7 @@ Thank you for shopping with Preesho.
                           Icon(
                             Icons.location_on_outlined,
                           ),
-                          SizedBox(
-                            width: 8,
-                          ),
+                          SizedBox(width: 10),
                           Expanded(
                             child: Text(
                               'Delivery Location',
@@ -1124,8 +1000,7 @@ Thank you for shopping with Preesho.
                                   TextStyle(
                                 fontWeight:
                                     FontWeight.bold,
-                                fontSize:
-                                    16,
+                                fontSize: 16,
                               ),
                             ),
                           ),
@@ -1140,63 +1015,54 @@ Thank you for shopping with Preesho.
                         ],
                       ),
 
-                      const SizedBox(
-                        height: 8,
-                      ),
+                      const SizedBox(height: 8),
 
-                      if (latitude != null &&
-                          longitude != null)
-                        Text(
-                          'Latitude: ${latitude!.toStringAsFixed(6)}\n'
-                          'Longitude: ${longitude!.toStringAsFixed(6)}',
-                          style:
-                              const TextStyle(
-                            fontSize: 13,
-                          ),
-                        )
-                      else
-                        const Text(
-                          'Adding your location can help with better delivery.',
-                          style:
-                              TextStyle(
-                            color:
-                                Colors.grey,
-                          ),
+                      Text(
+                        latitude != null &&
+                                longitude !=
+                                    null
+                            ? 'Location added\nLat: $latitude\nLong: $longitude'
+                            : 'Adding location may help with better delivery.',
+                        style: TextStyle(
+                          color:
+                              Colors.grey.shade700,
                         ),
-
-                      const SizedBox(
-                        height: 10,
                       ),
 
-                      OutlinedButton.icon(
-                        onPressed:
-                            gettingLocation
-                                ? null
-                                : getCurrentLocation,
-                        icon:
-                            gettingLocation
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child:
-                                        CircularProgressIndicator(
-                                      strokeWidth:
-                                          2,
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons
-                                        .my_location,
+                      const SizedBox(height: 10),
+
+                      SizedBox(
+                        width:
+                            double.infinity,
+                        child:
+                            OutlinedButton.icon(
+                          onPressed:
+                              gettingLocation
+                                  ? null
+                                  : getCurrentLocation,
+                          icon: gettingLocation
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child:
+                                      CircularProgressIndicator(
+                                    strokeWidth:
+                                        2,
                                   ),
-                        label: Text(
-                          gettingLocation
-                              ? 'Getting Location...'
-                              : latitude !=
-                                          null &&
-                                      longitude !=
-                                          null
-                                  ? 'Update Location'
-                                  : 'Add Current Location',
+                                )
+                              : const Icon(
+                                  Icons.my_location,
+                                ),
+                          label: Text(
+                            gettingLocation
+                                ? 'Getting Location...'
+                                : latitude !=
+                                            null &&
+                                        longitude !=
+                                            null
+                                    ? 'Update Location'
+                                    : 'Add Current Location',
+                          ),
                         ),
                       ),
                     ],
@@ -1204,93 +1070,65 @@ Thank you for shopping with Preesho.
                 ),
               ),
 
-              const SizedBox(
-                height: 16,
-              ),
+              const SizedBox(height: 18),
 
               // ==================================================
-              // SELF / GIFT
+              // SELF OR GIFT
               // ==================================================
 
               const Text(
                 'Who is this order for?',
                 style: TextStyle(
-                  fontSize: 21,
-                  fontWeight:
-                      FontWeight.bold,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
 
-              const SizedBox(
-                height: 10,
-              ),
+              const SizedBox(height: 10),
 
               Card(
                 child: Column(
                   children: [
                     RadioListTile<bool>(
-                      value: true,
-                      groupValue:
-                          isSelfOrder,
-                      onChanged:
-                          placingOrder
-                              ? null
-                              : (value) {
-                                  if (value ==
-                                      null) {
-                                    return;
-                                  }
-
-                                  setState(() {
-                                    isSelfOrder =
-                                        value;
-                                  });
-                                },
-                      title:
-                          const Text(
-                        'For myself',
-                        style:
-                            TextStyle(
+                      value: false,
+                      groupValue: isGift,
+                      onChanged: placingOrder
+                          ? null
+                          : (value) {
+                              setState(() {
+                                isGift = false;
+                              });
+                            },
+                      title: const Text(
+                        'For Myself',
+                        style: TextStyle(
                           fontWeight:
                               FontWeight.bold,
                         ),
                       ),
-                      subtitle:
-                          const Text(
-                        'I am ordering for myself',
+                      subtitle: const Text(
+                        'Deliver to my address',
                       ),
                     ),
-
                     RadioListTile<bool>(
-                      value: false,
-                      groupValue:
-                          isSelfOrder,
-                      onChanged:
-                          placingOrder
-                              ? null
-                              : (value) {
-                                  if (value ==
-                                      null) {
-                                    return;
-                                  }
-
-                                  setState(() {
-                                    isSelfOrder =
-                                        value;
-                                  });
-                                },
-                      title:
-                          const Text(
-                        'Gift for someone 🎁',
-                        style:
-                            TextStyle(
+                      value: true,
+                      groupValue: isGift,
+                      onChanged: placingOrder
+                          ? null
+                          : (value) {
+                              setState(() {
+                                isGift = true;
+                              });
+                            },
+                      title: const Text(
+                        'Gift for Someone',
+                        style: TextStyle(
                           fontWeight:
                               FontWeight.bold,
                         ),
                       ),
-                      subtitle:
-                          const Text(
-                        'I am ordering for another person',
+                      subtitle: const Text(
+                        'Enter recipient details',
                       ),
                     ),
                   ],
@@ -1301,40 +1139,24 @@ Thank you for shopping with Preesho.
               // GIFT DETAILS
               // ==================================================
 
-              if (!isSelfOrder) ...[
-                const SizedBox(
-                  height: 16,
-                ),
+              if (isGift) ...[
+                const SizedBox(height: 16),
 
                 Card(
                   child: Padding(
                     padding:
-                        const EdgeInsets.all(
-                      14,
-                    ),
+                        const EdgeInsets.all(14),
                     child: Column(
                       crossAxisAlignment:
                           CrossAxisAlignment.start,
                       children: [
-                        const Row(
-                          children: [
-                            Icon(
-                              Icons.card_giftcard,
-                            ),
-                            SizedBox(
-                              width: 8,
-                            ),
-                            Text(
-                              'Gift Recipient Details',
-                              style:
-                                  TextStyle(
-                                fontSize:
-                                    18,
-                                fontWeight:
-                                    FontWeight.bold,
-                              ),
-                            ),
-                          ],
+                        const Text(
+                          'Gift Recipient Details',
+                          style: TextStyle(
+                            fontSize: 19,
+                            fontWeight:
+                                FontWeight.bold,
+                          ),
                         ),
 
                         const SizedBox(
@@ -1350,25 +1172,17 @@ Thank you for shopping with Preesho.
                               'Enter recipient name',
                           icon:
                               Icons.person_outline,
-                          validator:
-                              (value) {
-                            if (!isSelfOrder) {
-                              if (value ==
-                                      null ||
-                                  value
-                                      .trim()
-                                      .isEmpty) {
-                                return
-                                    'Enter recipient name';
-                              }
+                          validator: (value) {
+                            if (!isGift) {
+                              return null;
+                            }
 
-                              if (value
-                                      .trim()
-                                      .length <
-                                  2) {
-                                return
-                                    'Enter a valid recipient name';
-                              }
+                            if (value == null ||
+                                value.trim()
+                                    .length <
+                                    2) {
+                              return
+                                  'Enter recipient name';
                             }
 
                             return null;
@@ -1379,21 +1193,27 @@ Thank you for shopping with Preesho.
                           controller:
                               giftMobileController,
                           label:
-                              'Recipient Mobile Number',
+                              'Recipient Mobile',
                           hint:
-                              'Enter 10 digit recipient number',
+                              '10 digit mobile number',
                           icon:
                               Icons.phone_outlined,
                           keyboardType:
                               TextInputType.phone,
                           maxLength: 10,
-                          validator:
-                              (value) {
-                            if (!isSelfOrder) {
+                          validator: (value) {
+                            if (!isGift) {
+                              return null;
+                            }
+
+                            if (!RegExp(
+                              r'^[0-9]{10}$',
+                            ).hasMatch(
+                              value?.trim() ??
+                                  '',
+                            )) {
                               return
-                                  validateMobile(
-                                value,
-                              );
+                                  'Enter a valid 10 digit number';
                             }
 
                             return null;
@@ -1410,18 +1230,17 @@ Thank you for shopping with Preesho.
                           icon:
                               Icons.home_outlined,
                           maxLines: 3,
-                          validator:
-                              (value) {
-                            if (!isSelfOrder) {
-                              if (value ==
-                                      null ||
-                                  value
-                                          .trim()
-                                          .length <
-                                      5) {
-                                return
-                                    'Enter complete recipient address';
-                              }
+                          validator: (value) {
+                            if (!isGift) {
+                              return null;
+                            }
+
+                            if (value == null ||
+                                value.trim()
+                                        .length <
+                                    5) {
+                              return
+                                  'Enter recipient address';
                             }
 
                             return null;
@@ -1437,17 +1256,16 @@ Thank you for shopping with Preesho.
                               'Enter recipient city',
                           icon:
                               Icons.location_city_outlined,
-                          validator:
-                              (value) {
-                            if (!isSelfOrder) {
-                              if (value ==
-                                      null ||
-                                  value
-                                      .trim()
-                                      .isEmpty) {
-                                return
-                                    'Enter recipient city';
-                              }
+                          validator: (value) {
+                            if (!isGift) {
+                              return null;
+                            }
+
+                            if (value == null ||
+                                value.trim()
+                                    .isEmpty) {
+                              return
+                                  'Enter recipient city';
                             }
 
                             return null;
@@ -1460,24 +1278,25 @@ Thank you for shopping with Preesho.
                           label:
                               'Recipient PIN Code',
                           hint:
-                              'Enter 6 digit PIN code',
+                              '6 digit PIN code',
                           icon:
                               Icons.pin_drop_outlined,
                           keyboardType:
                               TextInputType.number,
                           maxLength: 6,
-                          validator:
-                              (value) {
-                            if (!isSelfOrder) {
-                              if (!RegExp(
-                                r'^[0-9]{6}$',
-                              ).hasMatch(
-                                value?.trim() ??
-                                    '',
-                              )) {
-                                return
-                                    'Enter a valid 6 digit PIN code';
-                              }
+                          validator: (value) {
+                            if (!isGift) {
+                              return null;
+                            }
+
+                            if (!RegExp(
+                              r'^[0-9]{6}$',
+                            ).hasMatch(
+                              value?.trim() ??
+                                  '',
+                            )) {
+                              return
+                                  'Enter a valid 6 digit PIN code';
                             }
 
                             return null;
@@ -1489,9 +1308,7 @@ Thank you for shopping with Preesho.
                 ),
               ],
 
-              const SizedBox(
-                height: 16,
-              ),
+              const SizedBox(height: 18),
 
               // ==================================================
               // PAYMENT
@@ -1499,35 +1316,28 @@ Thank you for shopping with Preesho.
 
               Card(
                 child: ListTile(
-                  leading:
-                      const Icon(
+                  leading: const Icon(
                     Icons.payments_outlined,
                   ),
-                  title:
-                      const Text(
+                  title: const Text(
                     'Cash on Delivery',
-                    style:
-                        TextStyle(
+                    style: TextStyle(
                       fontWeight:
                           FontWeight.bold,
                     ),
                   ),
-                  subtitle:
-                      const Text(
+                  subtitle: const Text(
                     'Pay when your order is delivered',
                   ),
                   trailing:
                       const Icon(
                     Icons.check_circle,
-                    color:
-                        Colors.green,
+                    color: Colors.green,
                   ),
                 ),
               ),
 
-              const SizedBox(
-                height: 24,
-              ),
+              const SizedBox(height: 24),
 
               // ==================================================
               // ORDER SUMMARY
@@ -1537,21 +1347,16 @@ Thank you for shopping with Preesho.
                 'Order Summary',
                 style: TextStyle(
                   fontSize: 21,
-                  fontWeight:
-                      FontWeight.bold,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
 
-              const SizedBox(
-                height: 12,
-              ),
+              const SizedBox(height: 12),
 
               Card(
                 child: Padding(
                   padding:
-                      const EdgeInsets.all(
-                    14,
-                  ),
+                      const EdgeInsets.all(14),
                   child: Column(
                     children: [
                       ...items.map(
@@ -1593,20 +1398,24 @@ Thank you for shopping with Preesho.
                         children: [
                           const Text(
                             'Total Amount',
-                            style:
-                                TextStyle(
-                              fontSize:
-                                  19,
+                            style: TextStyle(
+                              fontSize: 19,
                               fontWeight:
                                   FontWeight.bold,
                             ),
                           ),
                           Text(
-                            money(total),
+                            money(
+                              items.fold<double>(
+                                0,
+                                (sum, item) =>
+                                    sum +
+                                    item.totalPrice,
+                              ),
+                            ),
                             style:
                                 const TextStyle(
-                              fontSize:
-                                  22,
+                              fontSize: 22,
                               fontWeight:
                                   FontWeight.bold,
                             ),
@@ -1618,9 +1427,7 @@ Thank you for shopping with Preesho.
                 ),
               ),
 
-              const SizedBox(
-                height: 22,
-              ),
+              const SizedBox(height: 22),
 
               // ==================================================
               // PLACE ORDER
@@ -1634,29 +1441,26 @@ Thank you for shopping with Preesho.
                       placingOrder
                           ? null
                           : placeOrder,
-                  icon:
-                      placingOrder
-                          ? const SizedBox(
-                              width: 22,
-                              height: 22,
-                              child:
-                                  CircularProgressIndicator(
-                                strokeWidth:
-                                    2,
-                              ),
-                            )
-                          : const Icon(
-                              Icons
-                                  .shopping_bag_outlined,
-                            ),
+                  icon: placingOrder
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child:
+                              CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Icon(
+                          Icons
+                              .shopping_bag_outlined,
+                        ),
                   label: Text(
                     placingOrder
                         ? 'Placing Order...'
                         : 'Place Order',
                     style:
                         const TextStyle(
-                      fontSize:
-                          17,
+                      fontSize: 17,
                       fontWeight:
                           FontWeight.bold,
                     ),
@@ -1664,47 +1468,55 @@ Thank you for shopping with Preesho.
                 ),
               ),
 
-              const SizedBox(
-                height: 12,
-              ),
-
-              const Text(
-                'Your location is optional and is used only to help with delivery.',
-                textAlign:
-                    TextAlign.center,
-                style:
-                    TextStyle(
-                  color:
-                      Colors.grey,
-                  fontSize:
-                      12,
-                ),
-              ),
-
-              const SizedBox(
-                height: 5,
-              ),
+              const SizedBox(height: 12),
 
               const Text(
                 'Stock is reduced only after the order is successfully created.',
-                textAlign:
-                    TextAlign.center,
-                style:
-                    TextStyle(
-                  color:
-                      Colors.grey,
-                  fontSize:
-                      12,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 12,
                 ),
               ),
 
-              const SizedBox(
-                height: 20,
+              const SizedBox(height: 5),
+
+              const Text(
+                'Adding an item to Cart does not reduce stock.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 12,
+                ),
               ),
+
+              const SizedBox(height: 20),
             ],
           ),
         ),
       ),
     );
+  }
+
+  // ============================================================
+  // DISPOSE
+  // ============================================================
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    mobileController.dispose();
+    addressController.dispose();
+    cityController.dispose();
+    pincodeController.dispose();
+    emailController.dispose();
+
+    giftNameController.dispose();
+    giftMobileController.dispose();
+    giftAddressController.dispose();
+    giftCityController.dispose();
+    giftPincodeController.dispose();
+
+    super.dispose();
   }
 }
