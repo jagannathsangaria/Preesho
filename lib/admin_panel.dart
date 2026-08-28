@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 class AdminPanel extends StatefulWidget {
   const AdminPanel({super.key});
@@ -40,40 +39,13 @@ class _AdminPanelState extends State<AdminPanel> {
   }
 
   // =====================================================
-  // ADMIN CHECK
-  // =====================================================
-
-  Future<bool> verifyAdmin() async {
-    final user = FirebaseAuth.instance.currentUser;
-
-    if (user == null) {
-      return false;
-    }
-
-    try {
-      final adminDoc = await FirebaseFirestore.instance
-          .collection('admins')
-          .doc(user.uid)
-          .get();
-
-      return adminDoc.exists;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  // =====================================================
   // SAVE PRODUCT
   // =====================================================
 
   Future<void> saveProduct() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
 
-    setState(() {
-      saving = true;
-    });
+    setState(() => saving = true);
 
     try {
       await productsRef.add({
@@ -93,7 +65,7 @@ class _AdminPanelState extends State<AdminPanel> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Product saved successfully'),
+          content: Text('Product added successfully'),
         ),
       );
     } catch (e) {
@@ -101,14 +73,12 @@ class _AdminPanelState extends State<AdminPanel> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error saving product:\n$e'),
+          content: Text('Error adding product:\n$e'),
         ),
       );
     } finally {
       if (mounted) {
-        setState(() {
-          saving = false;
-        });
+        setState(() => saving = false);
       }
     }
   }
@@ -121,32 +91,32 @@ class _AdminPanelState extends State<AdminPanel> {
     imageUrlController.clear();
     descriptionController.clear();
 
-    setState(() {
-      active = true;
-    });
+    setState(() => active = true);
   }
 
   // =====================================================
   // DELETE PRODUCT
   // =====================================================
 
-  Future<void> deleteProduct(String id) async {
+  Future<void> deleteProduct(String id, String name) async {
     try {
       await productsRef.doc(id).delete();
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Product deleted'),
+        SnackBar(
+          content: Text('"$name" deleted successfully'),
         ),
       );
-    } catch (e) {
+    } on FirebaseException catch (e) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Delete error:\n$e'),
+          content: Text(
+            'Delete failed:\n${e.message ?? e.code}',
+          ),
         ),
       );
     }
@@ -161,21 +131,6 @@ class _AdminPanelState extends State<AdminPanel> {
     String status,
   ) async {
     try {
-      final isAdmin = await verifyAdmin();
-
-      if (!isAdmin) {
-        if (!mounted) return;
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Admin verification failed. Please login again.',
-            ),
-          ),
-        );
-        return;
-      }
-
       await ordersRef.doc(orderId).update({
         'status': status,
         'updatedAt': FieldValue.serverTimestamp(),
@@ -243,10 +198,6 @@ class _AdminPanelState extends State<AdminPanel> {
     );
   }
 
-  String imagePreviewUrl() {
-    return imageUrlController.text.trim();
-  }
-
   // =====================================================
   // MONEY
   // =====================================================
@@ -260,9 +211,7 @@ class _AdminPanelState extends State<AdminPanel> {
       value?.toString() ?? '',
     );
 
-    if (number == null) {
-      return '₹0';
-    }
+    if (number == null) return '₹0';
 
     return '₹${number.toStringAsFixed(0)}';
   }
@@ -278,12 +227,9 @@ class _AdminPanelState extends State<AdminPanel> {
 
     final date = value.toDate();
 
-    final day =
-        date.day.toString().padLeft(2, '0');
-    final month =
-        date.month.toString().padLeft(2, '0');
-    final year =
-        date.year.toString();
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final year = date.year.toString();
 
     return '$day/$month/$year';
   }
@@ -296,442 +242,15 @@ class _AdminPanelState extends State<AdminPanel> {
     switch (status.toLowerCase()) {
       case 'delivered':
         return Colors.green;
-
       case 'cancelled':
         return Colors.red;
-
       case 'shipped':
         return Colors.blue;
-
       case 'confirmed':
         return Colors.orange;
-
       default:
         return Colors.deepPurple;
     }
-  }
-
-  // =====================================================
-  // ORDER STREAM
-  // =====================================================
-
-  Widget ordersWidget() {
-    return StreamBuilder<
-        QuerySnapshot<Map<String, dynamic>>>(
-      stream: ordersRef
-          .orderBy(
-            'createdAt',
-            descending: true,
-          )
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState ==
-            ConnectionState.waiting) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: CircularProgressIndicator(),
-            ),
-          );
-        }
-
-        if (snapshot.hasError) {
-          return Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Unable to load customer orders',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    snapshot.error.toString(),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Check Firebase Authentication and Firestore Rules.',
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        final orders =
-            snapshot.data?.docs ?? [];
-
-        if (orders.isEmpty) {
-          return const Card(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(
-                child: Text(
-                  'No customer orders yet.',
-                ),
-              ),
-            ),
-          );
-        }
-
-        return Column(
-          children: orders.map((doc) {
-            final data = doc.data();
-
-            final status =
-                data['status']?.toString() ??
-                    'Placed';
-
-            final email =
-                data['email']?.toString() ??
-                    data['userEmail']?.toString() ??
-                    'Email unavailable';
-
-            final name =
-                data['name']?.toString() ??
-                    data['customerName']?.toString() ??
-                    'Customer';
-
-            final mobile =
-                data['mobile']?.toString() ??
-                    data['phone']?.toString() ??
-                    '';
-
-            final address =
-                data['address']?.toString() ??
-                    '';
-
-            final city =
-                data['city']?.toString() ??
-                    '';
-
-            final pincode =
-                data['pincode']?.toString() ??
-                    '';
-
-            final total =
-                data['totalAmount'];
-
-            final createdAt =
-                data['createdAt'];
-
-            final items =
-                data['items'] is List
-                    ? List<dynamic>.from(
-                        data['items'],
-                      )
-                    : <dynamic>[];
-
-            return Card(
-              margin:
-                  const EdgeInsets.only(
-                bottom: 16,
-              ),
-              child: Padding(
-                padding:
-                    const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    // ORDER HEADER
-                    Row(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Order #${doc.id}',
-                                maxLines: 1,
-                                overflow:
-                                    TextOverflow.ellipsis,
-                                style:
-                                    const TextStyle(
-                                  fontWeight:
-                                      FontWeight.bold,
-                                  fontSize: 17,
-                                ),
-                              ),
-                              const SizedBox(
-                                height: 5,
-                              ),
-                              Text(
-                                formatDate(createdAt),
-                                style: TextStyle(
-                                  color:
-                                      Colors.grey.shade700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          padding:
-                              const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          decoration:
-                              BoxDecoration(
-                            color:
-                                statusColor(status)
-                                    .withOpacity(0.12),
-                            borderRadius:
-                                BorderRadius.circular(
-                              20,
-                            ),
-                          ),
-                          child: Text(
-                            status,
-                            style: TextStyle(
-                              color:
-                                  statusColor(status),
-                              fontWeight:
-                                  FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const Divider(
-                      height: 25,
-                    ),
-
-                    // CUSTOMER
-                    const Text(
-                      'Customer',
-                      style: TextStyle(
-                        fontWeight:
-                            FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    Text(
-                      name,
-                      style:
-                          const TextStyle(
-                        fontSize: 15,
-                        fontWeight:
-                            FontWeight.w600,
-                      ),
-                    ),
-
-                    const SizedBox(height: 3),
-
-                    Text(email),
-
-                    if (mobile.isNotEmpty)
-                      Padding(
-                        padding:
-                            const EdgeInsets.only(
-                          top: 3,
-                        ),
-                        child: Text(mobile),
-                      ),
-
-                    const SizedBox(height: 15),
-
-                    // ADDRESS
-                    const Text(
-                      'Delivery Address',
-                      style: TextStyle(
-                        fontWeight:
-                            FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-
-                    const SizedBox(height: 6),
-
-                    Text(
-                      [
-                        address,
-                        city,
-                        pincode,
-                      ]
-                          .where(
-                            (value) =>
-                                value.isNotEmpty,
-                          )
-                          .join(', '),
-                    ),
-
-                    const SizedBox(height: 15),
-
-                    // ITEMS
-                    if (items.isNotEmpty) ...[
-                      const Text(
-                        'Items',
-                        style: TextStyle(
-                          fontWeight:
-                              FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 7),
-
-                      ...items.map(
-                        (item) {
-                          if (item is! Map) {
-                            return const SizedBox
-                                .shrink();
-                          }
-
-                          final itemName =
-                              item['name']
-                                      ?.toString() ??
-                                  'Product';
-
-                          final quantity =
-                              item['quantity']
-                                      ?.toString() ??
-                                  '1';
-
-                          final itemTotal =
-                              item['total'];
-
-                          return Padding(
-                            padding:
-                                const EdgeInsets.only(
-                              bottom: 6,
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    '$itemName × $quantity',
-                                    maxLines: 2,
-                                    overflow:
-                                        TextOverflow
-                                            .ellipsis,
-                                  ),
-                                ),
-                                Text(
-                                  money(itemTotal),
-                                  style:
-                                      const TextStyle(
-                                    fontWeight:
-                                        FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-
-                    const Divider(
-                      height: 25,
-                    ),
-
-                    // TOTAL
-                    Row(
-                      mainAxisAlignment:
-                          MainAxisAlignment
-                              .spaceBetween,
-                      children: [
-                        const Text(
-                          'Order Total',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight:
-                                FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          money(total),
-                          style:
-                              const TextStyle(
-                            fontSize: 21,
-                            fontWeight:
-                                FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 15),
-
-                    // STATUS
-                    DropdownButtonFormField<String>(
-                      value: [
-                        'Placed',
-                        'Confirmed',
-                        'Shipped',
-                        'Delivered',
-                        'Cancelled',
-                      ].contains(status)
-                          ? status
-                          : 'Placed',
-                      decoration:
-                          const InputDecoration(
-                        labelText:
-                            'Order Status',
-                        border:
-                            OutlineInputBorder(),
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'Placed',
-                          child:
-                              Text('Placed'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Confirmed',
-                          child:
-                              Text('Confirmed'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Shipped',
-                          child:
-                              Text('Shipped'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Delivered',
-                          child:
-                              Text('Delivered'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Cancelled',
-                          child:
-                              Text('Cancelled'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        if (value == null ||
-                            value == status) {
-                          return;
-                        }
-
-                        updateOrderStatus(
-                          doc.id,
-                          value,
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }).toList(),
-        );
-      },
-    );
   }
 
   // =====================================================
@@ -748,19 +267,6 @@ class _AdminPanelState extends State<AdminPanel> {
             fontWeight: FontWeight.bold,
           ),
         ),
-        actions: [
-          IconButton(
-            tooltip: 'Logout',
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await FirebaseAuth.instance.signOut();
-
-              if (!mounted) return;
-
-              Navigator.pop(context);
-            },
-          ),
-        ],
       ),
 
       body: ListView(
@@ -773,10 +279,8 @@ class _AdminPanelState extends State<AdminPanel> {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              borderRadius:
-                  BorderRadius.circular(18),
-              gradient:
-                  const LinearGradient(
+              borderRadius: BorderRadius.circular(18),
+              gradient: const LinearGradient(
                 colors: [
                   Color(0xff5E35B1),
                   Color(0xff8E24AA),
@@ -784,16 +288,14 @@ class _AdminPanelState extends State<AdminPanel> {
               ),
             ),
             child: const Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Add New Product',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 24,
-                    fontWeight:
-                        FontWeight.bold,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
                 SizedBox(height: 6),
@@ -819,14 +321,11 @@ class _AdminPanelState extends State<AdminPanel> {
             child: Column(
               children: [
                 inputField(
-                  controller:
-                      nameController,
+                  controller: nameController,
                   label: 'Product Name',
-                  icon: Icons
-                      .shopping_bag_outlined,
+                  icon: Icons.shopping_bag_outlined,
                   validator: (value) {
-                    if (value == null ||
-                        value.trim().isEmpty) {
+                    if (value == null || value.trim().isEmpty) {
                       return 'Enter product name';
                     }
                     return null;
@@ -834,14 +333,11 @@ class _AdminPanelState extends State<AdminPanel> {
                 ),
 
                 inputField(
-                  controller:
-                      categoryController,
+                  controller: categoryController,
                   label: 'Category',
-                  icon: Icons
-                      .category_outlined,
+                  icon: Icons.category_outlined,
                   validator: (value) {
-                    if (value == null ||
-                        value.trim().isEmpty) {
+                    if (value == null || value.trim().isEmpty) {
                       return 'Enter category';
                     }
                     return null;
@@ -849,23 +345,16 @@ class _AdminPanelState extends State<AdminPanel> {
                 ),
 
                 inputField(
-                  controller:
-                      priceController,
+                  controller: priceController,
                   label: 'Price',
-                  icon:
-                      Icons.currency_rupee,
-                  keyboardType:
-                      TextInputType.number,
+                  icon: Icons.currency_rupee,
+                  keyboardType: TextInputType.number,
                   validator: (value) {
-                    if (value == null ||
-                        value.trim().isEmpty) {
+                    if (value == null || value.trim().isEmpty) {
                       return 'Enter price';
                     }
 
-                    if (double.tryParse(
-                          value.trim(),
-                        ) ==
-                        null) {
+                    if (double.tryParse(value.trim()) == null) {
                       return 'Enter a valid price';
                     }
 
@@ -874,23 +363,16 @@ class _AdminPanelState extends State<AdminPanel> {
                 ),
 
                 inputField(
-                  controller:
-                      stockController,
+                  controller: stockController,
                   label: 'Stock',
-                  icon: Icons
-                      .inventory_2_outlined,
-                  keyboardType:
-                      TextInputType.number,
+                  icon: Icons.inventory_2_outlined,
+                  keyboardType: TextInputType.number,
                   validator: (value) {
-                    if (value == null ||
-                        value.trim().isEmpty) {
+                    if (value == null || value.trim().isEmpty) {
                       return 'Enter stock';
                     }
 
-                    if (int.tryParse(
-                          value.trim(),
-                        ) ==
-                        null) {
+                    if (int.tryParse(value.trim()) == null) {
                       return 'Enter valid stock';
                     }
 
@@ -899,21 +381,16 @@ class _AdminPanelState extends State<AdminPanel> {
                 ),
 
                 inputField(
-                  controller:
-                      imageUrlController,
+                  controller: imageUrlController,
                   label: 'Image URL',
                   icon: Icons.image_outlined,
-                  keyboardType:
-                      TextInputType.url,
+                  keyboardType: TextInputType.url,
                   validator: (value) {
-                    if (value == null ||
-                        value.trim().isEmpty) {
+                    if (value == null || value.trim().isEmpty) {
                       return 'Enter image URL';
                     }
 
-                    if (!value
-                        .trim()
-                        .startsWith('http')) {
+                    if (!value.trim().startsWith('http')) {
                       return 'Enter a valid image URL';
                     }
 
@@ -921,89 +398,17 @@ class _AdminPanelState extends State<AdminPanel> {
                   },
                 ),
 
-                ValueListenableBuilder<
-                    TextEditingValue>(
-                  valueListenable:
-                      imageUrlController,
-                  builder:
-                      (context, value, child) {
-                    final url =
-                        imagePreviewUrl();
-
-                    if (url.isEmpty ||
-                        !url.startsWith(
-                            'http')) {
-                      return const SizedBox
-                          .shrink();
-                    }
-
-                    return Container(
-                      width:
-                          double.infinity,
-                      height: 200,
-                      margin:
-                          const EdgeInsets.only(
-                        bottom: 14,
-                      ),
-                      clipBehavior:
-                          Clip.antiAlias,
-                      decoration:
-                          BoxDecoration(
-                        borderRadius:
-                            BorderRadius
-                                .circular(14),
-                        color:
-                            Colors.grey.shade200,
-                      ),
-                      child: Image.network(
-                        url,
-                        fit: BoxFit.cover,
-                        errorBuilder:
-                            (context,
-                                error,
-                                stackTrace) {
-                          return const Center(
-                            child: Column(
-                              mainAxisAlignment:
-                                  MainAxisAlignment
-                                      .center,
-                              children: [
-                                Icon(
-                                  Icons
-                                      .broken_image_outlined,
-                                  size: 45,
-                                ),
-                                SizedBox(
-                                    height: 8),
-                                Text(
-                                  'Image could not be loaded',
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    );
-                  },
-                ),
-
                 inputField(
-                  controller:
-                      descriptionController,
+                  controller: descriptionController,
                   label: 'Description',
-                  icon: Icons
-                      .description_outlined,
+                  icon: Icons.description_outlined,
                   maxLines: 4,
                 ),
 
                 Card(
-                  child:
-                      SwitchListTile(
-                    title: const Text(
-                      'Product Active',
-                    ),
-                    subtitle:
-                        const Text(
+                  child: SwitchListTile(
+                    title: const Text('Product Active'),
+                    subtitle: const Text(
                       'Active products will appear in the app',
                     ),
                     value: active,
@@ -1018,32 +423,21 @@ class _AdminPanelState extends State<AdminPanel> {
                 const SizedBox(height: 18),
 
                 SizedBox(
-                  width:
-                      double.infinity,
+                  width: double.infinity,
                   height: 52,
-                  child:
-                      FilledButton.icon(
-                    onPressed:
-                        saving
-                            ? null
-                            : saveProduct,
+                  child: FilledButton.icon(
+                    onPressed: saving ? null : saveProduct,
                     icon: saving
                         ? const SizedBox(
                             width: 20,
                             height: 20,
-                            child:
-                                CircularProgressIndicator(
+                            child: CircularProgressIndicator(
                               strokeWidth: 2,
                             ),
                           )
-                        : const Icon(
-                            Icons
-                                .save_outlined,
-                          ),
+                        : const Icon(Icons.save_outlined),
                     label: Text(
-                      saving
-                          ? 'Saving...'
-                          : 'Save Product',
+                      saving ? 'Saving...' : 'Save Product',
                     ),
                   ),
                 ),
@@ -1051,21 +445,11 @@ class _AdminPanelState extends State<AdminPanel> {
                 const SizedBox(height: 12),
 
                 SizedBox(
-                  width:
-                      double.infinity,
-                  child:
-                      OutlinedButton.icon(
-                    onPressed:
-                        saving
-                            ? null
-                            : clearForm,
-                    icon: const Icon(
-                      Icons.clear_all,
-                    ),
-                    label:
-                        const Text(
-                      'Clear Form',
-                    ),
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: saving ? null : clearForm,
+                    icon: const Icon(Icons.clear_all),
+                    label: const Text('Clear Form'),
                   ),
                 ),
               ],
@@ -1082,227 +466,149 @@ class _AdminPanelState extends State<AdminPanel> {
             'Products in Firestore',
             style: TextStyle(
               fontSize: 21,
-              fontWeight:
-                  FontWeight.bold,
+              fontWeight: FontWeight.bold,
             ),
           ),
 
           const SizedBox(height: 12),
 
-          StreamBuilder<
-              QuerySnapshot<
-                  Map<String, dynamic>>>(
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: productsRef
                 .orderBy(
                   'CreatedAt',
                   descending: true,
                 )
                 .snapshots(),
-            builder:
-                (context, snapshot) {
-              if (snapshot
-                      .connectionState ==
-                  ConnectionState
-                      .waiting) {
+            builder: (context, snapshot) {
+              if (snapshot.connectionState ==
+                  ConnectionState.waiting) {
                 return const Center(
-                  child:
-                      CircularProgressIndicator(),
+                  child: CircularProgressIndicator(),
                 );
               }
 
               if (snapshot.hasError) {
                 return Padding(
-                  padding:
-                      const EdgeInsets.all(
-                    12,
-                  ),
+                  padding: const EdgeInsets.all(12),
                   child: Text(
                     'Products error:\n${snapshot.error}',
                   ),
                 );
               }
 
-              final docs =
-                  snapshot.data?.docs ??
-                      [];
+              final docs = snapshot.data?.docs ?? [];
 
               if (docs.isEmpty) {
                 return const Padding(
-                  padding:
-                      EdgeInsets.all(20),
+                  padding: EdgeInsets.all(20),
                   child: Center(
-                    child: Text(
-                      'No products found',
-                    ),
+                    child: Text('No products found'),
                   ),
                 );
               }
 
               return Column(
-                children:
-                    docs.map((doc) {
-                  final data =
-                      doc.data();
+                children: docs.map((doc) {
+                  final data = doc.data();
 
                   final name =
-                      data['Name']
-                              ?.toString() ??
-                          '';
+                      data['Name']?.toString() ?? '';
 
                   final category =
-                      data['Category']
-                              ?.toString() ??
-                          '';
+                      data['Category']?.toString() ?? '';
 
                   final price =
-                      data['Price']
-                              ?.toString() ??
-                          '';
+                      data['Price']?.toString() ?? '';
 
                   final stock =
-                      data['Stock']
-                              ?.toString() ??
-                          '';
-
-                  final imageUrl =
-                      data['Imageurl']
-                              ?.toString() ??
-                          '';
+                      data['Stock']?.toString() ?? '';
 
                   final isActive =
-                      data['Active'] ==
-                          true;
+                      data['Active'] == true;
 
                   return Card(
-                    margin:
-                        const EdgeInsets
-                            .only(
+                    margin: const EdgeInsets.only(
                       bottom: 12,
                     ),
                     child: ListTile(
                       contentPadding:
-                          const EdgeInsets.all(
-                        10,
-                      ),
-                      leading:
-                          SizedBox(
-                        width: 60,
-                        height: 60,
-                        child:
-                            ClipRRect(
-                          borderRadius:
-                              BorderRadius
-                                  .circular(
-                            10,
-                          ),
-                          child: imageUrl
-                                      .isNotEmpty &&
-                                  imageUrl
-                                      .startsWith(
-                                    'http',
-                                  )
-                              ? Image.network(
-                                  imageUrl,
-                                  fit: BoxFit
-                                      .cover,
-                                  errorBuilder:
-                                      (context,
-                                          error,
-                                          stackTrace) {
-                                    return const Icon(
-                                      Icons
-                                          .image_not_supported_outlined,
-                                    );
-                                  },
-                                )
-                              : const Icon(
-                                  Icons
-                                      .image_outlined,
-                                ),
+                          const EdgeInsets.all(10),
+
+                      leading: const CircleAvatar(
+                        child: Icon(
+                          Icons.shopping_bag_outlined,
                         ),
                       ),
-                      title:
-                          Text(
+
+                      title: Text(
                         name.isEmpty
                             ? 'Unnamed Product'
                             : name,
-                        style:
-                            const TextStyle(
-                          fontWeight:
-                              FontWeight
-                                  .bold,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                      subtitle:
-                          Text(
+
+                      subtitle: Text(
                         '$category\n₹$price • Stock: $stock',
                       ),
-                      isThreeLine:
-                          true,
-                      trailing:
-                          IconButton(
+
+                      isThreeLine: true,
+
+                      // DELETE BUTTON
+                      trailing: IconButton(
+                        tooltip: 'Delete Product',
+                        icon: const Icon(
+                          Icons.delete_outline,
+                          color: Colors.red,
+                        ),
                         onPressed: () {
                           showDialog(
-                            context:
-                                context,
-                            builder:
-                                (dialogContext) {
+                            context: context,
+                            builder: (dialogContext) {
                               return AlertDialog(
-                                title:
-                                    const Text(
+                                title: const Text(
                                   'Delete Product?',
                                 ),
-                                content:
-                                    Text(
-                                  'Delete "$name"?',
+                                content: Text(
+                                  'Are you sure you want to delete "$name"?',
                                 ),
                                 actions: [
                                   TextButton(
-                                    onPressed:
-                                        () {
+                                    onPressed: () {
                                       Navigator.pop(
                                         dialogContext,
                                       );
                                     },
                                     child:
-                                        const Text(
-                                      'Cancel',
-                                    ),
+                                        const Text('Cancel'),
                                   ),
                                   FilledButton(
-                                    onPressed:
-                                        () {
+                                    onPressed: () {
                                       Navigator.pop(
                                         dialogContext,
                                       );
+
                                       deleteProduct(
                                         doc.id,
+                                        name,
                                       );
                                     },
                                     child:
-                                        const Text(
-                                      'Delete',
-                                    ),
+                                        const Text('Delete'),
                                   ),
                                 ],
                               );
                             },
                           );
                         },
-                        icon:
-                            const Icon(
-                          Icons
-                              .delete_outline,
-                        ),
                       ),
+
                       onTap: () {
-                        ScaffoldMessenger
-                                .of(
-                                    context)
+                        ScaffoldMessenger.of(context)
                             .showSnackBar(
                           SnackBar(
-                            content:
-                                Text(
+                            content: Text(
                               isActive
                                   ? 'Product is Active'
                                   : 'Product is Inactive',
@@ -1320,53 +626,36 @@ class _AdminPanelState extends State<AdminPanel> {
           const SizedBox(height: 35),
 
           // =================================================
-          // ORDERS HEADER
+          // CUSTOMER ORDERS HEADER
           // =================================================
 
           Container(
-            padding:
-                const EdgeInsets.all(
-              20,
-            ),
-            decoration:
-                BoxDecoration(
-              borderRadius:
-                  BorderRadius.circular(
-                18,
-              ),
-              gradient:
-                  const LinearGradient(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              gradient: const LinearGradient(
                 colors: [
                   Color(0xff1565C0),
                   Color(0xff42A5F5),
                 ],
               ),
             ),
-            child:
-                const Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment
-                      .start,
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Customer Orders',
-                  style:
-                      TextStyle(
-                    color:
-                        Colors.white,
+                  style: TextStyle(
+                    color: Colors.white,
                     fontSize: 24,
-                    fontWeight:
-                        FontWeight
-                            .bold,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
                 SizedBox(height: 6),
                 Text(
                   'View and manage customer orders',
-                  style:
-                      TextStyle(
-                    color:
-                        Colors.white70,
+                  style: TextStyle(
+                    color: Colors.white70,
                     fontSize: 14,
                   ),
                 ),
@@ -1380,7 +669,342 @@ class _AdminPanelState extends State<AdminPanel> {
           // ORDERS
           // =================================================
 
-          ordersWidget(),
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: ordersRef
+                .orderBy(
+                  'createdAt',
+                  descending: true,
+                )
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState ==
+                  ConnectionState.waiting) {
+                return const Center(
+                  child: CircularProgressIndicator(),
+                );
+              }
+
+              if (snapshot.hasError) {
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(
+                      'Orders error:\n${snapshot.error}',
+                    ),
+                  ),
+                );
+              }
+
+              final orders = snapshot.data?.docs ?? [];
+
+              if (orders.isEmpty) {
+                return const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(
+                      child: Text(
+                        'No customer orders yet.',
+                      ),
+                    ),
+                  ),
+                );
+              }
+
+              return Column(
+                children: orders.map((doc) {
+                  final data = doc.data();
+
+                  final status =
+                      data['status']?.toString() ?? 'Placed';
+
+                  final email =
+                      data['email']?.toString() ??
+                          data['userEmail']?.toString() ??
+                          'Email unavailable';
+
+                  final name =
+                      data['name']?.toString() ??
+                          data['customerName']?.toString() ??
+                          'Customer';
+
+                  final mobile =
+                      data['mobile']?.toString() ??
+                          data['phone']?.toString() ??
+                          '';
+
+                  final address =
+                      data['address']?.toString() ?? '';
+
+                  final city =
+                      data['city']?.toString() ?? '';
+
+                  final pincode =
+                      data['pincode']?.toString() ?? '';
+
+                  final total = data['totalAmount'];
+
+                  final createdAt = data['createdAt'];
+
+                  final items = data['items'] is List
+                      ? List<dynamic>.from(data['items'])
+                      : <dynamic>[];
+
+                  return Card(
+                    margin: const EdgeInsets.only(
+                      bottom: 16,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment:
+                            CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Order #${doc.id}',
+                                      maxLines: 1,
+                                      overflow:
+                                          TextOverflow.ellipsis,
+                                      style:
+                                          const TextStyle(
+                                        fontWeight:
+                                            FontWeight.bold,
+                                        fontSize: 17,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    Text(
+                                      formatDate(createdAt),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding:
+                                    const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color:
+                                      statusColor(status)
+                                          .withOpacity(0.12),
+                                  borderRadius:
+                                      BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  status,
+                                  style: TextStyle(
+                                    color:
+                                        statusColor(status),
+                                    fontWeight:
+                                        FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          const Divider(height: 25),
+
+                          const Text(
+                            'Customer',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+
+                          const SizedBox(height: 8),
+
+                          Text(
+                            name,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+
+                          const SizedBox(height: 3),
+
+                          Text(email),
+
+                          if (mobile.isNotEmpty)
+                            Padding(
+                              padding:
+                                  const EdgeInsets.only(top: 3),
+                              child: Text(mobile),
+                            ),
+
+                          const SizedBox(height: 15),
+
+                          const Text(
+                            'Delivery Address',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+
+                          const SizedBox(height: 6),
+
+                          Text(
+                            [
+                              address,
+                              city,
+                              pincode,
+                            ]
+                                .where(
+                                  (value) =>
+                                      value.isNotEmpty,
+                                )
+                                .join(', '),
+                          ),
+
+                          const SizedBox(height: 15),
+
+                          if (items.isNotEmpty) ...[
+                            const Text(
+                              'Items',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+
+                            const SizedBox(height: 7),
+
+                            ...items.map((item) {
+                              if (item is! Map) {
+                                return const SizedBox.shrink();
+                              }
+
+                              final itemName =
+                                  item['name']?.toString() ??
+                                      'Product';
+
+                              final quantity =
+                                  item['quantity']?.toString() ??
+                                      '1';
+
+                              final itemTotal = item['total'];
+
+                              return Padding(
+                                padding:
+                                    const EdgeInsets.only(
+                                  bottom: 6,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        '$itemName × $quantity',
+                                      ),
+                                    ),
+                                    Text(
+                                      money(itemTotal),
+                                      style:
+                                          const TextStyle(
+                                        fontWeight:
+                                            FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }),
+                          ],
+
+                          const Divider(height: 25),
+
+                          Row(
+                            mainAxisAlignment:
+                                MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Order Total',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                money(total),
+                                style: const TextStyle(
+                                  fontSize: 21,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 15),
+
+                          DropdownButtonFormField<String>(
+                            value: [
+                              'Placed',
+                              'Confirmed',
+                              'Shipped',
+                              'Delivered',
+                              'Cancelled',
+                            ].contains(status)
+                                ? status
+                                : 'Placed',
+                            decoration:
+                                const InputDecoration(
+                              labelText: 'Order Status',
+                              border: OutlineInputBorder(),
+                            ),
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'Placed',
+                                child: Text('Placed'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'Confirmed',
+                                child: Text('Confirmed'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'Shipped',
+                                child: Text('Shipped'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'Delivered',
+                                child: Text('Delivered'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'Cancelled',
+                                child: Text('Cancelled'),
+                              ),
+                            ],
+                            onChanged: (value) {
+                              if (value == null ||
+                                  value == status) {
+                                return;
+                              }
+
+                              updateOrderStatus(
+                                doc.id,
+                                value,
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              );
+            },
+          ),
 
           const SizedBox(height: 30),
         ],
