@@ -48,10 +48,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }
 
   // ============================================================
-  // PLACE ORDER + REDUCE STOCK
+  // PLACE ORDER
+  // STOCK IS REDUCED ONLY AFTER ALL STOCK IS VERIFIED
   // ============================================================
 
   Future<void> placeOrder() async {
+    if (placingOrder) return;
+
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -70,7 +73,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please login before placing an order'),
+          content: Text(
+            'Please login before placing an order',
+          ),
         ),
       );
       return;
@@ -83,27 +88,43 @@ class _CheckoutPageState extends State<CheckoutPage> {
     try {
       final firestore = FirebaseFirestore.instance;
 
-      /*
-       * IMPORTANT:
-       *
-       * Stock is NOT reduced when adding product to cart.
-       *
-       * Stock is reduced ONLY when the order is successfully placed.
-       *
-       * Firestore transaction makes this safe even if two customers
-       * try to buy the last available stock at the same time.
-       */
+      final cartItems = List<CartItem>.from(
+        CartController.items,
+      );
 
       final orderItems = <Map<String, dynamic>>[];
 
-      for (final cartItem in CartController.items) {
-        final productRef = firestore
-            .collection('products')
-            .doc(cartItem.product.id);
+      // ========================================================
+      // IMPORTANT
+      //
+      // Everything below happens inside ONE transaction.
+      //
+      // 1. Read current stock
+      // 2. Verify every product
+      // 3. Verify requested quantity
+      // 4. Reduce stock
+      // 5. Create order
+      //
+      // If anything fails, Firestore transaction rolls back.
+      // ========================================================
 
-        final productSnapshot =
-            await firestore.runTransaction(
-          (transaction) async {
+      final orderRef =
+          firestore.collection('orders').doc();
+
+      await firestore.runTransaction(
+        (transaction) async {
+          final productSnapshots =
+              <String, DocumentSnapshot<Map<String, dynamic>>>{};
+
+          // ======================================================
+          // STEP 1: READ ALL PRODUCTS
+          // ======================================================
+
+          for (final cartItem in cartItems) {
+            final productRef = firestore
+                .collection('products')
+                .doc(cartItem.product.id);
+
             final snapshot =
                 await transaction.get(productRef);
 
@@ -113,16 +134,22 @@ class _CheckoutPageState extends State<CheckoutPage> {
               );
             }
 
-            final data = snapshot.data();
+            productSnapshots[cartItem.product.id] =
+                snapshot;
+          }
 
-            final currentStock =
-                int.tryParse(
-                      data?['Stock']?.toString() ?? '0',
-                    ) ??
-                    0;
+          // ======================================================
+          // STEP 2: VERIFY STOCK FOR EVERY PRODUCT
+          // ======================================================
+
+          for (final cartItem in cartItems) {
+            final snapshot =
+                productSnapshots[cartItem.product.id]!;
+
+            final data = snapshot.data() ?? {};
 
             final active =
-                data?['Active'] == true;
+                data['Active'] == true;
 
             if (!active) {
               throw Exception(
@@ -130,17 +157,63 @@ class _CheckoutPageState extends State<CheckoutPage> {
               );
             }
 
-            if (currentStock < cartItem.quantity) {
+            final currentStock =
+                int.tryParse(
+                      data['Stock']?.toString() ?? '0',
+                    ) ??
+                    0;
+
+            // Never allow negative stock.
+            if (currentStock < 0) {
               throw Exception(
-                'Only $currentStock stock available for '
-                '${cartItem.name}. Please update your cart.',
+                'Invalid stock for ${cartItem.name}.',
               );
             }
+
+            if (currentStock == 0) {
+              throw Exception(
+                '${cartItem.name} is out of stock.',
+              );
+            }
+
+            if (cartItem.quantity <= 0) {
+              throw Exception(
+                'Invalid quantity for ${cartItem.name}.',
+              );
+            }
+
+            if (cartItem.quantity > currentStock) {
+              throw Exception(
+                'Only $currentStock ${cartItem.name} '
+                'available. Please update your cart.',
+              );
+            }
+          }
+
+          // ======================================================
+          // STEP 3: REDUCE STOCK
+          // ======================================================
+
+          for (final cartItem in cartItems) {
+            final productRef = firestore
+                .collection('products')
+                .doc(cartItem.product.id);
+
+            final snapshot =
+                productSnapshots[cartItem.product.id]!;
+
+            final data = snapshot.data() ?? {};
+
+            final currentStock =
+                int.tryParse(
+                      data['Stock']?.toString() ?? '0',
+                    ) ??
+                    0;
 
             final newStock =
                 currentStock - cartItem.quantity;
 
-            // Never allow stock below zero.
+            // Extra safety.
             if (newStock < 0) {
               throw Exception(
                 'Insufficient stock for ${cartItem.name}.',
@@ -154,64 +227,78 @@ class _CheckoutPageState extends State<CheckoutPage> {
               },
             );
 
-            return snapshot;
-          },
-        );
+            // ====================================================
+            // ORDER ITEM
+            // ====================================================
 
-        final productData =
-            productSnapshot.data() ?? {};
+            orderItems.add({
+              'productId': cartItem.product.id,
+              'name': cartItem.name,
+              'category': cartItem.category,
+              'price': cartItem.numericPrice,
+              'quantity': cartItem.quantity,
+              'total': cartItem.totalPrice,
+              'imageUrl':
+                  data['Imageurl']?.toString() ??
+                      cartItem.imageUrl,
+            });
+          }
 
-        orderItems.add({
-          'productId': cartItem.product.id,
-          'name': cartItem.name,
-          'category': cartItem.category,
-          'price': cartItem.numericPrice,
-          'quantity': cartItem.quantity,
-          'total': cartItem.totalPrice,
-          'imageUrl':
-              productData['Imageurl']?.toString() ??
-                  cartItem.imageUrl,
-        });
-      }
+          // ======================================================
+          // STEP 4: CREATE ORDER
+          // ======================================================
+
+          transaction.set(
+            orderRef,
+            {
+              'userId': user.uid,
+
+              'customerName':
+                  nameController.text.trim(),
+
+              'mobile':
+                  mobileController.text.trim(),
+
+              'address':
+                  addressController.text.trim(),
+
+              'city':
+                  cityController.text.trim(),
+
+              'pincode':
+                  pincodeController.text.trim(),
+
+              'items': orderItems,
+
+              'totalAmount':
+                  cartItems.fold<double>(
+                0,
+                (sum, item) =>
+                    sum + item.totalPrice,
+              ),
+
+              'status': 'Placed',
+
+              'paymentMethod':
+                  'Cash on Delivery',
+
+              'createdAt':
+                  FieldValue.serverTimestamp(),
+
+              'updatedAt':
+                  FieldValue.serverTimestamp(),
+            },
+          );
+        },
+      );
 
       // ========================================================
-      // CREATE ORDER
+      // SUCCESS
       // ========================================================
-
-      final orderData = {
-        'userId': user.uid,
-        'customerName':
-            nameController.text.trim(),
-        'mobile':
-            mobileController.text.trim(),
-        'address':
-            addressController.text.trim(),
-        'city':
-            cityController.text.trim(),
-        'pincode':
-            pincodeController.text.trim(),
-
-        'items': orderItems,
-
-        'totalAmount':
-            CartController.total,
-
-        'status': 'Placed',
-
-        'paymentMethod':
-            'Cash on Delivery',
-
-        'createdAt':
-            FieldValue.serverTimestamp(),
-      };
-
-      final orderRef = await firestore
-          .collection('orders')
-          .add(orderData);
 
       if (!mounted) return;
 
-      // Clear cart ONLY after successful order.
+      // Cart clear ONLY after successful transaction.
       CartController.clear();
 
       await showDialog(
@@ -234,7 +321,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
             content: Text(
               'Your order has been placed successfully.\n\n'
               'Order ID:\n${orderRef.id}\n\n'
-              'Stock has been updated.',
+              'Stock has been updated successfully.',
             ),
             actions: [
               FilledButton(
@@ -261,8 +348,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
           content: Text(
             'Order failed:\n${e.message ?? e.code}',
           ),
-          duration:
-              const Duration(seconds: 4),
+          duration: const Duration(seconds: 4),
         ),
       );
     } catch (e) {
@@ -276,8 +362,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
               '',
             ),
           ),
-          duration:
-              const Duration(seconds: 4),
+          duration: const Duration(seconds: 4),
         ),
       );
     } finally {
@@ -316,8 +401,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
           hintText: hint,
           prefixIcon: Icon(icon),
           border: OutlineInputBorder(
-            borderRadius:
-                BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(14),
           ),
         ),
       ),
@@ -331,6 +415,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
   @override
   Widget build(BuildContext context) {
     final items = CartController.items;
+
+    final cartEmpty = items.isEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -346,8 +432,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
         child: Form(
           key: _formKey,
           child: ListView(
-            padding:
-                const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(16),
             children: [
               // ==================================================
               // DELIVERY DETAILS
@@ -367,8 +452,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 controller: nameController,
                 label: 'Full Name',
                 hint: 'Enter your full name',
-                icon:
-                    Icons.person_outline,
+                icon: Icons.person_outline,
                 validator: (value) {
                   if (value == null ||
                       value.trim().isEmpty) {
@@ -386,12 +470,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
               inputField(
                 controller: mobileController,
                 label: 'Mobile Number',
-                hint:
-                    'Enter 10 digit mobile number',
-                icon:
-                    Icons.phone_outlined,
-                keyboardType:
-                    TextInputType.phone,
+                hint: 'Enter 10 digit mobile number',
+                icon: Icons.phone_outlined,
+                keyboardType: TextInputType.phone,
                 validator: (value) {
                   final mobile =
                       value?.trim() ?? '';
@@ -403,8 +484,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   if (!RegExp(
                     r'^[0-9]{10}$',
                   ).hasMatch(mobile)) {
-                    return
-                        'Enter a valid 10 digit number';
+                    return 'Enter a valid 10 digit number';
                   }
 
                   return null;
@@ -414,21 +494,17 @@ class _CheckoutPageState extends State<CheckoutPage> {
               inputField(
                 controller: addressController,
                 label: 'Address',
-                hint:
-                    'House no., street, area',
-                icon:
-                    Icons.home_outlined,
+                hint: 'House no., street, area',
+                icon: Icons.home_outlined,
                 maxLines: 3,
                 validator: (value) {
                   if (value == null ||
                       value.trim().isEmpty) {
-                    return
-                        'Enter delivery address';
+                    return 'Enter delivery address';
                   }
 
                   if (value.trim().length < 5) {
-                    return
-                        'Enter a complete address';
+                    return 'Enter a complete address';
                   }
 
                   return null;
@@ -439,8 +515,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 controller: cityController,
                 label: 'City',
                 hint: 'Enter your city',
-                icon:
-                    Icons.location_city_outlined,
+                icon: Icons.location_city_outlined,
                 validator: (value) {
                   if (value == null ||
                       value.trim().isEmpty) {
@@ -452,15 +527,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
               ),
 
               inputField(
-                controller:
-                    pincodeController,
+                controller: pincodeController,
                 label: 'PIN Code',
-                hint:
-                    'Enter 6 digit PIN code',
-                icon:
-                    Icons.pin_drop_outlined,
-                keyboardType:
-                    TextInputType.number,
+                hint: 'Enter 6 digit PIN code',
+                icon: Icons.pin_drop_outlined,
+                keyboardType: TextInputType.number,
                 validator: (value) {
                   final pincode =
                       value?.trim() ?? '';
@@ -468,8 +539,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   if (!RegExp(
                     r'^[0-9]{6}$',
                   ).hasMatch(pincode)) {
-                    return
-                        'Enter a valid 6 digit PIN code';
+                    return 'Enter a valid 6 digit PIN code';
                   }
 
                   return null;
@@ -490,15 +560,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   title: const Text(
                     'Cash on Delivery',
                     style: TextStyle(
-                      fontWeight:
-                          FontWeight.bold,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                   subtitle: const Text(
                     'Pay when your order is delivered',
                   ),
-                  trailing:
-                      const Icon(
+                  trailing: const Icon(
                     Icons.check_circle,
                     color: Colors.green,
                   ),
@@ -523,92 +591,98 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
               Card(
                 child: Padding(
-                  padding:
-                      const EdgeInsets.all(14),
-                  child: Column(
-                    children: [
-                      ...items.map(
-                        (item) {
-                          return Padding(
-                            padding:
-                                const EdgeInsets.only(
-                              bottom: 12,
+                  padding: const EdgeInsets.all(14),
+                  child: cartEmpty
+                      ? const Padding(
+                          padding: EdgeInsets.all(20),
+                          child: Center(
+                            child: Text(
+                              'Your cart is empty',
                             ),
-                            child: Row(
+                          ),
+                        )
+                      : Column(
+                          children: [
+                            ...items.map(
+                              (item) {
+                                return Padding(
+                                  padding:
+                                      const EdgeInsets.only(
+                                    bottom: 12,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          '${item.name} × ${item.quantity}',
+                                          style:
+                                              const TextStyle(
+                                            fontWeight:
+                                                FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                      Text(
+                                        money(
+                                          item.totalPrice,
+                                        ),
+                                        style:
+                                            const TextStyle(
+                                          fontWeight:
+                                              FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+
+                            const Divider(),
+
+                            const SizedBox(height: 6),
+
+                            Row(
+                              mainAxisAlignment:
+                                  MainAxisAlignment.spaceBetween,
                               children: [
-                                Expanded(
-                                  child: Text(
-                                    '${item.name} × ${item.quantity}',
-                                    style:
-                                        const TextStyle(
-                                      fontWeight:
-                                          FontWeight.w500,
-                                    ),
+                                const Text(
+                                  'Total Amount',
+                                  style: TextStyle(
+                                    fontSize: 19,
+                                    fontWeight:
+                                        FontWeight.bold,
                                   ),
                                 ),
                                 Text(
                                   money(
-                                    item.totalPrice,
+                                    CartController.total,
                                   ),
                                   style:
                                       const TextStyle(
+                                    fontSize: 22,
                                     fontWeight:
                                         FontWeight.bold,
                                   ),
                                 ),
                               ],
                             ),
-                          );
-                        },
-                      ),
-
-                      const Divider(),
-
-                      const SizedBox(height: 6),
-
-                      Row(
-                        mainAxisAlignment:
-                            MainAxisAlignment
-                                .spaceBetween,
-                        children: [
-                          const Text(
-                            'Total Amount',
-                            style: TextStyle(
-                              fontSize: 19,
-                              fontWeight:
-                                  FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            money(
-                              CartController.total,
-                            ),
-                            style:
-                                const TextStyle(
-                              fontSize: 22,
-                              fontWeight:
-                                  FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                          ],
+                        ),
                 ),
               ),
 
               const SizedBox(height: 22),
 
               // ==================================================
-              // PLACE ORDER
+              // PLACE ORDER BUTTON
               // ==================================================
 
               SizedBox(
                 height: 54,
-                child:
-                    FilledButton.icon(
+                child: FilledButton.icon(
                   onPressed:
-                      placingOrder
+                      placingOrder || cartEmpty
                           ? null
                           : placeOrder,
                   icon: placingOrder
@@ -621,18 +695,17 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           ),
                         )
                       : const Icon(
-                          Icons
-                              .shopping_bag_outlined,
+                          Icons.shopping_bag_outlined,
                         ),
                   label: Text(
                     placingOrder
                         ? 'Placing Order...'
-                        : 'Place Order',
-                    style:
-                        const TextStyle(
+                        : cartEmpty
+                            ? 'Cart is Empty'
+                            : 'Place Order',
+                    style: const TextStyle(
                       fontSize: 17,
-                      fontWeight:
-                          FontWeight.bold,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
@@ -641,7 +714,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
               const SizedBox(height: 12),
 
               const Text(
-                'Stock is reserved only when the order is placed. '
+                'Stock is reduced only after the order is successfully confirmed. '
                 'Adding an item to your cart does not reduce stock.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
@@ -653,14 +726,16 @@ class _CheckoutPageState extends State<CheckoutPage> {
               const SizedBox(height: 5),
 
               const Text(
-                'By placing this order, you agree to receive your '
-                'order at the address provided above.',
+                'If the available stock is less than your requested quantity, '
+                'the order will not be placed.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.grey,
                   fontSize: 12,
                 ),
               ),
+
+              const SizedBox(height: 10),
             ],
           ),
         ),
