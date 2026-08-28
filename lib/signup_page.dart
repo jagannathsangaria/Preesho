@@ -12,24 +12,142 @@ class SignupPage extends StatefulWidget {
 class _SignupPageState extends State<SignupPage> {
   final _formKey = GlobalKey<FormState>();
 
-  final nameController = TextEditingController();
   final mobileController = TextEditingController();
+  final otpController = TextEditingController();
+  final nameController = TextEditingController();
   final emailController = TextEditingController();
-  final passwordController = TextEditingController();
-  final confirmPasswordController = TextEditingController();
 
   bool loading = false;
-  bool obscurePassword = true;
-  bool obscureConfirmPassword = true;
+  bool otpSent = false;
+  bool otpVerified = false;
 
-  Future<void> signup() async {
+  String? verificationId;
+
+  // ============================================================
+  // SEND OTP
+  // ============================================================
+
+  Future<void> sendOtp() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    if (passwordController.text !=
-        confirmPasswordController.text) {
-      showMessage('Passwords do not match');
+    final mobile = mobileController.text.trim();
+
+    setState(() {
+      loading = true;
+    });
+
+    try {
+      await FirebaseAuth.instance.verifyPhoneNumber(
+        phoneNumber: '+91$mobile',
+
+        verificationCompleted:
+            (PhoneAuthCredential credential) async {
+          try {
+            await FirebaseAuth.instance
+                .signInWithCredential(credential);
+
+            if (!mounted) return;
+
+            setState(() {
+              otpVerified = true;
+              loading = false;
+            });
+
+            showMessage('Mobile number verified.');
+          } catch (_) {
+            if (!mounted) return;
+
+            setState(() {
+              loading = false;
+            });
+
+            showMessage(
+              'Automatic verification failed. Please enter OTP.',
+            );
+          }
+        },
+
+        verificationFailed: (FirebaseAuthException e) {
+          if (!mounted) return;
+
+          String message = 'OTP could not be sent.';
+
+          if (e.code == 'invalid-phone-number') {
+            message = 'Please enter a valid mobile number.';
+          } else if (e.code == 'too-many-requests') {
+            message =
+                'Too many OTP requests. Please try again later.';
+          } else if (e.code == 'quota-exceeded') {
+            message =
+                'SMS limit reached. Please try again later.';
+          } else if (e.code == 'network-request-failed') {
+            message = 'Internet connection problem.';
+          } else if (e.message != null &&
+              e.message!.isNotEmpty) {
+            message = e.message!;
+          }
+
+          setState(() {
+            loading = false;
+          });
+
+          showMessage(message);
+        },
+
+        codeSent: (String id, int? resendToken) {
+          if (!mounted) return;
+
+          verificationId = id;
+
+          setState(() {
+            otpSent = true;
+            loading = false;
+          });
+
+          showMessage(
+            'OTP sent to +91$mobile',
+          );
+        },
+
+        codeAutoRetrievalTimeout: (String id) {
+          verificationId = id;
+
+          if (mounted) {
+            setState(() {
+              loading = false;
+            });
+          }
+        },
+      );
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        loading = false;
+      });
+
+      showMessage(
+        'Something went wrong. Please try again.',
+      );
+    }
+  }
+
+  // ============================================================
+  // VERIFY OTP
+  // ============================================================
+
+  Future<void> verifyOtp() async {
+    final otp = otpController.text.trim();
+
+    if (!RegExp(r'^[0-9]{6}$').hasMatch(otp)) {
+      showMessage('Please enter the 6 digit OTP.');
+      return;
+    }
+
+    if (verificationId == null) {
+      showMessage('Please request OTP again.');
       return;
     }
 
@@ -38,133 +156,202 @@ class _SignupPageState extends State<SignupPage> {
     });
 
     try {
-      final email = emailController.text.trim();
-      final password = passwordController.text;
-      final name = nameController.text.trim();
-      final mobile = mobileController.text.trim();
+      final credential =
+          PhoneAuthProvider.credential(
+        verificationId: verificationId!,
+        smsCode: otp,
+      );
 
-      // =================================================
-      // STEP 1: CREATE FIREBASE AUTH ACCOUNT
-      // =================================================
+      await FirebaseAuth.instance
+          .signInWithCredential(credential);
 
-      UserCredential credential;
+      if (!mounted) return;
 
-      try {
-        credential = await FirebaseAuth.instance
-            .createUserWithEmailAndPassword(
-          email: email,
-          password: password,
-        );
-      } on FirebaseAuthException catch (e) {
-        String message = 'Sign up failed';
+      setState(() {
+        otpVerified = true;
+        loading = false;
+      });
 
-        if (e.code == 'email-already-in-use') {
-          message =
-              'This email is already registered. Please login.';
-        } else if (e.code == 'invalid-email') {
-          message = 'Please enter a valid email address.';
-        } else if (e.code == 'weak-password') {
-          message =
-              'Password is too weak. Use at least 6 characters.';
-        } else if (e.code == 'network-request-failed') {
-          message =
-              'Internet connection problem. Please try again.';
-        } else if (e.code == 'operation-not-allowed') {
-          message =
-              'Email/Password authentication is not enabled.';
-        }
+      showMessage(
+        'Mobile number verified successfully.',
+      );
+    } on FirebaseAuthException catch (e) {
+      String message = 'OTP verification failed.';
 
-        showMessage(message);
-        return;
-      }
-
-      final user = credential.user;
-
-      if (user == null) {
-        showMessage(
-          'Account could not be created. Please try again.',
-        );
-        return;
-      }
-
-      // =================================================
-      // STEP 2: UPDATE FIREBASE USER PROFILE
-      // =================================================
-
-      try {
-        await user.updateDisplayName(name);
-      } catch (_) {
-        // Profile update failure should NOT make signup fail.
-      }
-
-      // =================================================
-      // STEP 3: SAVE CUSTOMER DATA TO FIRESTORE
-      // =================================================
-
-      try {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .set(
-          {
-            'uid': user.uid,
-            'name': name,
-            'mobile': mobile,
-            'email': email,
-            'createdAt': FieldValue.serverTimestamp(),
-          },
-          SetOptions(merge: true),
-        );
-      } catch (firestoreError) {
-        // IMPORTANT:
-        // Authentication account is already successfully created.
-        //
-        // If Firestore fails, do NOT tell the customer
-        // that signup failed.
-        //
-        // The account can still be used for login.
+      if (e.code == 'invalid-verification-code') {
+        message = 'Incorrect OTP. Please try again.';
+      } else if (e.code == 'session-expired') {
+        message =
+            'OTP expired. Please request a new OTP.';
+      } else if (e.code == 'invalid-credential') {
+        message =
+            'Invalid OTP. Please request a new OTP.';
       }
 
       if (!mounted) return;
 
-      // =================================================
-      // STEP 4: SUCCESS
-      // =================================================
+      setState(() {
+        loading = false;
+      });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Account created successfully. Please login.',
-          ),
-        ),
+      showMessage(message);
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        loading = false;
+      });
+
+      showMessage(
+        'Something went wrong. Please try again.',
+      );
+    }
+  }
+
+  // ============================================================
+  // CREATE / SAVE CUSTOMER PROFILE
+  // ============================================================
+
+  Future<void> createAccount() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    if (!otpVerified) {
+      showMessage(
+        'Please verify your mobile number with OTP first.',
+      );
+      return;
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      showMessage(
+        'Mobile verification is incomplete. Please try again.',
+      );
+      return;
+    }
+
+    setState(() {
+      loading = true;
+    });
+
+    try {
+      final name = nameController.text.trim();
+      final email = emailController.text.trim();
+      final mobile = mobileController.text.trim();
+
+      // ==========================================================
+      // UPDATE DISPLAY NAME
+      // ==========================================================
+
+      try {
+        await user.updateDisplayName(name);
+      } catch (_) {}
+
+      // ==========================================================
+      // OPTIONAL EMAIL
+      // ==========================================================
+
+      if (email.isNotEmpty) {
+        try {
+          await user.updateEmail(email);
+        } on FirebaseAuthException catch (e) {
+          if (e.code == 'email-already-in-use') {
+            if (!mounted) return;
+
+            setState(() {
+              loading = false;
+            });
+
+            showMessage(
+              'This email is already linked to another account.',
+            );
+            return;
+          }
+        } catch (_) {}
+      }
+
+      // ==========================================================
+      // SAVE CUSTOMER DATA
+      // ==========================================================
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set(
+        {
+          'uid': user.uid,
+          'name': name,
+          'mobile': mobile,
+          'phoneNumber': user.phoneNumber,
+          'email': email.isEmpty ? null : email,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
       );
 
-      // Sign out so the user reaches the normal login flow.
-      try {
-        await FirebaseAuth.instance.signOut();
-      } catch (_) {}
+      if (!mounted) return;
+
+      setState(() {
+        loading = false;
+      });
+
+      showMessage(
+        'Account created successfully.',
+      );
+
+      await Future.delayed(
+        const Duration(milliseconds: 500),
+      );
 
       if (!mounted) return;
 
       Navigator.pop(context, true);
-    } catch (e) {
+    } on FirebaseException catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Account creation could not be completed. Please try again.',
-          ),
-        ),
+      setState(() {
+        loading = false;
+      });
+
+      showMessage(
+        'Could not save account details.\n'
+        '${e.message ?? e.code}',
       );
-    } finally {
-      if (mounted) {
-        setState(() {
-          loading = false;
-        });
-      }
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        loading = false;
+      });
+
+      showMessage(
+        'Account creation failed. Please try again.',
+      );
     }
   }
+
+  // ============================================================
+  // CHANGE MOBILE NUMBER
+  // ============================================================
+
+  void changeMobile() {
+    if (loading) return;
+
+    setState(() {
+      otpSent = false;
+      otpVerified = false;
+      verificationId = null;
+      otpController.clear();
+    });
+  }
+
+  // ============================================================
+  // MESSAGE
+  // ============================================================
 
   void showMessage(String message) {
     if (!mounted) return;
@@ -178,15 +365,22 @@ class _SignupPageState extends State<SignupPage> {
     );
   }
 
+  // ============================================================
+  // DISPOSE
+  // ============================================================
+
   @override
   void dispose() {
-    nameController.dispose();
     mobileController.dispose();
+    otpController.dispose();
+    nameController.dispose();
     emailController.dispose();
-    passwordController.dispose();
-    confirmPasswordController.dispose();
     super.dispose();
   }
+
+  // ============================================================
+  // BUILD
+  // ============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -228,7 +422,7 @@ class _SignupPageState extends State<SignupPage> {
                   const SizedBox(height: 8),
 
                   Text(
-                    'Join Preesho and start shopping',
+                    'Mobile number verification is required',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.grey.shade700,
@@ -239,59 +433,35 @@ class _SignupPageState extends State<SignupPage> {
                   const SizedBox(height: 28),
 
                   // =================================================
-                  // NAME
-                  // =================================================
-
-                  TextFormField(
-                    controller: nameController,
-                    textInputAction:
-                        TextInputAction.next,
-                    decoration: InputDecoration(
-                      labelText: 'Full Name',
-                      hintText: 'Enter your name',
-                      prefixIcon: const Icon(
-                        Icons.person_outline,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(14),
-                      ),
-                    ),
-                    validator: (value) {
-                      if (value == null ||
-                          value.trim().isEmpty) {
-                        return 'Please enter your name';
-                      }
-
-                      if (value.trim().length < 2) {
-                        return 'Please enter a valid name';
-                      }
-
-                      return null;
-                    },
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // =================================================
                   // MOBILE
                   // =================================================
 
                   TextFormField(
                     controller: mobileController,
-                    keyboardType:
-                        TextInputType.phone,
+                    keyboardType: TextInputType.phone,
                     textInputAction:
-                        TextInputAction.next,
+                        otpSent
+                            ? TextInputAction.next
+                            : TextInputAction.done,
                     maxLength: 10,
+                    enabled:
+                        !otpVerified && !loading,
                     decoration: InputDecoration(
                       labelText: 'Mobile Number',
                       hintText:
                           'Enter 10 digit mobile number',
+                      prefixText: '+91 ',
                       prefixIcon: const Icon(
                         Icons.phone_outlined,
                       ),
                       counterText: '',
+                      suffixIcon:
+                          otpVerified
+                              ? const Icon(
+                                  Icons.verified,
+                                  color: Colors.green,
+                                )
+                              : null,
                       border: OutlineInputBorder(
                         borderRadius:
                             BorderRadius.circular(14),
@@ -302,223 +472,308 @@ class _SignupPageState extends State<SignupPage> {
                           value?.trim() ?? '';
 
                       if (mobile.isEmpty) {
-                        return 'Please enter mobile number';
+                        return
+                            'Please enter mobile number';
                       }
 
                       if (!RegExp(
                         r'^[0-9]{10}$',
                       ).hasMatch(mobile)) {
-                        return 'Enter a valid 10 digit number';
+                        return
+                            'Enter a valid 10 digit number';
                       }
 
                       return null;
                     },
                   ),
 
-                  const SizedBox(height: 16),
-
                   // =================================================
-                  // EMAIL
+                  // OTP
                   // =================================================
 
-                  TextFormField(
-                    controller: emailController,
-                    keyboardType:
-                        TextInputType.emailAddress,
-                    textInputAction:
-                        TextInputAction.next,
-                    decoration: InputDecoration(
-                      labelText: 'Email',
-                      hintText:
-                          'Enter your email',
-                      prefixIcon: const Icon(
-                        Icons.email_outlined,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(14),
-                      ),
-                    ),
-                    validator: (value) {
-                      final email =
-                          value?.trim() ?? '';
+                  if (otpSent && !otpVerified) ...[
+                    const SizedBox(height: 16),
 
-                      if (email.isEmpty) {
-                        return 'Please enter your email';
-                      }
-
-                      if (!RegExp(
-                        r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
-                      ).hasMatch(email)) {
-                        return 'Enter a valid email';
-                      }
-
-                      return null;
-                    },
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // =================================================
-                  // PASSWORD
-                  // =================================================
-
-                  TextFormField(
-                    controller:
-                        passwordController,
-                    obscureText: obscurePassword,
-                    textInputAction:
-                        TextInputAction.next,
-                    decoration: InputDecoration(
-                      labelText: 'Password',
-                      hintText:
-                          'Minimum 6 characters',
-                      prefixIcon: const Icon(
-                        Icons.lock_outline,
-                      ),
-                      suffixIcon: IconButton(
-                        onPressed: () {
-                          setState(() {
-                            obscurePassword =
-                                !obscurePassword;
-                          });
-                        },
-                        icon: Icon(
-                          obscurePassword
-                              ? Icons
-                                  .visibility_outlined
-                              : Icons
-                                  .visibility_off_outlined,
+                    TextFormField(
+                      controller: otpController,
+                      keyboardType:
+                          TextInputType.number,
+                      textInputAction:
+                          TextInputAction.done,
+                      maxLength: 6,
+                      onFieldSubmitted: (_) {
+                        if (!loading) {
+                          verifyOtp();
+                        }
+                      },
+                      decoration: InputDecoration(
+                        labelText: 'OTP',
+                        hintText:
+                            'Enter 6 digit OTP',
+                        prefixIcon: const Icon(
+                          Icons.lock_outline,
+                        ),
+                        counterText: '',
+                        border: OutlineInputBorder(
+                          borderRadius:
+                              BorderRadius.circular(14),
                         ),
                       ),
-                      border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(14),
-                      ),
                     ),
-                    validator: (value) {
-                      if (value == null ||
-                          value.isEmpty) {
-                        return 'Please enter a password';
-                      }
 
-                      if (value.length < 6) {
-                        return
-                            'Password must be at least 6 characters';
-                      }
+                    const SizedBox(height: 8),
 
-                      return null;
-                    },
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // =================================================
-                  // CONFIRM PASSWORD
-                  // =================================================
-
-                  TextFormField(
-                    controller:
-                        confirmPasswordController,
-                    obscureText:
-                        obscureConfirmPassword,
-                    textInputAction:
-                        TextInputAction.done,
-                    onFieldSubmitted: (_) {
-                      if (!loading) {
-                        signup();
-                      }
-                    },
-                    decoration: InputDecoration(
-                      labelText:
-                          'Confirm Password',
-                      hintText:
-                          'Enter password again',
-                      prefixIcon: const Icon(
-                        Icons.lock_reset_outlined,
-                      ),
-                      suffixIcon: IconButton(
-                        onPressed: () {
-                          setState(() {
-                            obscureConfirmPassword =
-                                !obscureConfirmPassword;
-                          });
-                        },
-                        icon: Icon(
-                          obscureConfirmPassword
-                              ? Icons
-                                  .visibility_outlined
-                              : Icons
-                                  .visibility_off_outlined,
-                        ),
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(14),
-                      ),
-                    ),
-                    validator: (value) {
-                      if (value == null ||
-                          value.isEmpty) {
-                        return
-                            'Please confirm your password';
-                      }
-
-                      if (value !=
-                          passwordController.text) {
-                        return
-                            'Passwords do not match';
-                      }
-
-                      return null;
-                    },
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // =================================================
-                  // CREATE ACCOUNT BUTTON
-                  // =================================================
-
-                  SizedBox(
-                    height: 52,
-                    child: FilledButton(
+                    TextButton(
                       onPressed:
-                          loading ? null : signup,
-                      child: loading
-                          ? const SizedBox(
-                              width: 24,
-                              height: 24,
-                              child:
-                                  CircularProgressIndicator(
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Text(
-                              'Create Account',
-                              style: TextStyle(
-                                fontSize: 17,
-                                fontWeight:
-                                    FontWeight.bold,
+                          loading
+                              ? null
+                              : changeMobile,
+                      child: const Text(
+                        'Change Mobile Number',
+                      ),
+                    ),
+                  ],
+
+                  // =================================================
+                  // SEND / VERIFY OTP
+                  // =================================================
+
+                  if (!otpVerified) ...[
+                    const SizedBox(height: 16),
+
+                    SizedBox(
+                      height: 52,
+                      child: FilledButton.icon(
+                        onPressed:
+                            loading
+                                ? null
+                                : otpSent
+                                    ? verifyOtp
+                                    : sendOtp,
+                        icon:
+                            loading
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child:
+                                        CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : Icon(
+                                    otpSent
+                                        ? Icons.verified
+                                        : Icons.sms_outlined,
+                                  ),
+                        label: Text(
+                          loading
+                              ? otpSent
+                                  ? 'Verifying...'
+                                  : 'Sending OTP...'
+                              : otpSent
+                                  ? 'Verify OTP'
+                                  : 'Send OTP',
+                          style:
+                              const TextStyle(
+                            fontSize: 17,
+                            fontWeight:
+                                FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+
+                  // =================================================
+                  // CUSTOMER DETAILS
+                  // =================================================
+
+                  if (otpVerified) ...[
+                    const SizedBox(height: 24),
+
+                    Card(
+                      child: Padding(
+                        padding:
+                            const EdgeInsets.all(14),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.check_circle,
+                              color: Colors.green,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Mobile number verified: +91 ${mobileController.text}',
+                                style:
+                                    const TextStyle(
+                                  fontWeight:
+                                      FontWeight.w600,
+                                ),
                               ),
                             ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // NAME
+
+                    TextFormField(
+                      controller:
+                          nameController,
+                      textInputAction:
+                          TextInputAction.next,
+                      decoration:
+                          InputDecoration(
+                        labelText: 'Full Name',
+                        hintText:
+                            'Enter your name',
+                        prefixIcon:
+                            const Icon(
+                          Icons.person_outline,
+                        ),
+                        border:
+                            OutlineInputBorder(
+                          borderRadius:
+                              BorderRadius.circular(
+                            14,
+                          ),
+                        ),
+                      ),
+                      validator: (value) {
+                        if (!otpVerified) {
+                          return null;
+                        }
+
+                        if (value == null ||
+                            value.trim().isEmpty) {
+                          return
+                              'Please enter your name';
+                        }
+
+                        if (value.trim().length <
+                            2) {
+                          return
+                              'Please enter a valid name';
+                        }
+
+                        return null;
+                      },
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // EMAIL OPTIONAL
+
+                    TextFormField(
+                      controller:
+                          emailController,
+                      keyboardType:
+                          TextInputType.emailAddress,
+                      textInputAction:
+                          TextInputAction.done,
+                      decoration:
+                          InputDecoration(
+                        labelText:
+                            'Email (Optional)',
+                        hintText:
+                            'Enter email if you want',
+                        prefixIcon:
+                            const Icon(
+                          Icons.email_outlined,
+                        ),
+                        border:
+                            OutlineInputBorder(
+                          borderRadius:
+                              BorderRadius.circular(
+                            14,
+                          ),
+                        ),
+                      ),
+                      validator: (value) {
+                        final email =
+                            value?.trim() ?? '';
+
+                        if (email.isEmpty) {
+                          return null;
+                        }
+
+                        if (!RegExp(
+                          r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                        ).hasMatch(email)) {
+                          return
+                              'Enter a valid email';
+                        }
+
+                        return null;
+                      },
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // CREATE ACCOUNT
+
+                    SizedBox(
+                      height: 52,
+                      child: FilledButton.icon(
+                        onPressed:
+                            loading
+                                ? null
+                                : createAccount,
+                        icon:
+                            loading
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child:
+                                        CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons
+                                        .person_add_alt_1,
+                                  ),
+                        label: Text(
+                          loading
+                              ? 'Creating Account...'
+                              : 'Create Account',
+                          style:
+                              const TextStyle(
+                            fontSize: 17,
+                            fontWeight:
+                                FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 20),
+
+                  const Text(
+                    'Mobile number is mandatory. Email is optional and can be added later.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontSize: 13,
                     ),
                   ),
 
                   const SizedBox(height: 12),
 
-                  // =================================================
-                  // LOGIN
-                  // =================================================
-
                   TextButton(
-                    onPressed: loading
-                        ? null
-                        : () {
-                            Navigator.pop(
-                              context,
-                            );
-                          },
+                    onPressed:
+                        loading
+                            ? null
+                            : () {
+                                Navigator.pop(
+                                  context,
+                                );
+                              },
                     child: const Text(
                       'Already have an account? Login',
                     ),
