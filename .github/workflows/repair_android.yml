@@ -2,6 +2,9 @@ name: Repair Android Project
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -26,14 +29,26 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          cache: true
+
+      - name: Check Flutter
+        run: flutter --version
 
       - name: Regenerate Android platform
         run: flutter create --platforms=android .
 
-      - name: Restore Firebase config check
+      - name: Verify Firebase configuration
         run: |
           test -f android/app/google-services.json
           echo "Firebase config exists"
+
+      - name: Check Android structure
+        run: |
+          test -f android/gradlew
+          test -f android/gradle/wrapper/gradle-wrapper.properties
+          test -f android/app/build.gradle.kts
+          test -f android/app/src/main/AndroidManifest.xml
+          echo "Android structure is complete"
 
       - name: Commit generated Android files
         run: |
