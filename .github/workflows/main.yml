@@ -11,14 +11,29 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
+      # ==========================================================
+      # CHECKOUT
+      # ==========================================================
+
       - name: Checkout
         uses: actions/checkout@v4
+
+
+      # ==========================================================
+      # JAVA
+      # ==========================================================
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
+
+
+      # ==========================================================
+      # FLUTTER
+      # ==========================================================
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -27,24 +42,43 @@ jobs:
           channel: stable
           cache: true
 
+
+      # ==========================================================
+      # BACKUP FLUTTER FILES
+      # ==========================================================
+
       - name: Backup Flutter Files
         run: |
           set -e
+
           mkdir -p /tmp/preesho_backup
+
           cp -r lib /tmp/preesho_backup/lib
           cp pubspec.yaml /tmp/preesho_backup/pubspec.yaml
+
+
+      # ==========================================================
+      # CREATE FRESH ANDROID PROJECT
+      # ==========================================================
 
       - name: Create Fresh Android Project
         run: |
           set -e
+
           rm -rf android
+
           flutter create . --platforms=android
+
+
+      # ==========================================================
+      # CONFIGURE ANDROID
+      # ==========================================================
 
       - name: Configure Android
         run: |
           set -e
 
-          # AndroidX
+          # AndroidX configuration
           cat > android/gradle.properties <<'EOF'
           org.gradle.jvmargs=-Xmx4G -Dfile.encoding=UTF-8
           android.useAndroidX=true
@@ -54,20 +88,20 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          # ==========================================
-          # settings.gradle.kts
-          # ==========================================
+          # ======================================================
+          # SETTINGS.GRADLE.KTS
+          # ======================================================
 
           settings = Path("android/settings.gradle.kts")
           text = settings.read_text()
 
-          # Kotlin 2.3.0
+          # Update Kotlin version
           text = text.replace(
               'id("org.jetbrains.kotlin.android") version "2.1.0" apply false',
               'id("org.jetbrains.kotlin.android") version "2.3.0" apply false'
           )
 
-          # Firebase Google Services
+          # Add Google Services plugin
           firebase_plugin = (
               'id("com.google.gms.google-services") '
               'version "4.4.2" apply false'
@@ -80,7 +114,7 @@ jobs:
                   1
               )
 
-          # Flutter Maven repository
+          # Add Flutter Maven repository
           flutter_repo = (
               'maven { '
               'url = uri("https://storage.googleapis.com/download.flutter.io") '
@@ -96,14 +130,15 @@ jobs:
 
           settings.write_text(text)
 
-          # ==========================================
-          # app/build.gradle.kts
-          # ==========================================
+
+          # ======================================================
+          # APP BUILD.GRADLE.KTS
+          # ======================================================
 
           app = Path("android/app/build.gradle.kts")
           text = app.read_text()
 
-          # Firebase plugin
+          # Add Google Services plugin
           if 'id("com.google.gms.google-services")' not in text:
               text = text.replace(
                   "plugins {",
@@ -111,10 +146,7 @@ jobs:
                   1
               )
 
-          # ------------------------------------------
-          # REMOVE ALL OLD Kotlin jvmTarget SETTINGS
-          # ------------------------------------------
-
+          # Remove old JVM target configuration
           lines = text.splitlines()
           cleaned = []
 
@@ -134,10 +166,7 @@ jobs:
 
           text = "\n".join(cleaned)
 
-          # ------------------------------------------
           # Java 17
-          # ------------------------------------------
-
           text = text.replace(
               "sourceCompatibility = JavaVersion.VERSION_11",
               "sourceCompatibility = JavaVersion.VERSION_17"
@@ -148,10 +177,7 @@ jobs:
               "targetCompatibility = JavaVersion.VERSION_17"
           )
 
-          # ------------------------------------------
-          # Remove existing kotlin { } blocks
-          # ------------------------------------------
-
+          # Remove existing kotlin blocks
           while True:
               start = text.find("kotlin {")
 
@@ -181,10 +207,7 @@ jobs:
 
               text = text[:start] + text[end:]
 
-          # ------------------------------------------
-          # Add FINAL Kotlin configuration
-          # ------------------------------------------
-
+          # Final Kotlin configuration
           text = text.rstrip()
 
           text += """
@@ -202,23 +225,29 @@ jobs:
 
           app.write_text(text)
 
-          # Show final configuration in Actions log
-          print("===== FINAL android/app/build.gradle.kts =====")
-          print(app.read_text())
+          print("===== ANDROID CONFIGURATION COMPLETE =====")
 
-          print("===== FINAL android/settings.gradle.kts =====")
-          print(settings.read_text())
-
-          print("===== FINAL android/gradle.properties =====")
-          print(Path("android/gradle.properties").read_text())
           PY
+
+
+      # ==========================================================
+      # RESTORE FLUTTER FILES
+      # ==========================================================
 
       - name: Restore Flutter Files
         run: |
           set -e
+
           rm -rf lib
+
           cp -r /tmp/preesho_backup/lib .
+
           cp /tmp/preesho_backup/pubspec.yaml .
+
+
+      # ==========================================================
+      # RESTORE FIREBASE CONFIGURATION
+      # ==========================================================
 
       - name: Restore Firebase
         env:
@@ -227,7 +256,7 @@ jobs:
           set -e
 
           if [ -z "$GOOGLE_SERVICES_JSON" ]; then
-            echo "GOOGLE_SERVICES_JSON secret is empty"
+            echo "ERROR: GOOGLE_SERVICES_JSON secret is empty"
             exit 1
           fi
 
@@ -236,38 +265,84 @@ jobs:
           printf '%s' "$GOOGLE_SERVICES_JSON" \
             > android/app/google-services.json
 
+          echo "Firebase configuration restored."
+
+
+      # ==========================================================
+      # VERIFY CONFIGURATION
+      # ==========================================================
+
       - name: Verify Kotlin Configuration
         run: |
           set -e
 
-          echo "Checking for old JVM target..."
+          echo "Checking Android configuration..."
 
-          if grep -R "jvmTarget = JavaVersion.VERSION_11" android; then
-            echo "ERROR: Old JVM target 11 still exists."
+          if grep -R "JavaVersion.VERSION_11" android; then
+            echo "ERROR: Java 11 configuration found."
             exit 1
           fi
 
-          if grep -R "jvmTarget = JavaVersion.VERSION_11.toString()" android; then
-            echo "ERROR: Old Kotlin JVM target still exists."
-            exit 1
-          fi
+          echo "Configuration looks good."
 
-          echo "Kotlin/Java configuration looks good."
+
+      # ==========================================================
+      # GET FLUTTER DEPENDENCIES
+      # ==========================================================
 
       - name: Get Dependencies
         run: |
           set -e
+
           flutter pub get
+
+
+      # ==========================================================
+      # GET SHA-1 FINGERPRINT
+      # ==========================================================
+
+      - name: Get SHA-1 Fingerprints
+        run: |
+          echo "=========================================="
+          echo "FIREBASE SHA-1 FINGERPRINT"
+          echo "=========================================="
+
+          cd android
+
+          chmod +x gradlew
+
+          ./gradlew signingReport
+
+          echo "=========================================="
+          echo "COPY SHA1 FROM ABOVE"
+          echo "=========================================="
+
+
+      # ==========================================================
+      # CLEAN PROJECT
+      # ==========================================================
 
       - name: Clean
         run: |
           set -e
+
           flutter clean
+
+
+      # ==========================================================
+      # BUILD RELEASE APK
+      # ==========================================================
 
       - name: Build APK
         run: |
           set -e
+
           flutter build apk --release
+
+
+      # ==========================================================
+      # UPLOAD APK
+      # ==========================================================
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
