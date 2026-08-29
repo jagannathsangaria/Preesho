@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'forgot_password_page.dart';
 
@@ -12,14 +13,14 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   // ============================================================
-  // PASSWORD LOGIN CONTROLLERS
+  // PASSWORD LOGIN
   // ============================================================
 
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
 
   // ============================================================
-  // TEST MOBILE LOGIN CONTROLLER
+  // TEST MOBILE LOGIN
   // ============================================================
 
   final mobileController = TextEditingController();
@@ -52,6 +53,7 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) return;
 
       showMessage('Login successful');
+
       Navigator.pop(context, true);
     } on FirebaseAuthException catch (e) {
       String message = 'Login failed';
@@ -79,12 +81,22 @@ class _LoginPageState extends State<LoginPage> {
 
   // ============================================================
   // TEST MOBILE LOGIN
-  // NO OTP - FIREBASE ANONYMOUS AUTH
+  //
+  // Mobile Number
+  //       ↓
+  // Anonymous Firebase Authentication
+  //       ↓
+  // Save Mobile in Firestore
+  //       ↓
+  // Checkout
+  //
+  // NO OTP
   // ============================================================
 
   Future<void> loginWithTestMobile() async {
     final mobile = mobileController.text.trim();
 
+    // Validate 10 digit Indian mobile number
     if (!RegExp(r'^[0-9]{10}$').hasMatch(mobile)) {
       showMessage('Please enter a valid 10 digit mobile number');
       return;
@@ -93,22 +105,53 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => loading = true);
 
     try {
-      // If user is already logged in, use existing user.
       User? user = FirebaseAuth.instance.currentUser;
 
-      // Otherwise create anonymous Firebase user.
-      if (user == null) {
+      // ----------------------------------------------------------
+      // Create Anonymous Firebase User
+      // ----------------------------------------------------------
+
+      if (user == null || !user.isAnonymous) {
         final result =
             await FirebaseAuth.instance.signInAnonymously();
 
         user = result.user;
       }
 
+      if (user == null) {
+        throw Exception('Firebase user was not created');
+      }
+
+      // ----------------------------------------------------------
+      // Save Mobile Number in Firestore
+      // ----------------------------------------------------------
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set(
+        {
+          'uid': user.uid,
+          'mobile': mobile,
+          'countryCode': '+91',
+          'phoneNumber': '+91$mobile',
+          'loginType': 'test_anonymous',
+          'onboardingCompleted': false,
+          'updatedAt': FieldValue.serverTimestamp(),
+          'createdAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
       if (!mounted) return;
 
       showMessage('Test login successful');
 
-      // Return true to previous page (Checkout)
+      // ----------------------------------------------------------
+      // Go back to previous page
+      // Usually this will be Checkout Page
+      // ----------------------------------------------------------
+
       Navigator.pop(context, true);
     } on FirebaseAuthException catch (e) {
       String message = 'Test login failed';
@@ -125,7 +168,9 @@ class _LoginPageState extends State<LoginPage> {
 
       showMessage(message);
     } catch (_) {
-      showMessage('Something went wrong. Please try again.');
+      showMessage(
+        'Could not save user details. Please try again.',
+      );
     } finally {
       if (mounted) {
         setState(() => loading = false);
@@ -143,15 +188,22 @@ class _LoginPageState extends State<LoginPage> {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+      SnackBar(
+        content: Text(message),
+      ),
     );
   }
+
+  // ============================================================
+  // DISPOSE
+  // ============================================================
 
   @override
   void dispose() {
     emailController.dispose();
     passwordController.dispose();
     mobileController.dispose();
+
     super.dispose();
   }
 
@@ -164,20 +216,29 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          mobileMode ? 'Test Mobile Login' : 'Login',
+          mobileMode
+              ? 'Test Mobile Login'
+              : 'Login',
           style: const TextStyle(
             fontWeight: FontWeight.bold,
           ),
         ),
       ),
+
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
+
             child: Column(
               crossAxisAlignment:
                   CrossAxisAlignment.stretch,
+
               children: [
+                // =================================================
+                // ICON
+                // =================================================
+
                 Icon(
                   mobileMode
                       ? Icons.phone_android
@@ -187,11 +248,17 @@ class _LoginPageState extends State<LoginPage> {
 
                 const SizedBox(height: 20),
 
+                // =================================================
+                // TITLE
+                // =================================================
+
                 Text(
                   mobileMode
                       ? 'Login with Mobile'
                       : 'Welcome back!',
+
                   textAlign: TextAlign.center,
+
                   style: const TextStyle(
                     fontSize: 26,
                     fontWeight: FontWeight.bold,
@@ -200,11 +267,17 @@ class _LoginPageState extends State<LoginPage> {
 
                 const SizedBox(height: 8),
 
+                // =================================================
+                // SUBTITLE
+                // =================================================
+
                 Text(
                   mobileMode
                       ? 'Enter your mobile number to continue'
                       : 'Login to continue shopping',
+
                   textAlign: TextAlign.center,
+
                   style: TextStyle(
                     color: Colors.grey.shade700,
                   ),
@@ -219,15 +292,20 @@ class _LoginPageState extends State<LoginPage> {
                 if (!mobileMode) ...[
                   TextFormField(
                     controller: emailController,
+
                     keyboardType:
                         TextInputType.emailAddress,
+
                     textInputAction:
                         TextInputAction.next,
+
                     decoration: InputDecoration(
                       labelText: 'Email Address',
+
                       prefixIcon: const Icon(
                         Icons.email_outlined,
                       ),
+
                       border: OutlineInputBorder(
                         borderRadius:
                             BorderRadius.circular(14),
@@ -239,19 +317,26 @@ class _LoginPageState extends State<LoginPage> {
 
                   TextFormField(
                     controller: passwordController,
-                    obscureText: obscurePassword,
+
+                    obscureText:
+                        obscurePassword,
+
                     textInputAction:
                         TextInputAction.done,
+
                     onFieldSubmitted: (_) {
                       if (!loading) {
                         loginWithPassword();
                       }
                     },
+
                     decoration: InputDecoration(
                       labelText: 'Password',
+
                       prefixIcon: const Icon(
                         Icons.lock_outline,
                       ),
+
                       suffixIcon: IconButton(
                         onPressed: () {
                           setState(() {
@@ -259,12 +344,14 @@ class _LoginPageState extends State<LoginPage> {
                                 !obscurePassword;
                           });
                         },
+
                         icon: Icon(
                           obscurePassword
                               ? Icons.visibility_outlined
                               : Icons.visibility_off_outlined,
                         ),
                       ),
+
                       border: OutlineInputBorder(
                         borderRadius:
                             BorderRadius.circular(14),
@@ -272,21 +359,28 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
 
+                  // =================================================
+                  // FORGOT PASSWORD
+                  // =================================================
+
                   Align(
                     alignment:
                         Alignment.centerRight,
+
                     child: TextButton(
                       onPressed: loading
                           ? null
                           : () {
                               Navigator.push(
                                 context,
+
                                 MaterialPageRoute(
                                   builder: (_) =>
                                       const ForgotPasswordPage(),
                                 ),
                               );
                             },
+
                       child: const Text(
                         'Forgot Password?',
                       ),
@@ -295,26 +389,37 @@ class _LoginPageState extends State<LoginPage> {
 
                   const SizedBox(height: 8),
 
+                  // =================================================
+                  // LOGIN BUTTON
+                  // =================================================
+
                   SizedBox(
                     height: 54,
+
                     child: FilledButton.icon(
                       onPressed: loading
                           ? null
                           : loginWithPassword,
+
                       icon: loading
                           ? const SizedBox(
                               height: 22,
                               width: 22,
+
                               child:
                                   CircularProgressIndicator(
                                 strokeWidth: 2,
                               ),
                             )
-                          : const Icon(Icons.login),
+                          : const Icon(
+                              Icons.login,
+                            ),
+
                       label: Text(
                         loading
                             ? 'Logging in...'
                             : 'Login',
+
                         style: const TextStyle(
                           fontSize: 17,
                           fontWeight:
@@ -326,6 +431,10 @@ class _LoginPageState extends State<LoginPage> {
 
                   const SizedBox(height: 16),
 
+                  // =================================================
+                  // MOBILE LOGIN BUTTON
+                  // =================================================
+
                   OutlinedButton.icon(
                     onPressed: loading
                         ? null
@@ -334,9 +443,11 @@ class _LoginPageState extends State<LoginPage> {
                               mobileMode = true;
                             });
                           },
+
                     icon: const Icon(
                       Icons.phone_android,
                     ),
+
                     label: const Text(
                       'Login with Mobile',
                     ),
@@ -344,29 +455,43 @@ class _LoginPageState extends State<LoginPage> {
                 ],
 
                 // =================================================
-                // TEST MOBILE LOGIN MODE
+                // TEST MOBILE MODE
                 // =================================================
 
                 if (mobileMode) ...[
                   TextFormField(
-                    controller: mobileController,
+                    controller:
+                        mobileController,
+
                     keyboardType:
                         TextInputType.phone,
+
                     maxLength: 10,
+
                     textInputAction:
                         TextInputAction.done,
+
                     onFieldSubmitted: (_) {
                       if (!loading) {
                         loginWithTestMobile();
                       }
                     },
+
                     decoration: InputDecoration(
-                      labelText: 'Mobile Number',
+                      labelText:
+                          'Mobile Number',
+
                       prefixIcon:
-                          const Icon(Icons.phone),
+                          const Icon(
+                        Icons.phone,
+                      ),
+
                       prefixText: '+91 ',
+
                       counterText: '',
-                      border: OutlineInputBorder(
+
+                      border:
+                          OutlineInputBorder(
                         borderRadius:
                             BorderRadius.circular(14),
                       ),
@@ -375,16 +500,23 @@ class _LoginPageState extends State<LoginPage> {
 
                   const SizedBox(height: 24),
 
+                  // =================================================
+                  // CONTINUE BUTTON
+                  // =================================================
+
                   SizedBox(
                     height: 54,
+
                     child: FilledButton.icon(
                       onPressed: loading
                           ? null
                           : loginWithTestMobile,
+
                       icon: loading
                           ? const SizedBox(
                               height: 22,
                               width: 22,
+
                               child:
                                   CircularProgressIndicator(
                                 strokeWidth: 2,
@@ -393,10 +525,12 @@ class _LoginPageState extends State<LoginPage> {
                           : const Icon(
                               Icons.login,
                             ),
+
                       label: Text(
                         loading
                             ? 'Please wait...'
                             : 'Continue',
+
                         style: const TextStyle(
                           fontSize: 17,
                           fontWeight:
@@ -408,6 +542,10 @@ class _LoginPageState extends State<LoginPage> {
 
                   const SizedBox(height: 12),
 
+                  // =================================================
+                  // PASSWORD LOGIN
+                  // =================================================
+
                   OutlinedButton.icon(
                     onPressed: loading
                         ? null
@@ -417,9 +555,11 @@ class _LoginPageState extends State<LoginPage> {
                               mobileController.clear();
                             });
                           },
+
                     icon: const Icon(
                       Icons.password,
                     ),
+
                     label: const Text(
                       'Login with Password',
                     ),
@@ -427,28 +567,60 @@ class _LoginPageState extends State<LoginPage> {
 
                   const SizedBox(height: 20),
 
-                  Text(
-                    'Test Mode: No OTP will be sent. You can continue using any valid 10 digit mobile number.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade600,
+                  // =================================================
+                  // TEST MODE INFORMATION
+                  // =================================================
+
+                  Container(
+                    padding:
+                        const EdgeInsets.all(14),
+
+                    decoration: BoxDecoration(
+                      borderRadius:
+                          BorderRadius.circular(12),
+
+                      color:
+                          Colors.grey.shade100,
+                    ),
+
+                    child: Text(
+                      'TEST MODE\n\n'
+                      'No OTP will be sent.\n'
+                      'Enter any valid 10 digit mobile number '
+                      'to continue testing.',
+
+                      textAlign:
+                          TextAlign.center,
+
+                      style: TextStyle(
+                        fontSize: 12,
+                        color:
+                            Colors.grey.shade700,
+                      ),
                     ),
                   ),
                 ],
 
-                if (!mobileMode) ...[
-                  const SizedBox(height: 20),
+                const SizedBox(height: 20),
 
-                  Text(
-                    'Use your email and password to login securely.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade600,
-                    ),
+                // =================================================
+                // FOOTER
+                // =================================================
+
+                Text(
+                  mobileMode
+                      ? 'Test login uses Firebase Anonymous Authentication.'
+                      : 'Use your email and password to login securely.',
+
+                  textAlign:
+                      TextAlign.center,
+
+                  style: TextStyle(
+                    fontSize: 12,
+                    color:
+                        Colors.grey.shade600,
                   ),
-                ],
+                ),
               ],
             ),
           ),
