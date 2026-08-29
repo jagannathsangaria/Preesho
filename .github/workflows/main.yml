@@ -6,6 +6,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -30,8 +33,19 @@ jobs:
       - name: Check Flutter
         run: flutter --version
 
-      - name: Get Dependencies
-        run: flutter pub get
+      - name: Clean Flutter and Gradle
+        run: |
+          flutter clean
+          rm -rf android/.gradle
+          rm -rf ~/.gradle/caches
+          flutter pub get
+
+      - name: Check Kotlin Configuration
+        run: |
+          echo "Checking Kotlin version in settings.gradle.kts:"
+          grep -n "kotlin.android" android/settings.gradle.kts || true
+          echo "Checking Gradle version:"
+          grep "distributionUrl" android/gradle/wrapper/gradle-wrapper.properties || true
 
       - name: Build Release APK
         run: flutter build apk --release
@@ -41,3 +55,4 @@ jobs:
         with:
           name: preesho-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
