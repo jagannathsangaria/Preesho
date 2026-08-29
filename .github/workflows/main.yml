@@ -33,19 +33,15 @@ jobs:
       - name: Check Flutter
         run: flutter --version
 
-      - name: Clean Flutter and Gradle
+      - name: Clean Flutter Build
         run: |
           flutter clean
-          rm -rf android/.gradle
-          rm -rf ~/.gradle/caches
           flutter pub get
 
-      - name: Check Kotlin Configuration
+      - name: Diagnose Resolved Kotlin
         run: |
-          echo "Checking Kotlin version in settings.gradle.kts:"
-          grep -n "kotlin.android" android/settings.gradle.kts || true
-          echo "Checking Gradle version:"
-          grep "distributionUrl" android/gradle/wrapper/gradle-wrapper.properties || true
+          cd android
+          ./gradlew buildEnvironment --no-daemon
 
       - name: Build Release APK
         run: flutter build apk --release
