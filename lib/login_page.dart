@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
-import 'onboarding_page.dart';
 import 'forgot_password_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -21,20 +19,14 @@ class _LoginPageState extends State<LoginPage> {
   final passwordController = TextEditingController();
 
   // ============================================================
-  // OTP LOGIN CONTROLLERS
+  // TEST MOBILE LOGIN CONTROLLER
   // ============================================================
 
   final mobileController = TextEditingController();
-  final otpController = TextEditingController();
 
   bool loading = false;
   bool obscurePassword = true;
-
-  bool otpMode = false;
-  bool otpSent = false;
-
-  String verificationId = '';
-  int? resendToken;
+  bool mobileMode = false;
 
   // ============================================================
   // EMAIL + PASSWORD LOGIN
@@ -60,7 +52,6 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) return;
 
       showMessage('Login successful');
-
       Navigator.pop(context, true);
     } on FirebaseAuthException catch (e) {
       String message = 'Login failed';
@@ -87,10 +78,11 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   // ============================================================
-  // SEND OTP
+  // TEST MOBILE LOGIN
+  // NO OTP - FIREBASE ANONYMOUS AUTH
   // ============================================================
 
-  Future<void> sendOtp({bool resend = false}) async {
+  Future<void> loginWithTestMobile() async {
     final mobile = mobileController.text.trim();
 
     if (!RegExp(r'^[0-9]{10}$').hasMatch(mobile)) {
@@ -101,119 +93,34 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => loading = true);
 
     try {
-      await FirebaseAuth.instance.verifyPhoneNumber(
-        phoneNumber: '+91$mobile',
-        forceResendingToken: resend ? resendToken : null,
+      // If user is already logged in, use existing user.
+      User? user = FirebaseAuth.instance.currentUser;
 
-        verificationCompleted:
-            (PhoneAuthCredential credential) async {
-          try {
-            final credentialResult =
-                await FirebaseAuth.instance
-                    .signInWithCredential(credential);
+      // Otherwise create anonymous Firebase user.
+      if (user == null) {
+        final result =
+            await FirebaseAuth.instance.signInAnonymously();
 
-            await handlePhoneLogin(
-              credentialResult.user,
-            );
-          } catch (_) {
-            if (mounted) {
-              showMessage('Automatic verification failed');
-            }
-          }
-        },
-
-        verificationFailed:
-            (FirebaseAuthException e) {
-          if (!mounted) return;
-
-          String message = 'OTP verification failed';
-
-          if (e.code == 'invalid-phone-number') {
-            message = 'Invalid mobile number.';
-          } else if (e.code == 'too-many-requests') {
-            message =
-                'Too many requests. Please try again later.';
-          } else if (e.code == 'quota-exceeded') {
-            message =
-                'SMS quota exceeded. Please try again later.';
-          } else if (e.message != null) {
-            message = e.message!;
-          }
-
-          setState(() => loading = false);
-          showMessage(message);
-        },
-
-        codeSent: (
-          String newVerificationId,
-          int? newResendToken,
-        ) {
-          if (!mounted) return;
-
-          setState(() {
-            verificationId = newVerificationId;
-            resendToken = newResendToken;
-            otpSent = true;
-            loading = false;
-          });
-
-          showMessage('OTP sent successfully');
-        },
-
-        codeAutoRetrievalTimeout:
-            (String newVerificationId) {
-          verificationId = newVerificationId;
-        },
-
-        timeout: const Duration(seconds: 60),
-      );
-    } catch (_) {
-      if (mounted) {
-        setState(() => loading = false);
-        showMessage('Could not send OTP. Please try again.');
+        user = result.user;
       }
-    }
-  }
 
-  // ============================================================
-  // VERIFY OTP
-  // ============================================================
+      if (!mounted) return;
 
-  Future<void> verifyOtp() async {
-    final otp = otpController.text.trim();
+      showMessage('Test login successful');
 
-    if (!RegExp(r'^[0-9]{6}$').hasMatch(otp)) {
-      showMessage('Please enter a valid 6 digit OTP');
-      return;
-    }
-
-    if (verificationId.isEmpty) {
-      showMessage('Please request OTP first');
-      return;
-    }
-
-    setState(() => loading = true);
-
-    try {
-      final credential =
-          PhoneAuthProvider.credential(
-        verificationId: verificationId,
-        smsCode: otp,
-      );
-
-      final result =
-          await FirebaseAuth.instance
-              .signInWithCredential(credential);
-
-      await handlePhoneLogin(result.user);
+      // Return true to previous page (Checkout)
+      Navigator.pop(context, true);
     } on FirebaseAuthException catch (e) {
-      String message = 'OTP verification failed';
+      String message = 'Test login failed';
 
-      if (e.code == 'invalid-verification-code') {
-        message = 'Incorrect OTP.';
-      } else if (e.code == 'session-expired') {
+      if (e.code == 'operation-not-allowed') {
         message =
-            'OTP expired. Please request a new OTP.';
+            'Anonymous login is not enabled in Firebase.';
+      } else if (e.code == 'network-request-failed') {
+        message =
+            'Please check your internet connection.';
+      } else if (e.message != null) {
+        message = e.message!;
       }
 
       showMessage(message);
@@ -227,64 +134,15 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   // ============================================================
-  // CHECK IF NEW OR EXISTING USER
-  // ============================================================
-
-  Future<void> handlePhoneLogin(User? user) async {
-    if (user == null) {
-      showMessage('Login failed. Please try again.');
-      return;
-    }
-
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
-
-      if (!mounted) return;
-
-      // NEW USER → ONBOARDING
-      if (!doc.exists ||
-          doc.data()?['onboardingCompleted'] != true) {
-        final completed =
-            await Navigator.push<bool>(
-          context,
-          MaterialPageRoute(
-            builder: (_) =>
-                const OnboardingPage(),
-          ),
-        );
-
-        if (completed == true && mounted) {
-          Navigator.pop(context, true);
-        }
-      } else {
-        // EXISTING USER → LOGIN COMPLETE
-        showMessage('Login successful');
-        Navigator.pop(context, true);
-      }
-    } catch (_) {
-      // If Firestore has a temporary issue,
-      // allow authenticated user to continue.
-      if (mounted) {
-        Navigator.pop(context, true);
-      }
-    }
-  }
-
-  // ============================================================
   // MESSAGE
   // ============================================================
 
   void showMessage(String message) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context)
-        .hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
-    ScaffoldMessenger.of(context)
-        .showSnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
   }
@@ -294,7 +152,6 @@ class _LoginPageState extends State<LoginPage> {
     emailController.dispose();
     passwordController.dispose();
     mobileController.dispose();
-    otpController.dispose();
     super.dispose();
   }
 
@@ -307,9 +164,7 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          otpMode
-              ? 'Login with Mobile'
-              : 'Login',
+          mobileMode ? 'Test Mobile Login' : 'Login',
           style: const TextStyle(
             fontWeight: FontWeight.bold,
           ),
@@ -324,7 +179,7 @@ class _LoginPageState extends State<LoginPage> {
                   CrossAxisAlignment.stretch,
               children: [
                 Icon(
-                  otpMode
+                  mobileMode
                       ? Icons.phone_android
                       : Icons.shopping_bag_outlined,
                   size: 80,
@@ -333,8 +188,8 @@ class _LoginPageState extends State<LoginPage> {
                 const SizedBox(height: 20),
 
                 Text(
-                  otpMode
-                      ? 'Login with Mobile OTP'
+                  mobileMode
+                      ? 'Login with Mobile'
                       : 'Welcome back!',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
@@ -346,10 +201,8 @@ class _LoginPageState extends State<LoginPage> {
                 const SizedBox(height: 8),
 
                 Text(
-                  otpMode
-                      ? otpSent
-                          ? 'Enter the OTP sent to your mobile'
-                          : 'Enter your mobile number'
+                  mobileMode
+                      ? 'Enter your mobile number to continue'
                       : 'Login to continue shopping',
                   textAlign: TextAlign.center,
                   style: TextStyle(
@@ -363,7 +216,7 @@ class _LoginPageState extends State<LoginPage> {
                 // EMAIL + PASSWORD MODE
                 // =================================================
 
-                if (!otpMode) ...[
+                if (!mobileMode) ...[
                   TextFormField(
                     controller: emailController,
                     keyboardType:
@@ -385,10 +238,8 @@ class _LoginPageState extends State<LoginPage> {
                   const SizedBox(height: 16),
 
                   TextFormField(
-                    controller:
-                        passwordController,
-                    obscureText:
-                        obscurePassword,
+                    controller: passwordController,
+                    obscureText: obscurePassword,
                     textInputAction:
                         TextInputAction.done,
                     onFieldSubmitted: (_) {
@@ -410,10 +261,8 @@ class _LoginPageState extends State<LoginPage> {
                         },
                         icon: Icon(
                           obscurePassword
-                              ? Icons
-                                  .visibility_outlined
-                              : Icons
-                                  .visibility_off_outlined,
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
                         ),
                       ),
                       border: OutlineInputBorder(
@@ -482,91 +331,47 @@ class _LoginPageState extends State<LoginPage> {
                         ? null
                         : () {
                             setState(() {
-                              otpMode = true;
-                              otpSent = false;
+                              mobileMode = true;
                             });
                           },
                     icon: const Icon(
                       Icons.phone_android,
                     ),
                     label: const Text(
-                      'Login with Mobile OTP',
+                      'Login with Mobile',
                     ),
                   ),
                 ],
 
                 // =================================================
-                // MOBILE OTP MODE
+                // TEST MOBILE LOGIN MODE
                 // =================================================
 
-                if (otpMode) ...[
-                  if (!otpSent)
-                    TextFormField(
-                      controller:
-                          mobileController,
-                      keyboardType:
-                          TextInputType.phone,
-                      maxLength: 10,
-                      decoration: InputDecoration(
-                        labelText:
-                            'Mobile Number',
-                        prefixIcon:
-                            const Icon(Icons.phone),
-                        prefixText: '+91 ',
-                        counterText: '',
-                        border:
-                            OutlineInputBorder(
-                          borderRadius:
-                              BorderRadius.circular(
-                            14,
-                          ),
-                        ),
+                if (mobileMode) ...[
+                  TextFormField(
+                    controller: mobileController,
+                    keyboardType:
+                        TextInputType.phone,
+                    maxLength: 10,
+                    textInputAction:
+                        TextInputAction.done,
+                    onFieldSubmitted: (_) {
+                      if (!loading) {
+                        loginWithTestMobile();
+                      }
+                    },
+                    decoration: InputDecoration(
+                      labelText: 'Mobile Number',
+                      prefixIcon:
+                          const Icon(Icons.phone),
+                      prefixText: '+91 ',
+                      counterText: '',
+                      border: OutlineInputBorder(
+                        borderRadius:
+                            BorderRadius.circular(14),
                       ),
                     ),
-
-                  if (otpSent) ...[
-                    Text(
-                      '+91 ${mobileController.text}',
-                      textAlign:
-                          TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight:
-                            FontWeight.bold,
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    TextFormField(
-                      controller:
-                          otpController,
-                      keyboardType:
-                          TextInputType.number,
-                      maxLength: 6,
-                      textAlign:
-                          TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        letterSpacing: 8,
-                        fontWeight:
-                            FontWeight.bold,
-                      ),
-                      decoration:
-                          InputDecoration(
-                        labelText:
-                            '6 Digit OTP',
-                        counterText: '',
-                        border:
-                            OutlineInputBorder(
-                          borderRadius:
-                              BorderRadius.circular(
-                            14,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
 
                   const SizedBox(height: 24),
 
@@ -575,13 +380,7 @@ class _LoginPageState extends State<LoginPage> {
                     child: FilledButton.icon(
                       onPressed: loading
                           ? null
-                          : () {
-                              if (otpSent) {
-                                verifyOtp();
-                              } else {
-                                sendOtp();
-                              }
-                            },
+                          : loginWithTestMobile,
                       icon: loading
                           ? const SizedBox(
                               height: 22,
@@ -591,17 +390,13 @@ class _LoginPageState extends State<LoginPage> {
                                 strokeWidth: 2,
                               ),
                             )
-                          : Icon(
-                              otpSent
-                                  ? Icons.verified
-                                  : Icons.sms,
+                          : const Icon(
+                              Icons.login,
                             ),
                       label: Text(
                         loading
                             ? 'Please wait...'
-                            : otpSent
-                                ? 'Verify OTP'
-                                : 'Send OTP',
+                            : 'Continue',
                         style: const TextStyle(
                           fontSize: 17,
                           fontWeight:
@@ -611,35 +406,6 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
 
-                  if (otpSent) ...[
-                    const SizedBox(height: 8),
-
-                    TextButton(
-                      onPressed: loading
-                          ? null
-                          : () {
-                              sendOtp(resend: true);
-                            },
-                      child:
-                          const Text('Resend OTP'),
-                    ),
-
-                    TextButton(
-                      onPressed: loading
-                          ? null
-                          : () {
-                              setState(() {
-                                otpSent = false;
-                                otpController.clear();
-                                verificationId = '';
-                              });
-                            },
-                      child: const Text(
-                        'Change Mobile Number',
-                      ),
-                    ),
-                  ],
-
                   const SizedBox(height: 12),
 
                   OutlinedButton.icon(
@@ -647,9 +413,8 @@ class _LoginPageState extends State<LoginPage> {
                         ? null
                         : () {
                             setState(() {
-                              otpMode = false;
-                              otpSent = false;
-                              otpController.clear();
+                              mobileMode = false;
+                              mobileController.clear();
                             });
                           },
                     icon: const Icon(
@@ -659,20 +424,31 @@ class _LoginPageState extends State<LoginPage> {
                       'Login with Password',
                     ),
                   ),
+
+                  const SizedBox(height: 20),
+
+                  Text(
+                    'Test Mode: No OTP will be sent. You can continue using any valid 10 digit mobile number.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
                 ],
 
-                const SizedBox(height: 20),
+                if (!mobileMode) ...[
+                  const SizedBox(height: 20),
 
-                Text(
-                  otpMode
-                      ? 'New users can verify their mobile number and create their account.'
-                      : 'Use your email and password to login securely.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
+                  Text(
+                    'Use your email and password to login securely.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
