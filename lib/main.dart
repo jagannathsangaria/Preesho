@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'checkout_page.dart';
@@ -79,17 +80,11 @@ class CartItem {
   });
 
   String get id => product.id;
-
   String get name => product.name;
-
   String get category => product.category;
-
   String get imageUrl => product.imageUrl;
-
   double get numericPrice => product.numericPrice;
-
   double get totalPrice => numericPrice * quantity;
-
   int get availableStock => product.stock;
 }
 
@@ -118,9 +113,7 @@ class CartController {
   }
 
   static bool addProduct(Product product) {
-    if (product.stock <= 0) {
-      return false;
-    }
+    if (product.stock <= 0) return false;
 
     final existing = findItem(product.id);
 
@@ -232,7 +225,9 @@ class _MainShellState extends State<MainShell> {
       CartPage(
         onCartChanged: refresh,
       ),
-      const ProfilePage(),
+      ProfilePage(
+        onProfileChanged: refresh,
+      ),
     ];
 
     return Scaffold(
@@ -626,7 +621,6 @@ class ProductTile extends StatelessWidget {
         padding: const EdgeInsets.all(10),
         child: Row(
           children: [
-            // IMAGE
             SizedBox(
               width: 75,
               height: 75,
@@ -658,7 +652,6 @@ class ProductTile extends StatelessWidget {
 
             const SizedBox(width: 12),
 
-            // DETAILS
             Expanded(
               child: Column(
                 crossAxisAlignment:
@@ -673,18 +666,14 @@ class ProductTile extends StatelessWidget {
                       fontSize: 16,
                     ),
                   ),
-
                   const SizedBox(height: 4),
-
                   Text(
                     product.category,
                     style: TextStyle(
                       color: Colors.grey.shade600,
                     ),
                   ),
-
                   const SizedBox(height: 4),
-
                   Text(
                     '₹${product.numericPrice.toStringAsFixed(0)}',
                     style: const TextStyle(
@@ -692,9 +681,7 @@ class ProductTile extends StatelessWidget {
                       fontSize: 16,
                     ),
                   ),
-
                   const SizedBox(height: 4),
-
                   Text(
                     outOfStock
                         ? 'Out of Stock'
@@ -710,7 +697,6 @@ class ProductTile extends StatelessWidget {
               ),
             ),
 
-            // ADD / QUANTITY
             if (outOfStock)
               const SizedBox(
                 width: 95,
@@ -727,21 +713,16 @@ class ProductTile extends StatelessWidget {
               IconButton.filled(
                 onPressed: () {
                   final added =
-                      CartController.addProduct(
-                    product,
-                  );
+                      CartController.addProduct(product);
 
                   if (added) {
                     onCartChanged();
 
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(
+                    ScaffoldMessenger.of(context)
+                        .showSnackBar(
                       const SnackBar(
-                        content:
-                            Text('Added to cart'),
-                        duration:
-                            Duration(seconds: 1),
+                        content: Text('Added to cart'),
+                        duration: Duration(seconds: 1),
                       ),
                     );
                   }
@@ -752,13 +733,11 @@ class ProductTile extends StatelessWidget {
               )
             else
               Row(
-                mainAxisSize:
-                    MainAxisSize.min,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
                     onPressed: () {
-                      CartController
-                          .decreaseQuantity(
+                      CartController.decreaseQuantity(
                         product.id,
                       );
                       onCartChanged();
@@ -767,18 +746,15 @@ class ProductTile extends StatelessWidget {
                       Icons.remove_circle_outline,
                     ),
                   ),
-
                   Text(
                     '$cartQuantity',
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-
                   IconButton(
                     onPressed:
-                        cartQuantity >=
-                                product.stock
+                        cartQuantity >= product.stock
                             ? null
                             : () {
                                 CartController
@@ -813,8 +789,7 @@ class CartPage extends StatefulWidget {
   });
 
   @override
-  State<CartPage> createState() =>
-      _CartPageState();
+  State<CartPage> createState() => _CartPageState();
 }
 
 class _CartPageState extends State<CartPage> {
@@ -828,19 +803,15 @@ class _CartPageState extends State<CartPage> {
       ),
       body: items.isEmpty
           ? const Center(
-              child: Text(
-                'Your cart is empty',
-              ),
+              child: Text('Your cart is empty'),
             )
           : Column(
               children: [
                 Expanded(
                   child: ListView.builder(
-                    padding:
-                        const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(12),
                     itemCount: items.length,
-                    itemBuilder:
-                        (context, index) {
+                    itemBuilder: (context, index) {
                       final item = items[index];
 
                       return Card(
@@ -850,9 +821,7 @@ class _CartPageState extends State<CartPage> {
                         ),
                         child: Padding(
                           padding:
-                              const EdgeInsets.all(
-                            10,
-                          ),
+                              const EdgeInsets.all(10),
                           child: Row(
                             children: [
                               SizedBox(
@@ -860,67 +829,46 @@ class _CartPageState extends State<CartPage> {
                                 height: 70,
                                 child: ClipRRect(
                                   borderRadius:
-                                      BorderRadius
-                                          .circular(
-                                    10,
-                                  ),
-                                  child: item.imageUrl
-                                          .isNotEmpty
+                                      BorderRadius.circular(10),
+                                  child: item.imageUrl.isNotEmpty
                                       ? Image.network(
                                           item.imageUrl,
-                                          fit: BoxFit
-                                              .cover,
-                                          errorBuilder:
-                                              (
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (
                                             context,
                                             error,
                                             stack,
                                           ) {
                                             return const Icon(
-                                              Icons
-                                                  .shopping_bag_outlined,
+                                              Icons.shopping_bag_outlined,
                                             );
                                           },
                                         )
                                       : const Icon(
-                                          Icons
-                                              .shopping_bag_outlined,
+                                          Icons.shopping_bag_outlined,
                                         ),
                                 ),
                               ),
 
-                              const SizedBox(
-                                width: 12,
-                              ),
+                              const SizedBox(width: 12),
 
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment:
-                                      CrossAxisAlignment
-                                          .start,
+                                      CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       item.name,
-                                      style:
-                                          const TextStyle(
+                                      style: const TextStyle(
                                         fontWeight:
-                                            FontWeight
-                                                .bold,
+                                            FontWeight.bold,
                                       ),
                                     ),
-
-                                    const SizedBox(
-                                      height: 5,
-                                    ),
-
+                                    const SizedBox(height: 5),
                                     Text(
                                       '₹${item.numericPrice.toStringAsFixed(0)}',
                                     ),
-
-                                    const SizedBox(
-                                      height: 8,
-                                    ),
-
+                                    const SizedBox(height: 8),
                                     Row(
                                       children: [
                                         IconButton(
@@ -931,46 +879,34 @@ class _CartPageState extends State<CartPage> {
                                                 item.id,
                                               );
                                             });
-                                            widget
-                                                .onCartChanged();
+                                            widget.onCartChanged();
                                           },
-                                          icon:
-                                              const Icon(
-                                            Icons
-                                                .remove_circle_outline,
+                                          icon: const Icon(
+                                            Icons.remove_circle_outline,
                                           ),
                                         ),
-
                                         Text(
                                           '${item.quantity}',
-                                          style:
-                                              const TextStyle(
+                                          style: const TextStyle(
                                             fontWeight:
-                                                FontWeight
-                                                    .bold,
+                                                FontWeight.bold,
                                           ),
                                         ),
-
                                         IconButton(
                                           onPressed: item.quantity >=
                                                   item.availableStock
                                               ? null
                                               : () {
-                                                  setState(
-                                                    () {
-                                                      CartController
-                                                          .increaseQuantity(
-                                                        item.id,
-                                                      );
-                                                    },
-                                                  );
-                                                  widget
-                                                      .onCartChanged();
+                                                  setState(() {
+                                                    CartController
+                                                        .increaseQuantity(
+                                                      item.id,
+                                                    );
+                                                  });
+                                                  widget.onCartChanged();
                                                 },
-                                          icon:
-                                              const Icon(
-                                            Icons
-                                                .add_circle_outline,
+                                          icon: const Icon(
+                                            Icons.add_circle_outline,
                                           ),
                                         ),
                                       ],
@@ -982,13 +918,11 @@ class _CartPageState extends State<CartPage> {
                               IconButton(
                                 onPressed: () {
                                   setState(() {
-                                    CartController
-                                        .removeProduct(
+                                    CartController.removeProduct(
                                       item.id,
                                     );
                                   });
-                                  widget
-                                      .onCartChanged();
+                                  widget.onCartChanged();
                                 },
                                 icon: const Icon(
                                   Icons.delete_outline,
@@ -1004,13 +938,11 @@ class _CartPageState extends State<CartPage> {
                 ),
 
                 Container(
-                  padding:
-                      const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     border: Border(
                       top: BorderSide(
-                        color:
-                            Colors.grey.shade300,
+                        color: Colors.grey.shade300,
                       ),
                     ),
                   ),
@@ -1018,37 +950,53 @@ class _CartPageState extends State<CartPage> {
                     children: [
                       Row(
                         mainAxisAlignment:
-                            MainAxisAlignment
-                                .spaceBetween,
+                            MainAxisAlignment.spaceBetween,
                         children: [
                           const Text(
                             'Total',
                             style: TextStyle(
                               fontSize: 20,
-                              fontWeight:
-                                  FontWeight.bold,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                           Text(
                             '₹${CartController.total.toStringAsFixed(0)}',
                             style: const TextStyle(
                               fontSize: 22,
-                              fontWeight:
-                                  FontWeight.bold,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                         ],
                       ),
 
-                      const SizedBox(
-                        height: 12,
-                      ),
+                      const SizedBox(height: 12),
 
                       SizedBox(
                         width: double.infinity,
                         height: 52,
                         child: FilledButton(
                           onPressed: () async {
+                            final user =
+                                FirebaseAuth.instance.currentUser;
+
+                            // LOGIN REQUIRED BEFORE CHECKOUT
+                            if (user == null) {
+                              final loginResult =
+                                  await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      const LoginPage(),
+                                ),
+                              );
+
+                              if (loginResult != true ||
+                                  FirebaseAuth.instance.currentUser ==
+                                      null) {
+                                return;
+                              }
+                            }
+
                             final result =
                                 await Navigator.push(
                               context,
@@ -1060,16 +1008,14 @@ class _CartPageState extends State<CartPage> {
 
                             if (result == true) {
                               setState(() {});
-                              widget
-                                  .onCartChanged();
+                              widget.onCartChanged();
                             }
                           },
                           child: const Text(
                             'Proceed to Checkout',
                             style: TextStyle(
                               fontSize: 16,
-                              fontWeight:
-                                  FontWeight.bold,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
@@ -1087,11 +1033,75 @@ class _CartPageState extends State<CartPage> {
 // PROFILE PAGE
 // ============================================================
 
-class ProfilePage extends StatelessWidget {
-  const ProfilePage({super.key});
+class ProfilePage extends StatefulWidget {
+  final VoidCallback onProfileChanged;
+
+  const ProfilePage({
+    super.key,
+    required this.onProfileChanged,
+  });
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  Future<void> logout() async {
+    try {
+      await FirebaseAuth.instance.signOut();
+      CartController.clear();
+
+      if (!mounted) return;
+
+      widget.onProfileChanged();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Logged out successfully'),
+        ),
+      );
+
+      setState(() {});
+    } catch (_) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not logout. Please try again.'),
+        ),
+      );
+    }
+  }
+
+  Future<void> openLogin() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const LoginPage(),
+      ),
+    );
+
+    if (result == true && mounted) {
+      widget.onProfileChanged();
+      setState(() {});
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    final isLoggedIn = user != null;
+
+    final displayName = user?.displayName?.trim();
+
+    final userName =
+        (displayName != null && displayName.isNotEmpty)
+            ? displayName
+            : 'Preesho Customer';
+
+    final email = user?.email ?? '';
+    final mobile = user?.phoneNumber ?? '';
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Profile'),
@@ -1099,85 +1109,101 @@ class ProfilePage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const CircleAvatar(
+          CircleAvatar(
             radius: 42,
             child: Icon(
-              Icons.person,
+              isLoggedIn
+                  ? Icons.person
+                  : Icons.person_outline,
               size: 45,
             ),
           ),
 
           const SizedBox(height: 10),
 
-          const Center(
+          Center(
             child: Text(
-              'Preesho Customer',
-              style: TextStyle(
+              userName,
+              style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
             ),
           ),
 
+          if (isLoggedIn && email.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Center(
+              child: Text(
+                email,
+                style: TextStyle(
+                  color: Colors.grey.shade700,
+                ),
+              ),
+            ),
+          ],
+
+          if (isLoggedIn && mobile.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Center(
+              child: Text(
+                mobile,
+                style: TextStyle(
+                  color: Colors.grey.shade700,
+                ),
+              ),
+            ),
+          ],
+
           const SizedBox(height: 20),
 
-          ListTile(
-            leading:
-                const Icon(Icons.login),
-            title: const Text(
-              'Login / Sign Up',
+          if (!isLoggedIn)
+            ListTile(
+              leading: const Icon(Icons.login),
+              title: const Text('Login / Sign Up'),
+              subtitle: const Text(
+                'Login with OTP or password',
+              ),
+              onTap: openLogin,
+            )
+          else
+            ListTile(
+              leading: const Icon(Icons.logout),
+              title: const Text('Logout'),
+              subtitle: const Text(
+                'Sign out from your account',
+              ),
+              onTap: logout,
             ),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) =>
-                      const LoginPage(),
-                ),
-              );
-            },
+
+          const ListTile(
+            leading: Icon(Icons.location_on_outlined),
+            title: Text('Saved Addresses'),
           ),
 
           const ListTile(
-            leading:
-                Icon(Icons.location_on_outlined),
-            title: Text(
-              'Saved Addresses',
-            ),
-          ),
-
-          const ListTile(
-            leading:
-                Icon(Icons.receipt_long),
-            title: Text(
-              'My Orders',
-            ),
+            leading: Icon(Icons.receipt_long),
+            title: Text('My Orders'),
           ),
 
           ListTile(
             leading: const Icon(
               Icons.admin_panel_settings_outlined,
             ),
-            title: const Text(
-              'Admin Login',
-            ),
+            title: const Text('Admin Login'),
             onTap: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) =>
-                      const AdminLogin(),
+                  builder: (_) => const AdminLogin(),
                 ),
               );
             },
           ),
 
           const ListTile(
-            leading:
-                Icon(Icons.help_outline),
-            title: Text(
-              'Help & Support',
-            ),
+            leading: Icon(Icons.help_outline),
+            title: Text('Help & Support'),
           ),
         ],
       ),
@@ -1189,16 +1215,13 @@ class ProfilePage extends StatelessWidget {
 // SEARCH
 // ============================================================
 
-class ProductSearch
-    extends SearchDelegate<Product?> {
+class ProductSearch extends SearchDelegate<Product?> {
   final VoidCallback onCartChanged;
 
   ProductSearch(this.onCartChanged);
 
   @override
-  List<Widget>? buildActions(
-    BuildContext context,
-  ) {
+  List<Widget>? buildActions(BuildContext context) {
     return [
       IconButton(
         onPressed: () {
@@ -1210,9 +1233,7 @@ class ProductSearch
   }
 
   @override
-  Widget buildLeading(
-    BuildContext context,
-  ) {
+  Widget buildLeading(BuildContext context) {
     return IconButton(
       onPressed: () {
         close(context, null);
@@ -1222,49 +1243,35 @@ class ProductSearch
   }
 
   @override
-  Widget buildResults(
-    BuildContext context,
-  ) {
+  Widget buildResults(BuildContext context) {
     return ProductStream(
       builder: (products) {
         final results = products
             .where(
               (product) => product.name
                   .toLowerCase()
-                  .contains(
-                    query.toLowerCase(),
-                  ),
+                  .contains(query.toLowerCase()),
             )
             .toList();
 
-        return _searchList(
-          context,
-          results,
-        );
+        return _searchList(context, results);
       },
     );
   }
 
   @override
-  Widget buildSuggestions(
-    BuildContext context,
-  ) {
+  Widget buildSuggestions(BuildContext context) {
     return ProductStream(
       builder: (products) {
         final results = products
             .where(
               (product) => product.name
                   .toLowerCase()
-                  .contains(
-                    query.toLowerCase(),
-                  ),
+                  .contains(query.toLowerCase()),
             )
             .toList();
 
-        return _searchList(
-          context,
-          results,
-        );
+        return _searchList(context, results);
       },
     );
   }
@@ -1275,9 +1282,7 @@ class ProductSearch
   ) {
     if (products.isEmpty) {
       return const Center(
-        child: Text(
-          'No products found',
-        ),
+        child: Text('No products found'),
       );
     }
 
@@ -1287,8 +1292,7 @@ class ProductSearch
           .map(
             (product) => ProductTile(
               product: product,
-              onCartChanged:
-                  onCartChanged,
+              onCartChanged: onCartChanged,
             ),
           )
           .toList(),
