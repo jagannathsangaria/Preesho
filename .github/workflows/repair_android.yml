@@ -53,6 +53,7 @@ jobs:
       - name: Verify Android structure
         run: |
           test -f android/gradlew
+          test -f android/gradlew.bat
           test -f android/gradle/wrapper/gradle-wrapper.properties
           test -f android/app/build.gradle.kts
           test -f android/app/google-services.json
@@ -62,6 +63,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -f android/gradlew
+          git add -f android/gradlew.bat
+          git add -f android/gradle/wrapper/gradle-wrapper.jar
           git add android
-          git diff --cached --quiet || git commit -m "Regenerate complete Android platform"
+
+          git diff --cached --quiet || git commit -m "Regenerate complete Android platform with Gradle wrapper"
           git push
