@@ -2,9 +2,6 @@ name: Repair Android Project
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 permissions:
   contents: write
@@ -19,8 +16,18 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Backup Firebase configuration
+        run: |
+          if [ -f android/app/google-services.json ]; then
+            cp android/app/google-services.json /tmp/google-services.json
+            echo "Firebase config backed up"
+          else
+            echo "ERROR: google-services.json not found"
+            exit 1
+          fi
+
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -28,26 +35,27 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: "3.35.7"
           channel: stable
           cache: true
 
-      - name: Check Flutter
-        run: flutter --version
+      - name: Remove incomplete Android platform
+        run: rm -rf android
 
       - name: Regenerate Android platform
         run: flutter create --platforms=android .
 
-      - name: Verify Firebase configuration
+      - name: Restore Firebase configuration
         run: |
-          test -f android/app/google-services.json
-          echo "Firebase config exists"
+          cp /tmp/google-services.json android/app/google-services.json
+          echo "Firebase config restored"
 
-      - name: Check Android structure
+      - name: Verify Android structure
         run: |
           test -f android/gradlew
           test -f android/gradle/wrapper/gradle-wrapper.properties
           test -f android/app/build.gradle.kts
-          test -f android/app/src/main/AndroidManifest.xml
+          test -f android/app/google-services.json
           echo "Android structure is complete"
 
       - name: Commit generated Android files
