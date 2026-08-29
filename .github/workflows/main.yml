@@ -11,229 +11,33 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
-      # ==========================================================
-      # CHECKOUT
-      # ==========================================================
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-
-      # ==========================================================
-      # JAVA 17
-      # ==========================================================
-      - name: Setup Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
 
-
-      # ==========================================================
-      # FLUTTER
-      # ==========================================================
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.35.0"
+          flutter-version: '3.35.7'
           channel: stable
           cache: true
 
+      - name: Check Flutter
+        run: flutter --version
 
-      # ==========================================================
-      # BACKUP FLUTTER FILES
-      # ==========================================================
-      - name: Backup Flutter Files
-        run: |
-          set -e
-          mkdir -p /tmp/preesho_backup
-          cp -r lib /tmp/preesho_backup/lib
-          cp pubspec.yaml /tmp/preesho_backup/pubspec.yaml
-
-
-      # ==========================================================
-      # CREATE FRESH ANDROID PROJECT
-      # ==========================================================
-      - name: Create Fresh Android Project
-        run: |
-          set -e
-          rm -rf android
-          flutter create . --platforms=android
-
-
-      # ==========================================================
-      # CONFIGURE ANDROID
-      # ==========================================================
-      - name: Configure Android
-        run: |
-          set -e
-
-          cat > android/gradle.properties <<'EOF'
-          org.gradle.jvmargs=-Xmx4G -Dfile.encoding=UTF-8
-          android.useAndroidX=true
-          android.enableJetifier=true
-          EOF
-
-          python3 - <<'PY'
-          from pathlib import Path
-
-          # ======================================================
-          # SETTINGS.GRADLE.KTS
-          # ======================================================
-
-          settings = Path("android/settings.gradle.kts")
-          text = settings.read_text()
-
-          firebase_plugin = (
-              'id("com.google.gms.google-services") '
-              'version "4.4.2" apply false'
-          )
-
-          if 'id("com.google.gms.google-services")' not in text:
-              text = text.replace(
-                  "plugins {",
-                  "plugins {\n    " + firebase_plugin,
-                  1
-              )
-
-          settings.write_text(text)
-
-
-          # ======================================================
-          # APP BUILD.GRADLE.KTS
-          # ======================================================
-
-          app = Path("android/app/build.gradle.kts")
-          text = app.read_text()
-
-          # Add Firebase Google Services plugin
-          if 'id("com.google.gms.google-services")' not in text:
-              text = text.replace(
-                  "plugins {",
-                  'plugins {\n    id("com.google.gms.google-services")',
-                  1
-              )
-
-          # Change Java 11 to Java 17
-          text = text.replace(
-              "sourceCompatibility = JavaVersion.VERSION_11",
-              "sourceCompatibility = JavaVersion.VERSION_17"
-          )
-
-          text = text.replace(
-              "targetCompatibility = JavaVersion.VERSION_11",
-              "targetCompatibility = JavaVersion.VERSION_17"
-          )
-
-          app.write_text(text)
-
-          print("Android configuration complete.")
-          PY
-
-
-      # ==========================================================
-      # RESTORE FLUTTER FILES
-      # ==========================================================
-      - name: Restore Flutter Files
-        run: |
-          set -e
-          rm -rf lib
-          cp -r /tmp/preesho_backup/lib .
-          cp /tmp/preesho_backup/pubspec.yaml .
-
-
-      # ==========================================================
-      # RESTORE FIREBASE
-      # ==========================================================
-      - name: Restore Firebase
-        env:
-          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
-        run: |
-          set -e
-
-          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
-            echo "ERROR: GOOGLE_SERVICES_JSON secret is empty"
-            exit 1
-          fi
-
-          mkdir -p android/app
-
-          printf '%s' "$GOOGLE_SERVICES_JSON" \
-            > android/app/google-services.json
-
-          echo "Firebase configuration restored."
-
-
-      # ==========================================================
-      # GET DEPENDENCIES
-      # ==========================================================
       - name: Get Dependencies
-        run: |
-          set -e
-          flutter pub get
+        run: flutter pub get
 
+      - name: Build Release APK
+        run: flutter build apk --release
 
-      # ==========================================================
-      # CREATE KEYSTORE + GET SHA-1
-      # ==========================================================
-      - name: Get SHA-1 Fingerprints
-        run: |
-          set -e
-
-          echo "=========================================="
-          echo "CREATING ANDROID DEBUG KEYSTORE"
-          echo "=========================================="
-
-          mkdir -p /home/runner/.config/.android
-
-          keytool -genkeypair \
-            -keystore /home/runner/.config/.android/debug.keystore \
-            -storepass android \
-            -alias AndroidDebugKey \
-            -keypass android \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
-
-          echo ""
-          echo "=========================================="
-          echo "FIREBASE SHA-1 FINGERPRINT"
-          echo "=========================================="
-
-          keytool -list -v \
-            -keystore /home/runner/.config/.android/debug.keystore \
-            -alias AndroidDebugKey \
-            -storepass android \
-            -keypass android | grep "SHA1"
-
-          echo "=========================================="
-
-
-      # ==========================================================
-      # CLEAN
-      # ==========================================================
-      - name: Clean
-        run: |
-          set -e
-          flutter clean
-
-
-      # ==========================================================
-      # BUILD RELEASE APK
-      # ==========================================================
-      - name: Build APK
-        run: |
-          set -e
-          flutter build apk --release
-
-
-      # ==========================================================
-      # UPLOAD APK
-      # ==========================================================
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Preesho-APK
+          name: preesho-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: error
