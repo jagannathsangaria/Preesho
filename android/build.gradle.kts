@@ -10,5 +10,9 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
         jvmTarget.set(
             org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
         )
+
+        freeCompilerArgs.add(
+            "-Xskip-metadata-version-check"
+        )
     }
 }
