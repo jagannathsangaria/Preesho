@@ -15,15 +15,13 @@ jobs:
       # ==========================================================
       # CHECKOUT
       # ==========================================================
-
       - name: Checkout
         uses: actions/checkout@v4
 
 
       # ==========================================================
-      # JAVA
+      # JAVA 17
       # ==========================================================
-
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
@@ -34,7 +32,6 @@ jobs:
       # ==========================================================
       # FLUTTER
       # ==========================================================
-
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -46,13 +43,10 @@ jobs:
       # ==========================================================
       # BACKUP FLUTTER FILES
       # ==========================================================
-
       - name: Backup Flutter Files
         run: |
           set -e
-
           mkdir -p /tmp/preesho_backup
-
           cp -r lib /tmp/preesho_backup/lib
           cp pubspec.yaml /tmp/preesho_backup/pubspec.yaml
 
@@ -60,25 +54,20 @@ jobs:
       # ==========================================================
       # CREATE FRESH ANDROID PROJECT
       # ==========================================================
-
       - name: Create Fresh Android Project
         run: |
           set -e
-
           rm -rf android
-
           flutter create . --platforms=android
 
 
       # ==========================================================
       # CONFIGURE ANDROID
       # ==========================================================
-
       - name: Configure Android
         run: |
           set -e
 
-          # AndroidX configuration
           cat > android/gradle.properties <<'EOF'
           org.gradle.jvmargs=-Xmx4G -Dfile.encoding=UTF-8
           android.useAndroidX=true
@@ -95,13 +84,6 @@ jobs:
           settings = Path("android/settings.gradle.kts")
           text = settings.read_text()
 
-          # Update Kotlin version
-          text = text.replace(
-              'id("org.jetbrains.kotlin.android") version "2.1.0" apply false',
-              'id("org.jetbrains.kotlin.android") version "2.3.0" apply false'
-          )
-
-          # Add Google Services plugin
           firebase_plugin = (
               'id("com.google.gms.google-services") '
               'version "4.4.2" apply false'
@@ -111,20 +93,6 @@ jobs:
               text = text.replace(
                   "plugins {",
                   "plugins {\n    " + firebase_plugin,
-                  1
-              )
-
-          # Add Flutter Maven repository
-          flutter_repo = (
-              'maven { '
-              'url = uri("https://storage.googleapis.com/download.flutter.io") '
-              '}'
-          )
-
-          if "storage.googleapis.com/download.flutter.io" not in text:
-              text = text.replace(
-                  "repositories {",
-                  "repositories {\n        " + flutter_repo,
                   1
               )
 
@@ -138,7 +106,7 @@ jobs:
           app = Path("android/app/build.gradle.kts")
           text = app.read_text()
 
-          # Add Google Services plugin
+          # Add Firebase Google Services plugin
           if 'id("com.google.gms.google-services")' not in text:
               text = text.replace(
                   "plugins {",
@@ -146,27 +114,7 @@ jobs:
                   1
               )
 
-          # Remove old JVM target configuration
-          lines = text.splitlines()
-          cleaned = []
-
-          for line in lines:
-              stripped = line.strip()
-
-              if "jvmTarget =" in stripped:
-                  continue
-
-              if "jvmTarget.set(" in stripped:
-                  continue
-
-              if "JvmTarget.JVM_" in stripped:
-                  continue
-
-              cleaned.append(line)
-
-          text = "\n".join(cleaned)
-
-          # Java 17
+          # Change Java 11 to Java 17
           text = text.replace(
               "sourceCompatibility = JavaVersion.VERSION_11",
               "sourceCompatibility = JavaVersion.VERSION_17"
@@ -177,78 +125,26 @@ jobs:
               "targetCompatibility = JavaVersion.VERSION_17"
           )
 
-          # Remove existing kotlin blocks
-          while True:
-              start = text.find("kotlin {")
-
-              if start == -1:
-                  break
-
-              brace_start = text.find("{", start)
-
-              if brace_start == -1:
-                  break
-
-              depth = 0
-              end = None
-
-              for i in range(brace_start, len(text)):
-                  if text[i] == "{":
-                      depth += 1
-                  elif text[i] == "}":
-                      depth -= 1
-
-                      if depth == 0:
-                          end = i + 1
-                          break
-
-              if end is None:
-                  break
-
-              text = text[:start] + text[end:]
-
-          # Final Kotlin configuration
-          text = text.rstrip()
-
-          text += """
-
-          kotlin {
-              jvmToolchain(17)
-
-              compilerOptions {
-                  jvmTarget.set(
-                      org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
-                  )
-              }
-          }
-          """
-
           app.write_text(text)
 
-          print("===== ANDROID CONFIGURATION COMPLETE =====")
-
+          print("Android configuration complete.")
           PY
 
 
       # ==========================================================
       # RESTORE FLUTTER FILES
       # ==========================================================
-
       - name: Restore Flutter Files
         run: |
           set -e
-
           rm -rf lib
-
           cp -r /tmp/preesho_backup/lib .
-
           cp /tmp/preesho_backup/pubspec.yaml .
 
 
       # ==========================================================
-      # RESTORE FIREBASE CONFIGURATION
+      # RESTORE FIREBASE
       # ==========================================================
-
       - name: Restore Firebase
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
@@ -269,81 +165,72 @@ jobs:
 
 
       # ==========================================================
-      # VERIFY CONFIGURATION
+      # GET DEPENDENCIES
       # ==========================================================
-
-      - name: Verify Kotlin Configuration
-        run: |
-          set -e
-
-          echo "Checking Android configuration..."
-
-          if grep -R "JavaVersion.VERSION_11" android; then
-            echo "ERROR: Java 11 configuration found."
-            exit 1
-          fi
-
-          echo "Configuration looks good."
-
-
-      # ==========================================================
-      # GET FLUTTER DEPENDENCIES
-      # ==========================================================
-
       - name: Get Dependencies
         run: |
           set -e
-
           flutter pub get
 
 
       # ==========================================================
-      # GET SHA-1 FINGERPRINT
+      # CREATE KEYSTORE + GET SHA-1
       # ==========================================================
-
       - name: Get SHA-1 Fingerprints
         run: |
+          set -e
+
+          echo "=========================================="
+          echo "CREATING ANDROID DEBUG KEYSTORE"
+          echo "=========================================="
+
+          mkdir -p /home/runner/.config/.android
+
+          keytool -genkeypair \
+            -keystore /home/runner/.config/.android/debug.keystore \
+            -storepass android \
+            -alias AndroidDebugKey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+
+          echo ""
           echo "=========================================="
           echo "FIREBASE SHA-1 FINGERPRINT"
           echo "=========================================="
 
-          cd android
+          keytool -list -v \
+            -keystore /home/runner/.config/.android/debug.keystore \
+            -alias AndroidDebugKey \
+            -storepass android \
+            -keypass android | grep "SHA1"
 
-          chmod +x gradlew
-
-          ./gradlew signingReport
-
-          echo "=========================================="
-          echo "COPY SHA1 FROM ABOVE"
           echo "=========================================="
 
 
       # ==========================================================
-      # CLEAN PROJECT
+      # CLEAN
       # ==========================================================
-
       - name: Clean
         run: |
           set -e
-
           flutter clean
 
 
       # ==========================================================
       # BUILD RELEASE APK
       # ==========================================================
-
       - name: Build APK
         run: |
           set -e
-
           flutter build apk --release
 
 
       # ==========================================================
       # UPLOAD APK
       # ==========================================================
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
