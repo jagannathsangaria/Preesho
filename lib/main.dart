@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'checkout_page.dart';
 import 'login_page.dart';
 import 'admin_login.dart';
+import 'orders_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -276,8 +277,6 @@ class _MainShellState extends State<MainShell> {
 
 // ============================================================
 // FIRESTORE PRODUCT STREAM
-// IMPORTANT:
-// USER WILL SEE ONLY ACTIVE PRODUCTS WITH STOCK > 0
 // ============================================================
 
 class ProductStream extends StatelessWidget {
@@ -336,10 +335,6 @@ class ProductStream extends StatelessWidget {
         }
 
         final docs = snapshot.data?.docs ?? [];
-
-        // ======================================================
-        // ONLY ACTIVE PRODUCTS WITH AVAILABLE STOCK
-        // ======================================================
 
         final products = docs
             .map(productFromDocument)
@@ -631,181 +626,489 @@ class ProductTile extends StatelessWidget {
 
     final outOfStock = product.stock <= 0;
 
-    return Card(
-      margin: const EdgeInsets.only(
-        bottom: 12,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 75,
-              height: 75,
-              child: ClipRRect(
-                borderRadius:
-                    BorderRadius.circular(12),
-                child: product.imageUrl.isNotEmpty
-                    ? Image.network(
-                        product.imageUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder:
-                            (context, error, stack) {
-                          return const ColoredBox(
-                            color: Colors.black12,
-                            child: Icon(
-                              Icons.image_not_supported,
-                            ),
-                          );
-                        },
-                      )
-                    : const ColoredBox(
-                        color: Colors.black12,
-                        child: Icon(
-                          Icons.shopping_bag_outlined,
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ProductDetailsPage(
+              product: product,
+              onCartChanged: onCartChanged,
+            ),
+          ),
+        );
+
+        onCartChanged();
+      },
+      child: Card(
+        margin: const EdgeInsets.only(
+          bottom: 12,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 75,
+                height: 75,
+                child: ClipRRect(
+                  borderRadius:
+                      BorderRadius.circular(12),
+                  child: product.imageUrl.isNotEmpty
+                      ? Image.network(
+                          product.imageUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder:
+                              (context, error, stack) {
+                            return const ColoredBox(
+                              color: Colors.black12,
+                              child: Icon(
+                                Icons.image_not_supported,
+                              ),
+                            );
+                          },
+                        )
+                      : const ColoredBox(
+                          color: Colors.black12,
+                          child: Icon(
+                            Icons.shopping_bag_outlined,
+                          ),
                         ),
+                ),
+              ),
+
+              const SizedBox(width: 12),
+
+              Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      product.name.isEmpty
+                          ? 'Unnamed Product'
+                          : product.name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
                       ),
+                    ),
+
+                    const SizedBox(height: 4),
+
+                    Text(
+                      product.category,
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+
+                    const SizedBox(height: 4),
+
+                    Text(
+                      '₹${product.numericPrice.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+
+                    const SizedBox(height: 4),
+
+                    Text(
+                      outOfStock
+                          ? 'Out of Stock'
+                          : 'Stock: ${product.stock}',
+                      style: TextStyle(
+                        color: outOfStock
+                            ? Colors.red
+                            : Colors.green,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
 
-            const SizedBox(width: 12),
-
-            Expanded(
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    product.name.isEmpty
-                        ? 'Unnamed Product'
-                        : product.name,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-
-                  const SizedBox(height: 4),
-
-                  Text(
-                    product.category,
+              if (outOfStock)
+                const SizedBox(
+                  width: 95,
+                  child: Text(
+                    'Out of Stock',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-
-                  const SizedBox(height: 4),
-
-                  Text(
-                    '₹${product.numericPrice.toStringAsFixed(0)}',
-                    style: const TextStyle(
+                      color: Colors.red,
                       fontWeight: FontWeight.bold,
-                      fontSize: 16,
                     ),
                   ),
+                )
+              else if (cartQuantity == 0)
+                IconButton.filled(
+                  onPressed: () {
+                    final added =
+                        CartController.addProduct(
+                      product,
+                    );
 
-                  const SizedBox(height: 4),
+                    if (added) {
+                      onCartChanged();
 
-                  Text(
-                    outOfStock
-                        ? 'Out of Stock'
-                        : 'Stock: ${product.stock}',
-                    style: TextStyle(
-                      color: outOfStock
-                          ? Colors.red
-                          : Colors.green,
-                      fontWeight: FontWeight.w600,
-                    ),
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(
+                        const SnackBar(
+                          content:
+                              Text('Added to cart'),
+                          duration:
+                              Duration(seconds: 1),
+                        ),
+                      );
+                    }
+                  },
+                  icon: const Icon(
+                    Icons.add_shopping_cart,
                   ),
-                ],
-              ),
-            ),
+                )
+              else
+                Row(
+                  mainAxisSize:
+                      MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      onPressed: () {
+                        CartController
+                            .decreaseQuantity(
+                          product.id,
+                        );
 
-            if (outOfStock)
-              const SizedBox(
-                width: 95,
-                child: Text(
-                  'Out of Stock',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.red,
+                        onCartChanged();
+                      },
+                      icon: const Icon(
+                        Icons.remove_circle_outline,
+                      ),
+                    ),
+
+                    Text(
+                      '$cartQuantity',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+
+                    IconButton(
+                      onPressed:
+                          cartQuantity >= product.stock
+                              ? null
+                              : () {
+                                  CartController
+                                      .increaseQuantity(
+                                    product.id,
+                                  );
+
+                                  onCartChanged();
+                                },
+                      icon: const Icon(
+                        Icons.add_circle_outline,
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// PRODUCT DETAILS PAGE
+// ============================================================
+
+class ProductDetailsPage extends StatefulWidget {
+  final Product product;
+  final VoidCallback onCartChanged;
+
+  const ProductDetailsPage({
+    super.key,
+    required this.product,
+    required this.onCartChanged,
+  });
+
+  @override
+  State<ProductDetailsPage> createState() =>
+      _ProductDetailsPageState();
+}
+
+class _ProductDetailsPageState
+    extends State<ProductDetailsPage> {
+  void refreshCart() {
+    setState(() {});
+    widget.onCartChanged();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final product = widget.product;
+
+    final cartItem =
+        CartController.findItem(product.id);
+
+    final quantity =
+        cartItem?.quantity ?? 0;
+
+    final outOfStock = product.stock <= 0;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Product Details',
+        ),
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Container(
+                  height: 300,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius:
+                        BorderRadius.circular(20),
+                  ),
+                  child: ClipRRect(
+                    borderRadius:
+                        BorderRadius.circular(20),
+                    child: product.imageUrl.isNotEmpty
+                        ? Image.network(
+                            product.imageUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder:
+                                (context, error, stack) {
+                              return const Center(
+                                child: Icon(
+                                  Icons.image_not_supported,
+                                  size: 70,
+                                ),
+                              );
+                            },
+                          )
+                        : const Center(
+                            child: Icon(
+                              Icons.shopping_bag_outlined,
+                              size: 80,
+                            ),
+                          ),
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                Text(
+                  product.name.isEmpty
+                      ? 'Unnamed Product'
+                      : product.name,
+                  style: const TextStyle(
+                    fontSize: 26,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-              )
-            else if (cartQuantity == 0)
-              IconButton.filled(
-                onPressed: () {
-                  final added =
-                      CartController.addProduct(
-                    product,
-                  );
 
-                  if (added) {
-                    onCartChanged();
+                const SizedBox(height: 8),
 
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(
-                      const SnackBar(
-                        content:
-                            Text('Added to cart'),
-                        duration:
-                            Duration(seconds: 1),
-                      ),
-                    );
-                  }
-                },
-                icon: const Icon(
-                  Icons.add_shopping_cart,
+                if (product.category.isNotEmpty)
+                  Chip(
+                    label: Text(product.category),
+                  ),
+
+                const SizedBox(height: 10),
+
+                Text(
+                  '₹${product.numericPrice.toStringAsFixed(0)}',
+                  style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.deepPurple,
+                  ),
                 ),
-              )
-            else
-              Row(
-                mainAxisSize:
-                    MainAxisSize.min,
-                children: [
-                  IconButton(
-                    onPressed: () {
-                      CartController
-                          .decreaseQuantity(
-                        product.id,
-                      );
 
-                      onCartChanged();
-                    },
-                    icon: const Icon(
-                      Icons.remove_circle_outline,
+                const SizedBox(height: 12),
+
+                Row(
+                  children: [
+                    Icon(
+                      outOfStock
+                          ? Icons.cancel_outlined
+                          : Icons.check_circle_outline,
+                      color: outOfStock
+                          ? Colors.red
+                          : Colors.green,
                     ),
-                  ),
-
-                  Text(
-                    '$cartQuantity',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
+                    const SizedBox(width: 8),
+                    Text(
+                      outOfStock
+                          ? 'Out of Stock'
+                          : '${product.stock} items available',
+                      style: TextStyle(
+                        color: outOfStock
+                            ? Colors.red
+                            : Colors.green,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
+                  ],
+                ),
 
-                  IconButton(
-                    onPressed:
-                        cartQuantity >= product.stock
-                            ? null
-                            : () {
-                                CartController
-                                    .increaseQuantity(
-                                  product.id,
-                                );
+                const SizedBox(height: 24),
 
-                                onCartChanged();
-                              },
-                    icon: const Icon(
-                      Icons.add_circle_outline,
-                    ),
+                const Text(
+                  'Description',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
                   ),
-                ],
+                ),
+
+                const SizedBox(height: 8),
+
+                Text(
+                  product.description.isEmpty
+                      ? 'No description available for this product.'
+                      : product.description,
+                  style: TextStyle(
+                    fontSize: 16,
+                    height: 1.5,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+
+                const SizedBox(height: 30),
+              ],
+            ),
+          ),
+
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Theme.of(context)
+                  .scaffoldBackgroundColor,
+              border: Border(
+                top: BorderSide(
+                  color: Colors.grey.shade300,
+                ),
               ),
-          ],
-        ),
+            ),
+            child: SafeArea(
+              top: false,
+              child: SizedBox(
+                width: double.infinity,
+                height: 54,
+                child: outOfStock
+                    ? FilledButton(
+                        onPressed: null,
+                        child: const Text(
+                          'Out of Stock',
+                        ),
+                      )
+                    : quantity == 0
+                        ? FilledButton.icon(
+                            onPressed: () {
+                              final added =
+                                  CartController.addProduct(
+                                product,
+                              );
+
+                              if (added) {
+                                refreshCart();
+
+                                ScaffoldMessenger.of(
+                                  context,
+                                ).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Added to cart',
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
+                            icon: const Icon(
+                              Icons.add_shopping_cart,
+                            ),
+                            label: const Text(
+                              'Add to Cart',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight:
+                                    FontWeight.bold,
+                              ),
+                            ),
+                          )
+                        : Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: () {
+                                    CartController
+                                        .decreaseQuantity(
+                                      product.id,
+                                    );
+
+                                    refreshCart();
+                                  },
+                                  icon: const Icon(
+                                    Icons.remove,
+                                  ),
+                                  label: const Text(
+                                    'Remove',
+                                  ),
+                                ),
+                              ),
+
+                              const SizedBox(width: 12),
+
+                              Text(
+                                '$quantity',
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight:
+                                      FontWeight.bold,
+                                ),
+                              ),
+
+                              const SizedBox(width: 12),
+
+                              Expanded(
+                                child: FilledButton.icon(
+                                  onPressed:
+                                      quantity >= product.stock
+                                          ? null
+                                          : () {
+                                              CartController
+                                                  .increaseQuantity(
+                                                product.id,
+                                              );
+
+                                              refreshCart();
+                                            },
+                                  icon: const Icon(
+                                    Icons.add,
+                                  ),
+                                  label: const Text(
+                                    'Add',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1063,7 +1366,6 @@ class _CartPageState extends State<CartPage> {
                                     .instance
                                     .currentUser;
 
-                            // LOGIN REQUIRED
                             if (user == null) {
                               final loginResult =
                                   await Navigator.push(
@@ -1288,13 +1590,44 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ),
 
-          const ListTile(
-            leading: Icon(
+          ListTile(
+            leading: const Icon(
               Icons.receipt_long,
             ),
-            title: Text(
+            title: const Text(
               'My Orders',
             ),
+            subtitle: const Text(
+              'View your placed orders',
+            ),
+            onTap: () async {
+              if (FirebaseAuth
+                      .instance.currentUser ==
+                  null) {
+                final result =
+                    await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        const LoginPage(),
+                  ),
+                );
+
+                if (result != true) {
+                  return;
+                }
+              }
+
+              if (!mounted) return;
+
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      const OrdersPage(),
+                ),
+              );
+            },
           ),
 
           ListTile(
