@@ -3,469 +3,232 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class OrdersPage extends StatelessWidget {
-const OrdersPage({super.key});
-
-// =====================================================
-// MONEY FORMAT
-// =====================================================
-
-String money(dynamic value) {
-if (value is num) {
-return '₹${value.toStringAsFixed(0)}';
-}
-
-final number = double.tryParse(
-  value?.toString() ?? '',
-);
-
-if (number == null) {
-  return '₹0';
-}
-
-return '₹${number.toStringAsFixed(0)}';
-
-}
-
-// =====================================================
-// DATE FORMAT
-// =====================================================
-
-String formatDate(Timestamp? timestamp) {
-if (timestamp == null) {
-return 'Date unavailable';
-}
-
-final date = timestamp.toDate();
-
-final day = date.day.toString().padLeft(2, '0');
-final month = date.month.toString().padLeft(2, '0');
-final year = date.year.toString();
-
-return '$day/$month/$year';
-
-}
-
-// =====================================================
-// STATUS COLOR
-// =====================================================
-
-Color statusColor(String status) {
-switch (status.toLowerCase()) {
-case 'delivered':
-return Colors.green;
-
-  case 'cancelled':
-    return Colors.red;
-
-  case 'shipped':
-    return Colors.blue;
-
-  case 'confirmed':
-    return Colors.orange;
-
-  case 'packed':
-    return Colors.deepOrange;
-
-  case 'out for delivery':
-    return Colors.indigo;
-
-  default:
-    return Colors.deepPurple;
-}
-
-}
-
-// =====================================================
-// CAN CUSTOMER CANCEL?
-// =====================================================
-
-bool canCancelOrder(String status) {
-return status.toLowerCase() == 'placed';
-}
-
-// =====================================================
-// CANCEL ORDER
-// RESTORE STOCK SAFELY
-// =====================================================
-
-Future<void> cancelOrder(
-BuildContext context,
-String orderId,
-) async {
-try {
-final firestore = FirebaseFirestore.instance;
-
-  final orderRef =
-      firestore.collection('orders').doc(orderId);
-
-  await firestore.runTransaction(
-    (transaction) async {
-      // =================================================
-      // GET LATEST ORDER DATA
-      // =================================================
-
-      final orderSnapshot =
-          await transaction.get(orderRef);
-
-      if (!orderSnapshot.exists) {
-        throw Exception('Order not found.');
-      }
-
-      final orderData =
-          orderSnapshot.data() ?? {};
-
-      final currentStatus =
-          orderData['status']?.toString() ??
-              'Placed';
-
-      // =================================================
-      // DOUBLE CHECK STATUS
-      // =================================================
-
-      if (currentStatus.toLowerCase() !=
-          'placed') {
-        throw Exception(
-          'This order can no longer be cancelled.',
-        );
-      }
-
-      // =================================================
-      // GET ORDER ITEMS
-      // =================================================
-
-      final items =
-          orderData['items'] is List
-              ? List<dynamic>.from(
-                  orderData['items'],
-                )
-              : <dynamic>[];
-
-      // =================================================
-      // RESTORE PRODUCT STOCK
-      // =================================================
-
-      for (final item in items) {
-        if (item is! Map) {
-          continue;
-        }
-
-        final productId =
-            item['productId']?.toString();
-
-        if (productId == null ||
-            productId.isEmpty) {
-          continue;
-        }
-
-        final quantity =
-            int.tryParse(
-                  item['quantity']
-                          ?.toString() ??
-                      '0',
-                ) ??
-                0;
-
-        if (quantity <= 0) {
-          continue;
-        }
-
-        final productRef =
-            firestore.collection('products').doc(
-                  productId,
-                );
-
-        final productSnapshot =
-            await transaction.get(productRef);
-
-        // Product deleted by admin?
-        // In that case skip stock restore.
-        if (!productSnapshot.exists) {
-          continue;
-        }
-
-        final productData =
-            productSnapshot.data() ?? {};
-
-        final currentStock =
-            int.tryParse(
-                  productData['Stock']
-                          ?.toString() ??
-                      '0',
-                ) ??
-                0;
-
-        // Restore stock
-        transaction.update(
-          productRef,
-          {
-            'Stock':
-                currentStock + quantity,
-          },
-        );
-      }
-
-      // =================================================
-      // UPDATE ORDER STATUS
-      // =================================================
-
-      transaction.update(
-        orderRef,
-        {
-          'status': 'Cancelled',
-          'cancelledBy': 'Customer',
-          'cancelledAt':
-              FieldValue.serverTimestamp(),
-          'updatedAt':
-              FieldValue.serverTimestamp(),
-        },
-      );
-    },
-  );
-
-  if (!context.mounted) return;
-
-  ScaffoldMessenger.of(context)
-      .hideCurrentSnackBar();
-
-  ScaffoldMessenger.of(context)
-      .showSnackBar(
-    const SnackBar(
-      content: Text(
-        'Order cancelled successfully. Stock has been restored.',
-      ),
-      backgroundColor: Colors.green,
-    ),
-  );
-} on FirebaseException catch (e) {
-  if (!context.mounted) return;
-
-  ScaffoldMessenger.of(context)
-      .showSnackBar(
-    SnackBar(
-      content: Text(
-        'Cancellation failed: ${e.message ?? e.code}',
-      ),
-      backgroundColor: Colors.red,
-    ),
-  );
-} catch (e) {
-  if (!context.mounted) return;
-
-  ScaffoldMessenger.of(context)
-      .showSnackBar(
-    SnackBar(
-      content: Text(
-        e.toString().replaceFirst(
-          'Exception: ',
-          '',
-        ),
-      ),
-      backgroundColor: Colors.red,
-    ),
-  );
-}
-
-}
-
-// =====================================================
-// CANCEL CONFIRMATION
-// =====================================================
-
-Future<void> showCancelDialog(
-BuildContext context,
-String orderId,
-) async {
-final confirm =
-await showDialog<bool>(
-context: context,
-builder: (dialogContext) {
-return AlertDialog(
-icon: const Icon(
-Icons.cancel_outlined,
-color: Colors.red,
-size: 42,
-),
-title: const Text(
-'Cancel Order?',
-textAlign: TextAlign.center,
-),
-content: const Text(
-'Are you sure you want to cancel this order?\n\n'
-'The order will be cancelled and the products will be returned to stock.',
-textAlign: TextAlign.center,
-),
-actions: [
-TextButton(
-onPressed: () {
-Navigator.pop(
-dialogContext,
-false,
-);
-},
-child: const Text(
-'No, Keep Order',
-),
-),
-FilledButton(
-style: FilledButton.styleFrom(
-backgroundColor: Colors.red,
-),
-onPressed: () {
-Navigator.pop(
-dialogContext,
-true,
-);
-},
-child: const Text(
-'Yes, Cancel',
-),
-),
-],
-);
-},
-);
-
-if (confirm == true && context.mounted) {
-  await cancelOrder(
-    context,
-    orderId,
-  );
-}
-
-}
-
-// =====================================================
-// BUILD
-// =====================================================
-
-@override
-Widget build(BuildContext context) {
-final user = FirebaseAuth.instance.currentUser;
-
-if (user == null) {
-  return Scaffold(
-    appBar: AppBar(
-      title: const Text(
-        'My Orders',
-        style: TextStyle(
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    ),
-    body: const Center(
-      child: Text(
-        'Please login to view your orders.',
-        style: TextStyle(
-          fontSize: 16,
-        ),
-      ),
-    ),
-  );
-}
-
-return Scaffold(
-  appBar: AppBar(
-    title: const Text(
-      'My Orders',
-      style: TextStyle(
-        fontWeight: FontWeight.bold,
-      ),
-    ),
-  ),
-
-  body: StreamBuilder<
-      QuerySnapshot<Map<String, dynamic>>>(
-    stream: FirebaseFirestore.instance
-        .collection('orders')
-        .where(
-          'userId',
-          isEqualTo: user.uid,
-        )
-        .orderBy(
-          'createdAt',
-          descending: true,
-        )
-        .snapshots(),
-
-    builder: (context, snapshot) {
-      if (snapshot.connectionState ==
-          ConnectionState.waiting) {
-        return const Center(
-          child: CircularProgressIndicator(),
-        );
-      }
-
-      if (snapshot.hasError) {
-        return Center(
-          child: Padding(
-            padding:
-                const EdgeInsets.all(24),
-            child: Column(
-              mainAxisAlignment:
-                  MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.error_outline,
-                  size: 60,
-                  color: Colors.red,
-                ),
-
-                const SizedBox(height: 16),
-
-                const Text(
-                  'Unable to load orders',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight:
-                        FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                Text(
-                  '${snapshot.error}',
-                  textAlign:
-                      TextAlign.center,
-                ),
-              ],
-            ),
+  const OrdersPage({super.key});
+
+  // ============================================================
+  // MONEY
+  // ============================================================
+
+  String money(dynamic value) {
+    if (value is num) {
+      return '₹${value.toStringAsFixed(0)}';
+    }
+
+    final number = double.tryParse(
+      value?.toString() ?? '',
+    );
+
+    if (number == null) {
+      return '₹0';
+    }
+
+    return '₹${number.toStringAsFixed(0)}';
+  }
+
+  // ============================================================
+  // DATE
+  // ============================================================
+
+  String formatDate(Timestamp? timestamp) {
+    if (timestamp == null) {
+      return 'Date unavailable';
+    }
+
+    final date = timestamp.toDate();
+
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final year = date.year.toString();
+
+    return '$day/$month/$year';
+  }
+
+  // ============================================================
+  // STATUS COLOR
+  // ============================================================
+
+  Color statusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'delivered':
+        return Colors.green;
+
+      case 'cancelled':
+        return Colors.red;
+
+      case 'shipped':
+        return Colors.blue;
+
+      case 'packed':
+        return Colors.teal;
+
+      case 'confirmed':
+        return Colors.orange;
+
+      case 'placed':
+        return Colors.deepPurple;
+
+      default:
+        return Colors.deepPurple;
+    }
+  }
+
+  // ============================================================
+  // CANCEL ORDER CONFIRMATION
+  // ============================================================
+
+  Future<void> confirmCancelOrder(
+    BuildContext context,
+    String orderId,
+  ) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          icon: const Icon(
+            Icons.cancel_outlined,
+            color: Colors.red,
+            size: 42,
           ),
+          title: const Text(
+            'Cancel Order?',
+            textAlign: TextAlign.center,
+          ),
+          content: const Text(
+            'Are you sure you want to cancel this order?\n\n'
+            'Once cancelled, the order cannot be continued.',
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(
+                  dialogContext,
+                  false,
+                );
+              },
+              child: const Text('No'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.red,
+              ),
+              onPressed: () {
+                Navigator.pop(
+                  dialogContext,
+                  true,
+                );
+              },
+              child: const Text('Yes, Cancel'),
+            ),
+          ],
         );
-      }
+      },
+    );
 
-      final orders =
-          snapshot.data?.docs ?? [];
+    if (result != true) {
+      return;
+    }
 
-      if (orders.isEmpty) {
-        return const EmptyOrders();
-      }
+    await cancelOrder(
+      context,
+      orderId,
+    );
+  }
 
-      return ListView.builder(
-        padding:
-            const EdgeInsets.all(16),
+  // ============================================================
+  // CANCEL ORDER
+  // ============================================================
 
-        itemCount: orders.length,
+  Future<void> cancelOrder(
+    BuildContext context,
+    String orderId,
+  ) async {
+    final user = FirebaseAuth.instance.currentUser;
 
-        itemBuilder:
-            (context, index) {
-          final doc =
-              orders[index];
+    if (user == null) {
+      showMessage(
+        context,
+        'Please login to cancel the order.',
+      );
+      return;
+    }
+
+    try {
+      final firestore =
+          FirebaseFirestore.instance;
+
+      final orderRef =
+          firestore.collection('orders').doc(orderId);
+
+      await firestore.runTransaction(
+        (transaction) async {
+          // ======================================================
+          // READ ORDER
+          // ======================================================
+
+          final orderSnapshot =
+              await transaction.get(orderRef);
+
+          if (!orderSnapshot.exists) {
+            throw Exception(
+              'Order not found.',
+            );
+          }
 
           final data =
-              doc.data();
+              orderSnapshot.data();
 
-          final status =
-              data['status']
-                      ?.toString() ??
+          if (data == null) {
+            throw Exception(
+              'Order information not found.',
+            );
+          }
+
+          // ======================================================
+          // SECURITY CHECK
+          // ======================================================
+
+          final orderUserId =
+              data['userId']?.toString() ?? '';
+
+          if (orderUserId != user.uid) {
+            throw Exception(
+              'You are not allowed to cancel this order.',
+            );
+          }
+
+          // ======================================================
+          // CURRENT STATUS
+          // ======================================================
+
+          final currentStatus =
+              data['status']?.toString() ??
                   'Placed';
 
-          final total =
-              data['totalAmount'];
+          // ======================================================
+          // CANCELLATION RULE
+          //
+          // Customer can cancel only:
+          // Placed
+          // Confirmed
+          //
+          // Cannot cancel:
+          // Packed
+          // Shipped
+          // Delivered
+          // Cancelled
+          // ======================================================
 
-          final createdAt =
-              data['createdAt']
-                  as Timestamp?;
+          if (currentStatus != 'Placed' &&
+              currentStatus != 'Confirmed') {
+            throw Exception(
+              'This order can no longer be cancelled.',
+            );
+          }
+
+          // ======================================================
+          // ITEMS
+          // ======================================================
 
           final items =
               data['items'] is List
@@ -474,463 +237,530 @@ return Scaffold(
                     )
                   : <dynamic>[];
 
-          // ===============================================
-          // ADDRESS
-          // SUPPORT OLD + NEW FIELD NAMES
-          // ===============================================
+          // ======================================================
+          // RESTORE STOCK
+          // ======================================================
 
-          final address =
-              data['customerAddress']
-                      ?.toString() ??
-                  data['address']
-                      ?.toString() ??
-                  '';
+          for (final item in items) {
+            if (item is! Map) {
+              continue;
+            }
 
-          final city =
-              data['customerCity']
-                      ?.toString() ??
-                  data['city']
-                      ?.toString() ??
-                  '';
+            final productId =
+                item['productId']?.toString() ?? '';
 
-          final pincode =
-              data['customerPincode']
-                      ?.toString() ??
-                  data['pincode']
-                      ?.toString() ??
-                  '';
+            final quantity =
+                int.tryParse(
+                      item['quantity']?.toString() ??
+                          '0',
+                    ) ??
+                    0;
 
-          final isGift =
-              data['isGift'] == true;
+            if (productId.isEmpty ||
+                quantity <= 0) {
+              continue;
+            }
 
-          // ===============================================
-          // GIFT ADDRESS
-          // ===============================================
+            final productRef =
+                firestore
+                    .collection('products')
+                    .doc(productId);
 
-          final giftAddress =
-              data['giftReceiverAddress']
-                      ?.toString() ??
-                  '';
+            final productSnapshot =
+                await transaction.get(productRef);
 
-          final giftCity =
-              data['giftReceiverCity']
-                      ?.toString() ??
-                  '';
+            if (!productSnapshot.exists) {
+              continue;
+            }
 
-          final giftPincode =
-              data['giftReceiverPincode']
-                      ?.toString() ??
-                  '';
+            final productData =
+                productSnapshot.data();
 
-          final deliveryAddress =
-              isGift
-                  ? [
-                      giftAddress,
-                      giftCity,
-                      giftPincode,
-                    ]
-                      .where(
-                        (value) =>
-                            value.isNotEmpty,
-                      )
-                      .join(', ')
-                  : [
-                      address,
-                      city,
-                      pincode,
-                    ]
-                      .where(
-                        (value) =>
-                            value.isNotEmpty,
-                      )
-                      .join(', ');
+            final currentStock =
+                int.tryParse(
+                      productData?['Stock']
+                              ?.toString() ??
+                          '0',
+                    ) ??
+                    0;
 
-          return Card(
-            margin:
-                const EdgeInsets.only(
-              bottom: 16,
+            final restoredStock =
+                currentStock + quantity;
+
+            transaction.update(
+              productRef,
+              {
+                'Stock': restoredStock,
+              },
+            );
+          }
+
+          // ======================================================
+          // UPDATE ORDER
+          // ======================================================
+
+          transaction.update(
+            orderRef,
+            {
+              'status': 'Cancelled',
+              'cancelledBy': 'Customer',
+              'cancelledAt':
+                  FieldValue.serverTimestamp(),
+              'updatedAt':
+                  FieldValue.serverTimestamp(),
+            },
+          );
+        },
+      );
+
+      if (!context.mounted) {
+        return;
+      }
+
+      showMessage(
+        context,
+        'Order cancelled successfully. Stock has been restored.',
+      );
+    } on FirebaseException catch (e) {
+      if (!context.mounted) {
+        return;
+      }
+
+      showMessage(
+        context,
+        'Cancellation failed:\n${e.message ?? e.code}',
+      );
+    } catch (e) {
+      if (!context.mounted) {
+        return;
+      }
+
+      showMessage(
+        context,
+        e.toString().replaceFirst(
+          'Exception: ',
+          '',
+        ),
+      );
+    }
+  }
+
+  // ============================================================
+  // MESSAGE
+  // ============================================================
+
+  void showMessage(
+    BuildContext context,
+    String message,
+  ) {
+    ScaffoldMessenger.of(context)
+        .hideCurrentSnackBar();
+
+    ScaffoldMessenger.of(context)
+        .showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration:
+            const Duration(seconds: 4),
+      ),
+    );
+  }
+
+  // ============================================================
+  // BUILD
+  // ============================================================
+
+  @override
+  Widget build(BuildContext context) {
+    final user =
+        FirebaseAuth.instance.currentUser;
+
+    // ============================================================
+    // NOT LOGGED IN
+    // ============================================================
+
+    if (user == null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text(
+            'My Orders',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
             ),
-
-            color: Colors.white,
-
-            elevation: 2,
-
-            shape:
-                RoundedRectangleBorder(
-              borderRadius:
-                  BorderRadius.circular(
-                18,
-              ),
+          ),
+        ),
+        body: const Center(
+          child: Text(
+            'Please login to view your orders.',
+            style: TextStyle(
+              fontSize: 16,
             ),
+          ),
+        ),
+      );
+    }
 
-            child: Padding(
-              padding:
-                  const EdgeInsets.all(
-                16,
-              ),
+    // ============================================================
+    // ORDERS PAGE
+    // ============================================================
 
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment
-                        .start,
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'My Orders',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
 
-                children: [
+      body: StreamBuilder<
+          QuerySnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance
+            .collection('orders')
+            .where(
+              'userId',
+              isEqualTo: user.uid,
+            )
+            .orderBy(
+              'createdAt',
+              descending: true,
+            )
+            .snapshots(),
 
-                  // =========================================
-                  // ORDER HEADER
-                  // =========================================
+        builder: (context, snapshot) {
+          // ======================================================
+          // LOADING
+          // ======================================================
 
-                  Row(
-                    mainAxisAlignment:
-                        MainAxisAlignment
-                            .spaceBetween,
+          if (snapshot.connectionState ==
+              ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          }
 
-                    children: [
-                      const Text(
-                        'Order',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight:
-                              FontWeight.bold,
-                        ),
-                      ),
+          // ======================================================
+          // ERROR
+          // ======================================================
 
-                      Container(
-                        padding:
-                            const EdgeInsets
-                                .symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-
-                        decoration:
-                            BoxDecoration(
-                          color:
-                              statusColor(
-                            status,
-                          ).withOpacity(
-                            0.12,
-                          ),
-
-                          borderRadius:
-                              BorderRadius
-                                  .circular(
-                            20,
-                          ),
-                        ),
-
-                        child: Text(
-                          status,
-                          style: TextStyle(
-                            color:
-                                statusColor(
-                              status,
-                            ),
-
-                            fontWeight:
-                                FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  Text(
-                    'ID: ${doc.id}',
-                    maxLines: 1,
-                    overflow:
-                        TextOverflow
-                            .ellipsis,
-                    style: TextStyle(
-                      color:
-                          Colors.grey.shade700,
-                      fontSize: 12,
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding:
+                    const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment:
+                      MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      size: 60,
+                      color: Colors.red,
                     ),
-                  ),
 
-                  const SizedBox(height: 5),
+                    const SizedBox(height: 16),
 
-                  Text(
-                    'Date: ${formatDate(createdAt)}',
-                    style: TextStyle(
-                      color:
-                          Colors.grey.shade700,
+                    const Text(
+                      'Unable to load orders',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight:
+                            FontWeight.bold,
+                      ),
                     ),
-                  ),
 
-                  if (isGift) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
 
-                    Container(
-                      padding:
-                          const EdgeInsets
-                              .symmetric(
-                        horizontal: 10,
-                        vertical: 5,
-                      ),
-                      decoration:
-                          BoxDecoration(
-                        color: Colors.purple
-                            .withOpacity(
-                          0.10,
-                        ),
-                        borderRadius:
-                            BorderRadius
-                                .circular(12),
-                      ),
-                      child: const Text(
-                        '🎁 Gift Order',
-                        style: TextStyle(
-                          fontWeight:
-                              FontWeight.bold,
-                          color: Colors.purple,
-                        ),
-                      ),
+                    Text(
+                      '${snapshot.error}',
+                      textAlign:
+                          TextAlign.center,
                     ),
                   ],
+                ),
+              ),
+            );
+          }
 
-                  const Divider(
-                    height: 24,
-                  ),
+          final orders =
+              snapshot.data?.docs ?? [];
 
-                  // =========================================
-                  // ITEMS
-                  // =========================================
+          // ======================================================
+          // EMPTY
+          // ======================================================
 
-                  const Text(
-                    'Items',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight:
-                          FontWeight.bold,
-                    ),
-                  ),
+          if (orders.isEmpty) {
+            return const EmptyOrders();
+          }
 
-                  const SizedBox(height: 8),
+          // ======================================================
+          // ORDER LIST
+          // ======================================================
 
-                  ...items.map(
-                    (item) {
-                      if (item is! Map) {
-                        return const SizedBox
-                            .shrink();
-                      }
+          return ListView.builder(
+            padding:
+                const EdgeInsets.all(16),
+            itemCount: orders.length,
 
-                      final name =
-                          item['name']
-                                  ?.toString() ??
-                              'Product';
+            itemBuilder:
+                (context, index) {
+              final doc =
+                  orders[index];
 
-                      final quantity =
-                          item['quantity']
-                                  ?.toString() ??
-                              '1';
+              final data =
+                  doc.data();
 
-                      final itemTotal =
-                          item['total'];
+              final status =
+                  data['status']
+                          ?.toString() ??
+                      'Placed';
 
-                      return Padding(
-                        padding:
-                            const EdgeInsets
-                                .only(
-                          bottom: 7,
-                        ),
+              final total =
+                  data['totalAmount'];
 
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                '$name × $quantity',
-                                maxLines: 2,
-                                overflow:
-                                    TextOverflow
-                                        .ellipsis,
-                              ),
-                            ),
+              final createdAt =
+                  data['createdAt']
+                      as Timestamp?;
 
-                            const SizedBox(
-                              width: 10,
-                            ),
+              final items =
+                  data['items'] is List
+                      ? List<dynamic>.from(
+                          data['items'],
+                        )
+                      : <dynamic>[];
 
-                            Text(
-                              money(
-                                itemTotal,
-                              ),
-                              style:
-                                  const TextStyle(
-                                fontWeight:
-                                    FontWeight
-                                        .w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
+              // ==================================================
+              // CAN CANCEL?
+              // ==================================================
 
-                  const Divider(
-                    height: 24,
-                  ),
+              final canCancel =
+                  status == 'Placed' ||
+                      status == 'Confirmed';
 
-                  // =========================================
-                  // TOTAL
-                  // =========================================
+              return Card(
+                margin:
+                    const EdgeInsets.only(
+                  bottom: 16,
+                ),
+                color: Colors.white,
+                elevation: 2,
+                shape:
+                    RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.circular(18),
+                ),
 
-                  Row(
-                    mainAxisAlignment:
-                        MainAxisAlignment
-                            .spaceBetween,
+                child: Padding(
+                  padding:
+                      const EdgeInsets.all(16),
+
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
 
                     children: [
-                      const Text(
-                        'Total Amount',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight:
-                              FontWeight.bold,
-                        ),
+                      // ==========================================
+                      // ORDER HEADER
+                      // ==========================================
+
+                      Row(
+                        mainAxisAlignment:
+                            MainAxisAlignment
+                                .spaceBetween,
+                        children: [
+                          const Text(
+                            'Order',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight:
+                                  FontWeight.bold,
+                            ),
+                          ),
+
+                          Container(
+                            padding:
+                                const EdgeInsets
+                                    .symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration:
+                                BoxDecoration(
+                              color: statusColor(
+                                status,
+                              ).withOpacity(0.12),
+                              borderRadius:
+                                  BorderRadius
+                                      .circular(20),
+                            ),
+                            child: Text(
+                              status,
+                              style: TextStyle(
+                                color:
+                                    statusColor(
+                                  status,
+                                ),
+                                fontWeight:
+                                    FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
+
+                      const SizedBox(height: 8),
 
                       Text(
-                        money(total),
-                        style:
-                            const TextStyle(
-                          fontSize: 21,
+                        'ID: ${doc.id}',
+                        maxLines: 1,
+                        overflow:
+                            TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color:
+                              Colors.grey.shade700,
+                          fontSize: 12,
+                        ),
+                      ),
+
+                      const SizedBox(height: 5),
+
+                      Text(
+                        'Date: ${formatDate(createdAt)}',
+                        style: TextStyle(
+                          color:
+                              Colors.grey.shade700,
+                        ),
+                      ),
+
+                      const Divider(
+                        height: 24,
+                      ),
+
+                      // ==========================================
+                      // ITEMS
+                      // ==========================================
+
+                      const Text(
+                        'Items',
+                        style: TextStyle(
+                          fontSize: 16,
                           fontWeight:
                               FontWeight.bold,
                         ),
                       ),
-                    ],
-                  ),
 
-                  const SizedBox(height: 14),
+                      const SizedBox(height: 8),
 
-                  // =========================================
-                  // DELIVERY ADDRESS
-                  // =========================================
+                      ...items.map(
+                        (item) {
+                          if (item is! Map) {
+                            return const SizedBox
+                                .shrink();
+                          }
 
-                  Row(
-                    crossAxisAlignment:
-                        CrossAxisAlignment
-                            .start,
+                          final name =
+                              item['name']
+                                      ?.toString() ??
+                                  'Product';
 
-                    children: [
-                      const Icon(
-                        Icons
-                            .local_shipping_outlined,
-                        size: 20,
-                      ),
+                          final quantity =
+                              item['quantity']
+                                      ?.toString() ??
+                                  '1';
 
-                      const SizedBox(width: 8),
+                          final itemTotal =
+                              item['total'];
 
-                      Expanded(
-                        child: Text(
-                          deliveryAddress.isEmpty
-                              ? 'Delivery address unavailable'
-                              : deliveryAddress,
-                          maxLines: 3,
-                          overflow:
-                              TextOverflow
-                                  .ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
+                          return Padding(
+                            padding:
+                                const EdgeInsets
+                                    .only(
+                              bottom: 7,
+                            ),
 
-                  // =========================================
-                  // CANCEL BUTTON
-                  // =========================================
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '$name × $quantity',
+                                    maxLines: 2,
+                                    overflow:
+                                        TextOverflow
+                                            .ellipsis,
+                                  ),
+                                ),
 
-                  if (canCancelOrder(
-                    status,
-                  )) ...[
-                    const SizedBox(
-                      height: 18,
-                    ),
+                                const SizedBox(
+                                  width: 10,
+                                ),
 
-                    SizedBox(
-                      width:
-                          double.infinity,
-                      height: 46,
-
-                      child:
-                          OutlinedButton.icon(
-                        onPressed: () {
-                          showCancelDialog(
-                            context,
-                            doc.id,
+                                Text(
+                                  money(
+                                    itemTotal,
+                                  ),
+                                  style:
+                                      const TextStyle(
+                                    fontWeight:
+                                        FontWeight
+                                            .w600,
+                                  ),
+                                ),
+                              ],
+                            ),
                           );
                         },
+                      ),
 
-                        icon: const Icon(
-                          Icons.cancel_outlined,
-                          color: Colors.red,
-                        ),
+                      const Divider(
+                        height: 24,
+                      ),
 
-                        label: const Text(
-                          'Cancel Order',
-                          style: TextStyle(
-                            color:
-                                Colors.red,
-                            fontWeight:
-                                FontWeight.bold,
+                      // ==========================================
+                      // TOTAL
+                      // ==========================================
+
+                      Row(
+                        mainAxisAlignment:
+                            MainAxisAlignment
+                                .spaceBetween,
+                        children: [
+                          const Text(
+                            'Total Amount',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight:
+                                  FontWeight.bold,
+                            ),
                           ),
-                        ),
 
-                        style:
-                            OutlinedButton
-                                .styleFrom(
-                          side:
-                              const BorderSide(
-                            color:
-                                Colors.red,
+                          Text(
+                            money(total),
+                            style:
+                                const TextStyle(
+                              fontSize: 21,
+                              fontWeight:
+                                  FontWeight.bold,
+                            ),
                           ),
-                        ),
-                      ),
-                    ),
-                  ],
-
-                  // =========================================
-                  // CANCELLED MESSAGE
-                  // =========================================
-
-                  if (status
-                          .toLowerCase() ==
-                      'cancelled') ...[
-                    const SizedBox(
-                      height: 14,
-                    ),
-
-                    Container(
-                      width:
-                          double.infinity,
-                      padding:
-                          const EdgeInsets.all(
-                        12,
+                        ],
                       ),
 
-                      decoration:
-                          BoxDecoration(
-                        color: Colors.red
-                            .withOpacity(
-                          0.08,
-                        ),
+                      const SizedBox(height: 10),
 
-                        borderRadius:
-                            BorderRadius
-                                .circular(
-                          10,
-                        ),
-                      ),
+                      // ==========================================
+                      // DELIVERY ADDRESS
+                      // ==========================================
 
-                      child: Row(
+                      Row(
+                        crossAxisAlignment:
+                            CrossAxisAlignment
+                                .start,
                         children: [
                           const Icon(
-                            Icons.info_outline,
-                            color:
-                                Colors.red,
+                            Icons
+                                .local_shipping_outlined,
+                            size: 20,
                           ),
 
                           const SizedBox(
@@ -939,90 +769,359 @@ return Scaffold(
 
                           Expanded(
                             child: Text(
-                              'This order has been cancelled.',
-                              style:
-                                  TextStyle(
-                                color:
-                                    Colors.red
-                                        .shade700,
-                              ),
+                              [
+                                data[
+                                        'customerAddress']
+                                    ?.toString() ??
+                                    data[
+                                        'address']
+                                        ?.toString() ??
+                                    '',
+                                data[
+                                        'customerCity']
+                                    ?.toString() ??
+                                    data['city']
+                                        ?.toString() ??
+                                    '',
+                                data[
+                                        'customerPincode']
+                                    ?.toString() ??
+                                    data[
+                                        'pincode']
+                                        ?.toString() ??
+                                    '',
+                              ]
+                                  .where(
+                                    (value) =>
+                                        value
+                                            .isNotEmpty,
+                                  )
+                                  .join(', '),
+                              maxLines: 3,
+                              overflow:
+                                  TextOverflow
+                                      .ellipsis,
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
+
+                      // ==========================================
+                      // GIFT DETAILS
+                      // ==========================================
+
+                      if (data['isGift'] ==
+                          true) ...[
+                        const SizedBox(
+                          height: 15,
+                        ),
+
+                        Container(
+                          width:
+                              double.infinity,
+                          padding:
+                              const EdgeInsets
+                                  .all(12),
+                          decoration:
+                              BoxDecoration(
+                            color: Colors
+                                .purple
+                                .withOpacity(
+                              0.06,
+                            ),
+                            borderRadius:
+                                BorderRadius
+                                    .circular(
+                              12,
+                            ),
+                            border:
+                                Border.all(
+                              color: Colors
+                                  .purple
+                                  .withOpacity(
+                                0.2,
+                              ),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment
+                                    .start,
+                            children: [
+                              const Text(
+                                '🎁 Gift Order',
+                                style:
+                                    TextStyle(
+                                  fontWeight:
+                                      FontWeight
+                                          .bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+
+                              const SizedBox(
+                                height: 6,
+                              ),
+
+                              Text(
+                                data[
+                                            'giftReceiverName']
+                                        ?.toString() ??
+                                    'Receiver',
+                              ),
+
+                              if ((data[
+                                          'giftReceiverMobile']
+                                      ?.toString() ??
+                                  '')
+                                  .isNotEmpty)
+                                Text(
+                                  'Mobile: ${data['giftReceiverMobile']}',
+                                ),
+
+                              const SizedBox(
+                                height: 5,
+                              ),
+
+                              Text(
+                                [
+                                  data[
+                                          'giftReceiverAddress']
+                                      ?.toString() ??
+                                      '',
+                                  data[
+                                          'giftReceiverCity']
+                                      ?.toString() ??
+                                      '',
+                                  data[
+                                          'giftReceiverPincode']
+                                      ?.toString() ??
+                                      '',
+                                ]
+                                    .where(
+                                      (value) =>
+                                          value
+                                              .isNotEmpty,
+                                    )
+                                    .join(', '),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+
+                      // ==========================================
+                      // CANCEL ORDER BUTTON
+                      // ==========================================
+
+                      if (canCancel) ...[
+                        const SizedBox(
+                          height: 18,
+                        ),
+
+                        SizedBox(
+                          width:
+                              double.infinity,
+                          height: 48,
+                          child:
+                              OutlinedButton.icon(
+                            style:
+                                OutlinedButton.styleFrom(
+                              foregroundColor:
+                                  Colors.red,
+                              side:
+                                  const BorderSide(
+                                color:
+                                    Colors.red,
+                              ),
+                              shape:
+                                  RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius
+                                        .circular(
+                                  12,
+                                ),
+                              ),
+                            ),
+                            onPressed: () {
+                              confirmCancelOrder(
+                                context,
+                                doc.id,
+                              );
+                            },
+                            icon:
+                                const Icon(
+                              Icons
+                                  .cancel_outlined,
+                            ),
+                            label:
+                                const Text(
+                              'Cancel Order',
+                              style:
+                                  TextStyle(
+                                fontWeight:
+                                    FontWeight
+                                        .bold,
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(
+                          height: 6,
+                        ),
+
+                        const Text(
+                          'You can cancel this order before it is packed.',
+                          textAlign:
+                              TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color:
+                                Colors.grey,
+                          ),
+                        ),
+                      ],
+
+                      // ==========================================
+                      // CANCELLED MESSAGE
+                      // ==========================================
+
+                      if (status ==
+                          'Cancelled') ...[
+                        const SizedBox(
+                          height: 15,
+                        ),
+
+                        Container(
+                          width:
+                              double.infinity,
+                          padding:
+                              const EdgeInsets
+                                  .all(12),
+                          decoration:
+                              BoxDecoration(
+                            color: Colors.red
+                                .withOpacity(
+                              0.06,
+                            ),
+                            borderRadius:
+                                BorderRadius
+                                    .circular(
+                              12,
+                            ),
+                            border:
+                                Border.all(
+                              color: Colors.red
+                                  .withOpacity(
+                                0.2,
+                              ),
+                            ),
+                          ),
+                          child:
+                              const Row(
+                            children: [
+                              Icon(
+                                Icons
+                                    .cancel,
+                                color:
+                                    Colors.red,
+                              ),
+                              SizedBox(
+                                width: 8,
+                              ),
+                              Expanded(
+                                child: Text(
+                                  'This order has been cancelled.',
+                                  style:
+                                      TextStyle(
+                                    color:
+                                        Colors.red,
+                                    fontWeight:
+                                        FontWeight
+                                            .w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              );
+            },
           );
         },
-      );
-    },
-  ),
-);
-
-}
+      ),
+    );
+  }
 }
 
-// =====================================================
+// =============================================================
 // EMPTY ORDERS
-// =====================================================
+// =============================================================
 
 class EmptyOrders extends StatelessWidget {
-const EmptyOrders({super.key});
+  const EmptyOrders({super.key});
 
-@override
-Widget build(BuildContext context) {
-return Center(
-child: Padding(
-padding:
-const EdgeInsets.all(24),
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding:
+            const EdgeInsets.all(24),
 
-    child: Column(
-      mainAxisAlignment:
-          MainAxisAlignment.center,
+        child: Column(
+          mainAxisAlignment:
+              MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.receipt_long_outlined,
+              size: 90,
+              color:
+                  Colors.grey.shade400,
+            ),
 
-      children: [
-        Icon(
-          Icons.receipt_long_outlined,
-          size: 90,
-          color: Colors.grey.shade400,
+            const SizedBox(
+              height: 20,
+            ),
+
+            const Text(
+              'No orders yet',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight:
+                    FontWeight.bold,
+              ),
+            ),
+
+            const SizedBox(
+              height: 10,
+            ),
+
+            const Text(
+              'Your placed orders will appear here.',
+              textAlign:
+                  TextAlign.center,
+            ),
+
+            const SizedBox(
+              height: 24,
+            ),
+
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text(
+                'Start Shopping',
+              ),
+            ),
+          ],
         ),
-
-        const SizedBox(height: 20),
-
-        const Text(
-          'No orders yet',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight:
-                FontWeight.bold,
-          ),
-        ),
-
-        const SizedBox(height: 10),
-
-        const Text(
-          'Your placed orders will appear here.',
-          textAlign:
-              TextAlign.center,
-        ),
-
-        const SizedBox(height: 24),
-
-        FilledButton(
-          onPressed: () {
-            Navigator.pop(context);
-          },
-          child: const Text(
-            'Start Shopping',
-          ),
-        ),
-      ],
-    ),
-  ),
-);
-
-}
+      ),
+    );
+  }
 }
