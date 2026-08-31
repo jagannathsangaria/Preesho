@@ -20,14 +20,10 @@ dependencies:
   # Location
   geolocator: ^14.0.2
 
-  # Excel Import / Export
+  # Excel Bulk Upload
   excel: ^4.0.6
-
-  # File Picker
   file_picker: ^10.3.3
-
-  # Download Excel File (Web)
-  universal_html: ^2.2.4
+  file_saver: ^0.2.14
 
 dev_dependencies:
   flutter_test:
