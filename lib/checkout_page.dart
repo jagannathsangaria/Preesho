@@ -41,6 +41,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
   bool isGift = false;
 
   // ============================================================
+  // USER DETAILS LOADING
+  // ============================================================
+
+  bool loadingUserDetails = true;
+
+  // ============================================================
   // LOCATION
   // ============================================================
 
@@ -63,30 +69,56 @@ class _CheckoutPageState extends State<CheckoutPage> {
   // ============================================================
 
   Future<void> loadCurrentUser() async {
-    final user = FirebaseAuth.instance.currentUser;
+    if (mounted) {
+      setState(() {
+        loadingUserDetails = true;
+      });
+    }
 
-    if (user != null) {
-      if (user.displayName != null &&
-          user.displayName!.trim().isNotEmpty) {
-        nameController.text = user.displayName!;
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+
+      if (user == null) {
+        return;
       }
 
-      if (user.email != null &&
-          user.email!.trim().isNotEmpty) {
-        emailController.text = user.email!;
+      // ----------------------------------------------------------
+      // LOAD FIREBASE AUTH DETAILS FIRST
+      // ----------------------------------------------------------
+
+      final authName = user.displayName?.trim() ?? '';
+      final authEmail = user.email?.trim() ?? '';
+      final authPhone = user.phoneNumber?.trim() ?? '';
+
+      if (authName.isNotEmpty) {
+        nameController.text = authName;
       }
 
-      // Phone login user
-      if (user.phoneNumber != null &&
-          user.phoneNumber!.isNotEmpty) {
+      if (authEmail.isNotEmpty) {
+        emailController.text = authEmail;
+      }
+
+      if (authPhone.isNotEmpty) {
         mobileController.text =
-            cleanPhoneNumber(user.phoneNumber!);
+            cleanPhoneNumber(authPhone);
       }
+
+      // ----------------------------------------------------------
+      // LOAD SAVED FIRESTORE DETAILS
+      // ----------------------------------------------------------
 
       await loadUserDetails(user.uid);
-
+    } catch (e) {
       if (mounted) {
-        setState(() {});
+        showMessage(
+          'Could not load saved customer details.',
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          loadingUserDetails = false;
+        });
       }
     }
   }
@@ -97,7 +129,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
   String cleanPhoneNumber(String phone) {
     String cleaned = phone.replaceAll('+91', '');
-    cleaned = cleaned.replaceAll(RegExp(r'[^0-9]'), '');
+
+    cleaned = cleaned.replaceAll(
+      RegExp(r'[^0-9]'),
+      '',
+    );
 
     if (cleaned.length > 10) {
       cleaned = cleaned.substring(
@@ -119,66 +155,90 @@ class _CheckoutPageState extends State<CheckoutPage> {
           .doc(uid)
           .get();
 
-      if (!doc.exists) return;
+      if (!doc.exists) {
+        return;
+      }
 
       final data = doc.data();
 
-      if (data == null) return;
+      if (data == null) {
+        return;
+      }
 
       // ----------------------------------------------------------
       // NAME
       // ----------------------------------------------------------
 
-      if (nameController.text.trim().isEmpty) {
-        nameController.text =
-            data['name']?.toString() ?? '';
+      final savedName =
+          data['name']?.toString().trim() ?? '';
+
+      if (savedName.isNotEmpty) {
+        nameController.text = savedName;
       }
 
       // ----------------------------------------------------------
       // MOBILE
       // ----------------------------------------------------------
 
-      if (mobileController.text.trim().isEmpty) {
+      final savedMobile =
+          data['mobile']?.toString().trim() ?? '';
+
+      if (savedMobile.isNotEmpty) {
         mobileController.text =
-            data['mobile']?.toString() ?? '';
+            cleanPhoneNumber(savedMobile);
       }
 
       // ----------------------------------------------------------
       // EMAIL
       // ----------------------------------------------------------
 
-      if (emailController.text.trim().isEmpty) {
-        emailController.text =
-            data['email']?.toString() ?? '';
+      final savedEmail =
+          data['email']?.toString().trim() ?? '';
+
+      if (savedEmail.isNotEmpty) {
+        emailController.text = savedEmail;
       }
 
       // ----------------------------------------------------------
       // ADDRESS
+      // IMPORTANT: Only replace when saved value is NOT empty.
       // ----------------------------------------------------------
 
-      if (addressController.text.trim().isEmpty) {
-        addressController.text =
-            data['address']?.toString() ?? '';
+      final savedAddress =
+          data['address']?.toString().trim() ?? '';
+
+      if (savedAddress.isNotEmpty) {
+        addressController.text = savedAddress;
       }
 
       // ----------------------------------------------------------
       // CITY
       // ----------------------------------------------------------
 
-      if (cityController.text.trim().isEmpty) {
-        cityController.text =
-            data['city']?.toString() ?? '';
+      final savedCity =
+          data['city']?.toString().trim() ?? '';
+
+      if (savedCity.isNotEmpty) {
+        cityController.text = savedCity;
       }
 
       // ----------------------------------------------------------
       // PIN CODE
       // ----------------------------------------------------------
 
-      if (pincodeController.text.trim().isEmpty) {
-        pincodeController.text =
-            data['pincode']?.toString() ?? '';
+      final savedPincode =
+          data['pincode']?.toString().trim() ?? '';
+
+      if (savedPincode.isNotEmpty) {
+        pincodeController.text = savedPincode;
       }
-    } catch (_) {}
+    } catch (e) {
+      if (mounted) {
+        showMessage(
+          'Could not read saved address details.',
+        );
+      }
+    }
   }
 
   // ============================================================
@@ -212,7 +272,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
     });
 
     try {
-      bool serviceEnabled =
+      final serviceEnabled =
           await Geolocator.isLocationServiceEnabled();
 
       if (!serviceEnabled) {
@@ -259,7 +319,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
         longitude = position.longitude;
       });
 
-      showMessage('Location captured successfully.');
+      showMessage(
+        'Location captured successfully.',
+      );
     } catch (_) {
       showMessage(
         'Could not get location. You can continue without it.',
@@ -274,15 +336,53 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }
 
   // ============================================================
+  // SAVE CUSTOMER DETAILS
+  // ============================================================
+
+  Future<void> saveCustomerDetails(
+    String uid,
+  ) async {
+    final firestore =
+        FirebaseFirestore.instance;
+
+    final customerData =
+        <String, dynamic>{
+      'uid': uid,
+
+      // BASIC DETAILS
+      'name': nameController.text.trim(),
+      'mobile': mobileController.text.trim(),
+      'email': emailController.text.trim(),
+
+      // DELIVERY DETAILS
+      'address': addressController.text.trim(),
+      'city': cityController.text.trim(),
+      'pincode': pincodeController.text.trim(),
+
+      'updatedAt':
+          FieldValue.serverTimestamp(),
+    };
+
+    await firestore
+        .collection('users')
+        .doc(uid)
+        .set(
+      customerData,
+      SetOptions(merge: true),
+    );
+  }
+
+  // ============================================================
   // PLACE ORDER
   // ============================================================
 
   Future<void> placeOrder() async {
     // ==========================================================
-    // LOGIN CHECK FIRST
+    // LOGIN CHECK
     // ==========================================================
 
-    final user = FirebaseAuth.instance.currentUser;
+    final user =
+        FirebaseAuth.instance.currentUser;
 
     if (user == null) {
       showLoginRequiredDialog();
@@ -298,7 +398,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
     }
 
     if (CartController.items.isEmpty) {
-      showMessage('Your cart is empty.');
+      showMessage(
+        'Your cart is empty.',
+      );
       return;
     }
 
@@ -306,6 +408,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
       if (!_validateGiftDetails()) {
         return;
       }
+    }
+
+    if (loadingUserDetails) {
+      showMessage(
+        'Please wait while customer details are loading.',
+      );
+      return;
     }
 
     setState(() {
@@ -334,11 +443,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
       final orderItems =
           <Map<String, dynamic>>[];
 
+      // ========================================================
+      // TRANSACTION
+      // ========================================================
+
       await firestore.runTransaction(
         (transaction) async {
-          // ======================================================
+          // ----------------------------------------------------
           // READ PRODUCTS
-          // ======================================================
+          // ----------------------------------------------------
 
           final productSnapshots =
               <String,
@@ -351,15 +464,17 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 .doc(cartItem.product.id);
 
             final snapshot =
-                await transaction.get(productRef);
+                await transaction.get(
+              productRef,
+            );
 
             productSnapshots[
                 cartItem.product.id] = snapshot;
           }
 
-          // ======================================================
+          // ----------------------------------------------------
           // STOCK CHECK
-          // ======================================================
+          // ----------------------------------------------------
 
           for (final cartItem in cartItems) {
             final productSnapshot =
@@ -441,14 +556,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
             });
           }
 
-          // ======================================================
+          // ----------------------------------------------------
           // CREATE ORDER
-          // ======================================================
+          // ----------------------------------------------------
 
           final orderData =
               <String, dynamic>{
             'userId': user.uid,
 
+            // CUSTOMER
             'customerName':
                 nameController.text.trim(),
 
@@ -468,14 +584,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 pincodeController.text.trim(),
 
             // SELF / GIFT
-
             'orderFor':
                 isGift ? 'Gift' : 'Self',
 
             'isGift': isGift,
 
             // GIFT DETAILS
-
             'giftReceiverName':
                 isGift
                     ? giftNameController.text.trim()
@@ -502,9 +616,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     : null,
 
             // LOCATION
-
             'latitude': latitude,
-
             'longitude': longitude,
 
             'locationAvailable':
@@ -512,18 +624,18 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     longitude != null,
 
             // ITEMS
-
             'items': orderItems,
 
-            'totalAmount': totalAmount,
+            'totalAmount':
+                totalAmount,
 
-            'status': 'Placed',
+            'status':
+                'Placed',
 
             'paymentMethod':
                 'Cash on Delivery',
 
             // WHATSAPP
-
             'whatsappCustomerMobile':
                 mobileController.text.trim(),
 
@@ -550,55 +662,30 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
       // ========================================================
       // SAVE CUSTOMER DETAILS
+      // THIS IS IMPORTANT FOR NEXT ORDER
       // ========================================================
 
       try {
-        await firestore
-            .collection('users')
-            .doc(user.uid)
-            .set(
-          {
-            'uid': user.uid,
-
-            // --------------------------------------------------
-            // CUSTOMER BASIC DETAILS
-            // --------------------------------------------------
-
-            'name':
-                nameController.text.trim(),
-
-            'mobile':
-                mobileController.text.trim(),
-
-            'email':
-                emailController.text.trim(),
-
-            // --------------------------------------------------
-            // CUSTOMER DELIVERY DETAILS
-            // These are now saved for the next order.
-            // --------------------------------------------------
-
-            'address':
-                addressController.text.trim(),
-
-            'city':
-                cityController.text.trim(),
-
-            'pincode':
-                pincodeController.text.trim(),
-
-            'updatedAt':
-                FieldValue.serverTimestamp(),
-          },
-          SetOptions(merge: true),
+        await saveCustomerDetails(
+          user.uid,
         );
-      } catch (_) {}
+      } catch (e) {
+        if (mounted) {
+          showMessage(
+            'Order placed, but saved address could not be updated. Please check Firestore rules.',
+          );
+        }
+      }
 
       // ========================================================
       // CLEAR CART
       // ========================================================
 
       CartController.clear();
+
+      // ========================================================
+      // ORDER SUCCESS DIALOG
+      // ========================================================
 
       await showDialog(
         context: context,
@@ -613,7 +700,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 ),
                 SizedBox(width: 10),
                 Expanded(
-                  child: Text('Order Placed'),
+                  child: Text(
+                    'Order Placed',
+                  ),
                 ),
               ],
             ),
@@ -628,10 +717,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
             actions: [
               FilledButton(
                 onPressed: () {
-                  Navigator.pop(dialogContext);
+                  Navigator.pop(
+                    dialogContext,
+                  );
                 },
-                child:
-                    const Text('Continue Shopping'),
+                child: const Text(
+                  'Continue Shopping',
+                ),
               ),
             ],
           );
@@ -640,7 +732,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
       if (!mounted) return;
 
-      Navigator.pop(context, true);
+      Navigator.pop(
+        context,
+        true,
+      );
     } on FirebaseException catch (e) {
       if (!mounted) return;
 
@@ -689,16 +784,24 @@ class _CheckoutPageState extends State<CheckoutPage> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(dialogContext);
+                Navigator.pop(
+                  dialogContext,
+                );
               },
-              child: const Text('Cancel'),
+              child: const Text(
+                'Cancel',
+              ),
             ),
             FilledButton.icon(
               onPressed: () {
-                Navigator.pop(dialogContext);
+                Navigator.pop(
+                  dialogContext,
+                );
                 goToLogin();
               },
-              icon: const Icon(Icons.phone),
+              icon: const Icon(
+                Icons.phone,
+              ),
               label: const Text(
                 'Login with Mobile',
               ),
@@ -787,7 +890,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }) {
     return Padding(
       padding:
-          const EdgeInsets.only(bottom: 14),
+          const EdgeInsets.only(
+        bottom: 14,
+      ),
       child: TextFormField(
         controller: controller,
         keyboardType: keyboardType,
@@ -857,7 +962,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
   @override
   Widget build(BuildContext context) {
-    final items = CartController.items;
+    final items =
+        CartController.items;
 
     final total =
         items.fold<double>(
@@ -874,11 +980,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
         title: const Text(
           'Checkout',
           style: TextStyle(
-            fontWeight: FontWeight.bold,
+            fontWeight:
+                FontWeight.bold,
           ),
         ),
       ),
-
       body: SafeArea(
         child: Form(
           key: _formKey,
@@ -888,25 +994,42 @@ class _CheckoutPageState extends State<CheckoutPage> {
             children: [
 
               // ==================================================
+              // LOADING SAVED DETAILS
+              // ==================================================
+
+              if (loadingUserDetails)
+                const Padding(
+                  padding:
+                      EdgeInsets.only(
+                    bottom: 14,
+                  ),
+                  child: LinearProgressIndicator(),
+                ),
+
+              // ==================================================
               // LOGIN STATUS CARD
               // ==================================================
 
               if (user == null)
                 Card(
                   color: Colors.deepPurple
-                      .withValues(alpha: 0.08),
+                      .withValues(
+                    alpha: 0.08,
+                  ),
                   child: Padding(
                     padding:
-                        const EdgeInsets.all(16),
+                        const EdgeInsets.all(
+                      16,
+                    ),
                     child: Column(
                       children: [
                         const Icon(
                           Icons.phone_android,
                           size: 38,
                         ),
-
-                        const SizedBox(height: 8),
-
+                        const SizedBox(
+                          height: 8,
+                        ),
                         const Text(
                           'Login to Continue',
                           style: TextStyle(
@@ -915,27 +1038,30 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                 FontWeight.bold,
                           ),
                         ),
-
-                        const SizedBox(height: 5),
-
+                        const SizedBox(
+                          height: 5,
+                        ),
                         const Text(
                           'Login with your mobile number to place your order',
                           textAlign:
                               TextAlign.center,
                         ),
-
-                        const SizedBox(height: 14),
-
+                        const SizedBox(
+                          height: 14,
+                        ),
                         SizedBox(
-                          width: double.infinity,
+                          width:
+                              double.infinity,
                           child:
                               FilledButton.icon(
                             onPressed:
                                 goToLogin,
-                            icon: const Icon(
+                            icon:
+                                const Icon(
                               Icons.phone,
                             ),
-                            label: const Text(
+                            label:
+                                const Text(
                               'Login with Mobile',
                             ),
                           ),
@@ -947,36 +1073,47 @@ class _CheckoutPageState extends State<CheckoutPage> {
               else
                 Card(
                   color: Colors.green
-                      .withValues(alpha: 0.08),
+                      .withValues(
+                    alpha: 0.08,
+                  ),
                   child: ListTile(
-                    leading: const CircleAvatar(
+                    leading:
+                        const CircleAvatar(
                       backgroundColor:
                           Colors.green,
                       child: Icon(
                         Icons.check,
-                        color: Colors.white,
+                        color:
+                            Colors.white,
                       ),
                     ),
-                    title: const Text(
+                    title:
+                        const Text(
                       'Logged In',
                       style: TextStyle(
                         fontWeight:
                             FontWeight.bold,
                       ),
                     ),
-                    subtitle: Text(
+                    subtitle:
+                        Text(
                       user.phoneNumber ??
                           user.email ??
                           'Customer Account',
                     ),
-                    trailing: const Icon(
-                      Icons.verified_user,
-                      color: Colors.green,
+                    trailing:
+                        const Icon(
+                      Icons
+                          .verified_user,
+                      color:
+                          Colors.green,
                     ),
                   ),
                 ),
 
-              const SizedBox(height: 20),
+              const SizedBox(
+                height: 20,
+              ),
 
               // ==================================================
               // DELIVERY DETAILS
@@ -991,20 +1128,26 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 ),
               ),
 
-              const SizedBox(height: 14),
+              const SizedBox(
+                height: 14,
+              ),
 
               inputField(
                 controller:
                     nameController,
-                label: 'Full Name',
+                label:
+                    'Full Name',
                 hint:
                     'Enter your full name',
                 icon:
                     Icons.person_outline,
-                validator: (value) {
+                validator:
+                    (value) {
                   if (value == null ||
-                      value.trim().length < 2) {
-                    return 'Enter a valid name';
+                      value.trim().length <
+                          2) {
+                    return
+                        'Enter a valid name';
                   }
                   return null;
                 },
@@ -1013,7 +1156,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
               inputField(
                 controller:
                     mobileController,
-                label: 'Mobile Number',
+                label:
+                    'Mobile Number',
                 hint:
                     'Enter exactly 10 digits',
                 icon:
@@ -1021,15 +1165,21 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 keyboardType:
                     TextInputType.phone,
                 maxLength: 10,
-                validator: (value) {
+                validator:
+                    (value) {
                   final mobile =
-                      value?.trim() ?? '';
+                      value?.trim() ??
+                          '';
 
                   if (!RegExp(
                     r'^[0-9]{10}$',
-                  ).hasMatch(mobile)) {
-                    return 'Mobile number must be exactly 10 digits';
+                  ).hasMatch(
+                    mobile,
+                  )) {
+                    return
+                        'Mobile number must be exactly 10 digits';
                   }
+
                   return null;
                 },
               ),
@@ -1045,16 +1195,23 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     Icons.email_outlined,
                 keyboardType:
                     TextInputType.emailAddress,
-                validator: (value) {
+                validator:
+                    (value) {
                   final email =
-                      value?.trim() ?? '';
+                      value?.trim() ??
+                          '';
 
-                  if (email.isEmpty) return null;
+                  if (email.isEmpty) {
+                    return null;
+                  }
 
                   if (!RegExp(
                     r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
-                  ).hasMatch(email)) {
-                    return 'Enter a valid email';
+                  ).hasMatch(
+                    email,
+                  )) {
+                    return
+                        'Enter a valid email';
                   }
 
                   return null;
@@ -1064,17 +1221,22 @@ class _CheckoutPageState extends State<CheckoutPage> {
               inputField(
                 controller:
                     addressController,
-                label: 'Address',
+                label:
+                    'Address',
                 hint:
                     'House no., street, area',
                 icon:
                     Icons.home_outlined,
                 maxLines: 3,
-                validator: (value) {
+                validator:
+                    (value) {
                   if (value == null ||
-                      value.trim().length < 5) {
-                    return 'Enter a complete address';
+                      value.trim().length <
+                          5) {
+                    return
+                        'Enter a complete address';
                   }
+
                   return null;
                 },
               ),
@@ -1082,16 +1244,20 @@ class _CheckoutPageState extends State<CheckoutPage> {
               inputField(
                 controller:
                     cityController,
-                label: 'City',
+                label:
+                    'City',
                 hint:
                     'Enter your city',
                 icon:
                     Icons.location_city_outlined,
-                validator: (value) {
+                validator:
+                    (value) {
                   if (value == null ||
                       value.trim().isEmpty) {
-                    return 'Enter city';
+                    return
+                        'Enter city';
                   }
+
                   return null;
                 },
               ),
@@ -1099,7 +1265,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
               inputField(
                 controller:
                     pincodeController,
-                label: 'PIN Code',
+                label:
+                    'PIN Code',
                 hint:
                     'Enter exactly 6 digits',
                 icon:
@@ -1107,14 +1274,18 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 keyboardType:
                     TextInputType.number,
                 maxLength: 6,
-                validator: (value) {
+                validator:
+                    (value) {
                   if (!RegExp(
                     r'^[0-9]{6}$',
                   ).hasMatch(
-                    value?.trim() ?? '',
+                    value?.trim() ??
+                        '',
                   )) {
-                    return 'PIN code must be exactly 6 digits';
+                    return
+                        'PIN code must be exactly 6 digits';
                   }
+
                   return null;
                 },
               ),
@@ -1126,23 +1297,31 @@ class _CheckoutPageState extends State<CheckoutPage> {
               Card(
                 child: Padding(
                   padding:
-                      const EdgeInsets.all(14),
+                      const EdgeInsets.all(
+                    14,
+                  ),
                   child: Column(
                     crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                        CrossAxisAlignment
+                            .start,
                     children: [
                       const Row(
                         children: [
                           Icon(
-                            Icons.location_on_outlined,
+                            Icons
+                                .location_on_outlined,
                           ),
-                          SizedBox(width: 8),
+                          SizedBox(
+                            width: 8,
+                          ),
                           Expanded(
                             child: Text(
                               'Delivery Location',
-                              style: TextStyle(
+                              style:
+                                  TextStyle(
                                 fontWeight:
-                                    FontWeight.bold,
+                                    FontWeight
+                                        .bold,
                                 fontSize: 16,
                               ),
                             ),
@@ -1150,41 +1329,55 @@ class _CheckoutPageState extends State<CheckoutPage> {
                         ],
                       ),
 
-                      const SizedBox(height: 6),
+                      const SizedBox(
+                        height: 6,
+                      ),
 
                       Text(
-                        latitude != null &&
-                                longitude != null
+                        latitude !=
+                                    null &&
+                                longitude !=
+                                    null
                             ? 'Location captured successfully'
                             : 'Optional — helps with better delivery',
                       ),
 
-                      const SizedBox(height: 10),
+                      const SizedBox(
+                        height: 10,
+                      ),
 
                       SizedBox(
-                        width: double.infinity,
+                        width:
+                            double.infinity,
                         child:
                             OutlinedButton.icon(
                           onPressed:
                               gettingLocation
                                   ? null
                                   : getCurrentLocation,
-                          icon: gettingLocation
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child:
-                                      CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons.my_location,
-                                ),
-                          label: Text(
+                          icon:
+                              gettingLocation
+                                  ? const SizedBox(
+                                      width:
+                                          18,
+                                      height:
+                                          18,
+                                      child:
+                                          CircularProgressIndicator(
+                                        strokeWidth:
+                                            2,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons
+                                          .my_location,
+                                    ),
+                          label:
+                              Text(
                             gettingLocation
                                 ? 'Getting Location...'
-                                : latitude != null
+                                : latitude !=
+                                        null
                                     ? 'Update Location'
                                     : 'Add Current Location',
                           ),
@@ -1195,7 +1388,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 ),
               ),
 
-              const SizedBox(height: 14),
+              const SizedBox(
+                height: 14,
+              ),
 
               // ==================================================
               // SELF / GIFT
@@ -1222,17 +1417,19 @@ class _CheckoutPageState extends State<CheckoutPage> {
                               : (value) {
                                   setState(() {
                                     isGift =
-                                        value ?? false;
+                                        value ??
+                                            false;
                                   });
                                 },
-                      title: const Text(
+                      title:
+                          const Text(
                         'For Myself',
                       ),
-                      subtitle: const Text(
+                      subtitle:
+                          const Text(
                         'I am ordering for myself',
                       ),
                     ),
-
                     RadioListTile<bool>(
                       value: true,
                       groupValue: isGift,
@@ -1242,13 +1439,16 @@ class _CheckoutPageState extends State<CheckoutPage> {
                               : (value) {
                                   setState(() {
                                     isGift =
-                                        value ?? false;
+                                        value ??
+                                            false;
                                   });
                                 },
-                      title: const Text(
+                      title:
+                          const Text(
                         'Gift Someone',
                       ),
-                      subtitle: const Text(
+                      subtitle:
+                          const Text(
                         'I am ordering for another person',
                       ),
                     ),
@@ -1261,26 +1461,34 @@ class _CheckoutPageState extends State<CheckoutPage> {
               // ==================================================
 
               if (isGift) ...[
-                const SizedBox(height: 14),
+                const SizedBox(
+                  height: 14,
+                ),
 
                 Card(
                   child: Padding(
                     padding:
-                        const EdgeInsets.all(14),
+                        const EdgeInsets.all(
+                      14,
+                    ),
                     child: Column(
                       crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                          CrossAxisAlignment
+                              .start,
                       children: [
                         const Text(
                           'Gift Receiver Details',
-                          style: TextStyle(
+                          style:
+                              TextStyle(
                             fontSize: 18,
                             fontWeight:
                                 FontWeight.bold,
                           ),
                         ),
 
-                        const SizedBox(height: 16),
+                        const SizedBox(
+                          height: 16,
+                        ),
 
                         inputField(
                           controller:
@@ -1297,8 +1505,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
                               return null;
                             }
 
-                            if (value == null ||
-                                value.trim().length <
+                            if (value ==
+                                    null ||
+                                value.trim()
+                                        .length <
                                     2) {
                               return
                                   'Enter receiver name';
@@ -1329,7 +1539,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                             if (!RegExp(
                               r'^[0-9]{10}$',
                             ).hasMatch(
-                              value?.trim() ?? '',
+                              value?.trim() ??
+                                  '',
                             )) {
                               return
                                   'Receiver mobile must be exactly 10 digits';
@@ -1355,8 +1566,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
                               return null;
                             }
 
-                            if (value == null ||
-                                value.trim().length <
+                            if (value ==
+                                    null ||
+                                value.trim()
+                                        .length <
                                     5) {
                               return
                                   'Enter complete receiver address';
@@ -1374,15 +1587,18 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           hint:
                               'Enter city',
                           icon:
-                              Icons.location_city_outlined,
+                              Icons
+                                  .location_city_outlined,
                           validator:
                               (value) {
                             if (!isGift) {
                               return null;
                             }
 
-                            if (value == null ||
-                                value.trim().isEmpty) {
+                            if (value ==
+                                    null ||
+                                value.trim()
+                                    .isEmpty) {
                               return
                                   'Enter receiver city';
                             }
@@ -1399,7 +1615,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           hint:
                               'Enter 6 digit PIN',
                           icon:
-                              Icons.pin_drop_outlined,
+                              Icons
+                                  .pin_drop_outlined,
                           keyboardType:
                               TextInputType.number,
                           maxLength: 6,
@@ -1412,7 +1629,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                             if (!RegExp(
                               r'^[0-9]{6}$',
                             ).hasMatch(
-                              value?.trim() ?? '',
+                              value?.trim() ??
+                                  '',
                             )) {
                               return
                                   'Receiver PIN must be exactly 6 digits';
@@ -1427,7 +1645,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 ),
               ],
 
-              const SizedBox(height: 14),
+              const SizedBox(
+                height: 14,
+              ),
 
               // ==================================================
               // PAYMENT
@@ -1435,28 +1655,36 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
               Card(
                 child: ListTile(
-                  leading: const Icon(
-                    Icons.payments_outlined,
+                  leading:
+                      const Icon(
+                    Icons
+                        .payments_outlined,
                   ),
-                  title: const Text(
+                  title:
+                      const Text(
                     'Cash on Delivery',
-                    style: TextStyle(
+                    style:
+                        TextStyle(
                       fontWeight:
                           FontWeight.bold,
                     ),
                   ),
-                  subtitle: const Text(
+                  subtitle:
+                      const Text(
                     'Pay when your order is delivered',
                   ),
                   trailing:
                       const Icon(
                     Icons.check_circle,
-                    color: Colors.green,
+                    color:
+                        Colors.green,
                   ),
                 ),
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(
+                height: 24,
+              ),
 
               // ==================================================
               // ORDER SUMMARY
@@ -1471,24 +1699,31 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 ),
               ),
 
-              const SizedBox(height: 12),
+              const SizedBox(
+                height: 12,
+              ),
 
               Card(
                 child: Padding(
                   padding:
-                      const EdgeInsets.all(14),
+                      const EdgeInsets.all(
+                    14,
+                  ),
                   child: Column(
                     children: [
                       ...items.map(
-                        (item) => Padding(
+                        (item) =>
+                            Padding(
                           padding:
-                              const EdgeInsets.only(
+                              const EdgeInsets
+                                  .only(
                             bottom: 12,
                           ),
                           child: Row(
                             children: [
                               Expanded(
-                                child: Text(
+                                child:
+                                    Text(
                                   '${item.name} × ${item.quantity}',
                                 ),
                               ),
@@ -1514,10 +1749,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
                         children: [
                           const Text(
                             'Total Amount',
-                            style: TextStyle(
+                            style:
+                                TextStyle(
                               fontSize: 19,
                               fontWeight:
-                                  FontWeight.bold,
+                                  FontWeight
+                                      .bold,
                             ),
                           ),
                           Text(
@@ -1526,7 +1763,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                 const TextStyle(
                               fontSize: 22,
                               fontWeight:
-                                  FontWeight.bold,
+                                  FontWeight
+                                      .bold,
                             ),
                           ),
                         ],
@@ -1536,7 +1774,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 ),
               ),
 
-              const SizedBox(height: 22),
+              const SizedBox(
+                height: 22,
+              ),
 
               // ==================================================
               // PLACE ORDER
@@ -1544,32 +1784,39 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
               SizedBox(
                 height: 54,
-                child: FilledButton.icon(
+                child:
+                    FilledButton.icon(
                   onPressed:
-                      placingOrder
+                      placingOrder ||
+                              loadingUserDetails
                           ? null
                           : placeOrder,
-                  icon: placingOrder
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child:
-                              CircularProgressIndicator(
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : Icon(
-                          user == null
-                              ? Icons.login
-                              : Icons
-                                  .shopping_bag_outlined,
-                        ),
-                  label: Text(
+                  icon:
+                      placingOrder
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child:
+                                  CircularProgressIndicator(
+                                strokeWidth:
+                                    2,
+                              ),
+                            )
+                          : Icon(
+                              user == null
+                                  ? Icons.login
+                                  : Icons
+                                      .shopping_bag_outlined,
+                            ),
+                  label:
+                      Text(
                     placingOrder
                         ? 'Placing Order...'
-                        : user == null
-                            ? 'Login to Place Order'
-                            : 'Place Order',
+                        : loadingUserDetails
+                            ? 'Loading Details...'
+                            : user == null
+                                ? 'Login to Place Order'
+                                : 'Place Order',
                     style:
                         const TextStyle(
                       fontSize: 17,
@@ -1580,7 +1827,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 ),
               ),
 
-              const SizedBox(height: 20),
+              const SizedBox(
+                height: 20,
+              ),
             ],
           ),
         ),
