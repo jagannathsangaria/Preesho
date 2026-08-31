@@ -125,19 +125,58 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
       if (data == null) return;
 
+      // ----------------------------------------------------------
+      // NAME
+      // ----------------------------------------------------------
+
       if (nameController.text.trim().isEmpty) {
         nameController.text =
             data['name']?.toString() ?? '';
       }
+
+      // ----------------------------------------------------------
+      // MOBILE
+      // ----------------------------------------------------------
 
       if (mobileController.text.trim().isEmpty) {
         mobileController.text =
             data['mobile']?.toString() ?? '';
       }
 
+      // ----------------------------------------------------------
+      // EMAIL
+      // ----------------------------------------------------------
+
       if (emailController.text.trim().isEmpty) {
         emailController.text =
             data['email']?.toString() ?? '';
+      }
+
+      // ----------------------------------------------------------
+      // ADDRESS
+      // ----------------------------------------------------------
+
+      if (addressController.text.trim().isEmpty) {
+        addressController.text =
+            data['address']?.toString() ?? '';
+      }
+
+      // ----------------------------------------------------------
+      // CITY
+      // ----------------------------------------------------------
+
+      if (cityController.text.trim().isEmpty) {
+        cityController.text =
+            data['city']?.toString() ?? '';
+      }
+
+      // ----------------------------------------------------------
+      // PIN CODE
+      // ----------------------------------------------------------
+
+      if (pincodeController.text.trim().isEmpty) {
+        pincodeController.text =
+            data['pincode']?.toString() ?? '';
       }
     } catch (_) {}
   }
@@ -521,6 +560,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
           {
             'uid': user.uid,
 
+            // --------------------------------------------------
+            // CUSTOMER BASIC DETAILS
+            // --------------------------------------------------
+
             'name':
                 nameController.text.trim(),
 
@@ -529,6 +572,20 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
             'email':
                 emailController.text.trim(),
+
+            // --------------------------------------------------
+            // CUSTOMER DELIVERY DETAILS
+            // These are now saved for the next order.
+            // --------------------------------------------------
+
+            'address':
+                addressController.text.trim(),
+
+            'city':
+                cityController.text.trim(),
+
+            'pincode':
+                pincodeController.text.trim(),
 
             'updatedAt':
                 FieldValue.serverTimestamp(),
