@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -21,8 +23,11 @@ final descriptionController = TextEditingController();
 bool active = true;
 bool saving = false;
 
-final productsRef = FirebaseFirestore.instance.collection('products');
-final ordersRef = FirebaseFirestore.instance.collection('orders');
+final productsRef =
+FirebaseFirestore.instance.collection('products');
+
+final ordersRef =
+FirebaseFirestore.instance.collection('orders');
 
 @override
 void dispose() {
@@ -49,7 +54,8 @@ setState(() {
 });
 
 try {
-  final stock = int.tryParse(stockController.text.trim()) ?? 0;
+  final stock =
+      int.tryParse(stockController.text.trim()) ?? 0;
 
   await productsRef.add({
     'Name': nameController.text.trim(),
@@ -132,7 +138,9 @@ await productsRef.doc(id).delete();
 
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
-      content: Text('"$name" deleted successfully'),
+      content: Text(
+        '"$name" deleted successfully',
+      ),
     ),
   );
 } on FirebaseException catch (e) {
@@ -150,26 +158,144 @@ await productsRef.doc(id).delete();
 }
 
 // ============================================================
-// ORDER STATUS
+// GENERATE UNIQUE SHIPMENT ID
+// ============================================================
+
+String generateShipmentId() {
+final now = DateTime.now();
+
+final date =
+    '${now.year}'
+    '${now.month.toString().padLeft(2, '0')}'
+    '${now.day.toString().padLeft(2, '0')}';
+
+const chars =
+    'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+final random = Random();
+
+final code = List.generate(
+  6,
+  (_) => chars[random.nextInt(chars.length)],
+).join();
+
+return 'PRS-$date-$code';
+
+}
+
+// ============================================================
+// UPDATE ORDER STATUS
+// AUTO CREATE SHIPMENT ON CONFIRM
 // ============================================================
 
 Future<void> updateOrderStatus(
 String orderId,
-String status,
+String oldStatus,
+String newStatus,
 ) async {
 try {
-await ordersRef.doc(orderId).update({
-'status': status,
-'updatedAt': FieldValue.serverTimestamp(),
-});
+final orderRef = ordersRef.doc(orderId);
+
+  final orderSnapshot = await orderRef.get();
+
+  if (!orderSnapshot.exists) {
+    throw Exception('Order not found.');
+  }
+
+  final data = orderSnapshot.data() ?? {};
+
+  final updates = <String, dynamic>{
+    'status': newStatus,
+    'updatedAt': FieldValue.serverTimestamp(),
+  };
+
+  // ========================================================
+  // CREATE SHIPMENT ONLY WHEN ORDER IS CONFIRMED
+  // ========================================================
+
+  if (newStatus == 'Confirmed') {
+    final existingShipmentId =
+        data['shipmentId']?.toString() ?? '';
+
+    if (existingShipmentId.isEmpty) {
+      updates['shipmentId'] =
+          generateShipmentId();
+
+      updates['shipmentStatus'] =
+          'Ready for Packing';
+
+      updates['shipmentCreatedAt'] =
+          FieldValue.serverTimestamp();
+    }
+  }
+
+  // ========================================================
+  // PACKED
+  // ========================================================
+
+  if (newStatus == 'Packed') {
+    updates['shipmentStatus'] = 'Packed';
+    updates['packedAt'] =
+        FieldValue.serverTimestamp();
+  }
+
+  // ========================================================
+  // SHIPPED
+  // ========================================================
+
+  if (newStatus == 'Shipped') {
+    updates['shipmentStatus'] = 'Shipped';
+    updates['shippedAt'] =
+        FieldValue.serverTimestamp();
+  }
+
+  // ========================================================
+  // OUT FOR DELIVERY
+  // ========================================================
+
+  if (newStatus == 'Out for Delivery') {
+    updates['shipmentStatus'] =
+        'Out for Delivery';
+
+    updates['outForDeliveryAt'] =
+        FieldValue.serverTimestamp();
+  }
+
+  // ========================================================
+  // DELIVERED
+  // ========================================================
+
+  if (newStatus == 'Delivered') {
+    updates['shipmentStatus'] = 'Delivered';
+    updates['deliveredAt'] =
+        FieldValue.serverTimestamp();
+  }
+
+  // ========================================================
+  // CANCELLED
+  // ========================================================
+
+  if (newStatus == 'Cancelled') {
+    updates['shipmentStatus'] = 'Cancelled';
+    updates['cancelledAt'] =
+        FieldValue.serverTimestamp();
+  }
+
+  await orderRef.update(updates);
 
   if (!mounted) return;
+
+  final shipmentId =
+      updates['shipmentId']?.toString();
 
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       content: Text(
-        'Order status updated to $status',
+        shipmentId != null
+            ? 'Order confirmed!\nShipment ID: $shipmentId'
+            : 'Order status updated to $newStatus',
       ),
+      duration: const Duration(seconds: 4),
     ),
   );
 } on FirebaseException catch (e) {
@@ -179,6 +305,19 @@ await ordersRef.doc(orderId).update({
     SnackBar(
       content: Text(
         'Status update failed:\n${e.message ?? e.code}',
+      ),
+    ),
+  );
+} catch (e) {
+  if (!mounted) return;
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+        e.toString().replaceFirst(
+          'Exception: ',
+          '',
+        ),
       ),
     ),
   );
@@ -248,8 +387,10 @@ return 'Date unavailable';
 
 final date = value.toDate();
 
-final day = date.day.toString().padLeft(2, '0');
-final month = date.month.toString().padLeft(2, '0');
+final day =
+    date.day.toString().padLeft(2, '0');
+final month =
+    date.month.toString().padLeft(2, '0');
 final year = date.year.toString();
 
 return '$day/$month/$year';
@@ -270,6 +411,12 @@ return Colors.green;
 
   case 'shipped':
     return Colors.blue;
+
+  case 'out for delivery':
+    return Colors.indigo;
+
+  case 'packed':
+    return Colors.deepOrange;
 
   case 'confirmed':
     return Colors.orange;
@@ -300,13 +447,19 @@ content: Text(
 actions: [
 TextButton(
 onPressed: () {
-Navigator.pop(dialogContext, false);
+Navigator.pop(
+dialogContext,
+false,
+);
 },
 child: const Text('Cancel'),
 ),
 FilledButton(
 onPressed: () {
-Navigator.pop(dialogContext, true);
+Navigator.pop(
+dialogContext,
+true,
+);
 },
 child: const Text('Delete'),
 ),
@@ -318,41 +471,6 @@ child: const Text('Delete'),
 if (result == true) {
   await deleteProduct(id, name);
 }
-
-}
-
-// ============================================================
-// CUSTOMER DETAIL ROW
-// ============================================================
-
-Widget detailRow(
-IconData icon,
-String text,
-) {
-if (text.trim().isEmpty) {
-return const SizedBox.shrink();
-}
-
-return Padding(
-  padding: const EdgeInsets.only(bottom: 7),
-  child: Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Icon(
-        icon,
-        size: 18,
-        color: Colors.deepPurple,
-      ),
-      const SizedBox(width: 8),
-      Expanded(
-        child: Text(
-          text,
-          style: const TextStyle(fontSize: 14),
-        ),
-      ),
-    ],
-  ),
-);
 
 }
 
@@ -371,12 +489,13 @@ fontWeight: FontWeight.bold,
 ),
 ),
 ),
-body: ListView(
-padding: const EdgeInsets.all(16),
-children: [
-// ======================================================
-// ADD PRODUCT HEADER
-// ======================================================
+
+  body: ListView(
+    padding: const EdgeInsets.all(16),
+    children: [
+      // ======================================================
+      // ADD PRODUCT HEADER
+      // ======================================================
 
       Container(
         padding: const EdgeInsets.all(20),
@@ -390,7 +509,8 @@ children: [
           ),
         ),
         child: const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
           children: [
             Text(
               'Add New Product',
@@ -427,51 +547,65 @@ children: [
               label: 'Product Name',
               icon: Icons.shopping_bag_outlined,
               validator: (value) {
-                if (value == null || value.trim().isEmpty) {
+                if (value == null ||
+                    value.trim().isEmpty) {
                   return 'Enter product name';
                 }
                 return null;
               },
             ),
+
             inputField(
               controller: categoryController,
               label: 'Category',
               icon: Icons.category_outlined,
               validator: (value) {
-                if (value == null || value.trim().isEmpty) {
+                if (value == null ||
+                    value.trim().isEmpty) {
                   return 'Enter category';
                 }
                 return null;
               },
             ),
+
             inputField(
               controller: priceController,
               label: 'Price',
               icon: Icons.currency_rupee,
-              keyboardType: TextInputType.number,
+              keyboardType:
+                  TextInputType.number,
               validator: (value) {
-                if (value == null || value.trim().isEmpty) {
+                if (value == null ||
+                    value.trim().isEmpty) {
                   return 'Enter price';
                 }
 
-                if (double.tryParse(value.trim()) == null) {
+                if (double.tryParse(
+                      value.trim(),
+                    ) ==
+                    null) {
                   return 'Enter a valid price';
                 }
 
                 return null;
               },
             ),
+
             inputField(
               controller: stockController,
               label: 'Stock',
-              icon: Icons.inventory_2_outlined,
-              keyboardType: TextInputType.number,
+              icon:
+                  Icons.inventory_2_outlined,
+              keyboardType:
+                  TextInputType.number,
               validator: (value) {
-                if (value == null || value.trim().isEmpty) {
+                if (value == null ||
+                    value.trim().isEmpty) {
                   return 'Enter stock';
                 }
 
-                final stock = int.tryParse(value.trim());
+                final stock =
+                    int.tryParse(value.trim());
 
                 if (stock == null || stock < 0) {
                   return 'Stock cannot be below 0';
@@ -480,32 +614,41 @@ children: [
                 return null;
               },
             ),
+
             inputField(
               controller: imageUrlController,
               label: 'Image URL',
               icon: Icons.image_outlined,
               keyboardType: TextInputType.url,
               validator: (value) {
-                if (value == null || value.trim().isEmpty) {
+                if (value == null ||
+                    value.trim().isEmpty) {
                   return 'Enter image URL';
                 }
 
-                if (!value.trim().startsWith('http')) {
+                if (!value
+                    .trim()
+                    .startsWith('http')) {
                   return 'Enter a valid image URL';
                 }
 
                 return null;
               },
             ),
+
             inputField(
-              controller: descriptionController,
+              controller:
+                  descriptionController,
               label: 'Description',
-              icon: Icons.description_outlined,
+              icon:
+                  Icons.description_outlined,
               maxLines: 4,
             ),
+
             Card(
               child: SwitchListTile(
-                title: const Text('Product Active'),
+                title:
+                    const Text('Product Active'),
                 subtitle: const Text(
                   'Active products will appear in the app',
                 ),
@@ -517,33 +660,46 @@ children: [
                 },
               ),
             ),
+
             const SizedBox(height: 18),
+
             SizedBox(
               width: double.infinity,
               height: 52,
               child: FilledButton.icon(
-                onPressed: saving ? null : saveProduct,
+                onPressed:
+                    saving ? null : saveProduct,
                 icon: saving
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(
+                        child:
+                            CircularProgressIndicator(
                           strokeWidth: 2,
                         ),
                       )
-                    : const Icon(Icons.save_outlined),
+                    : const Icon(
+                        Icons.save_outlined,
+                      ),
                 label: Text(
-                  saving ? 'Saving...' : 'Save Product',
+                  saving
+                      ? 'Saving...'
+                      : 'Save Product',
                 ),
               ),
             ),
+
             const SizedBox(height: 12),
+
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: saving ? null : clearForm,
-                icon: const Icon(Icons.clear_all),
-                label: const Text('Clear Form'),
+                onPressed:
+                    saving ? null : clearForm,
+                icon:
+                    const Icon(Icons.clear_all),
+                label:
+                    const Text('Clear Form'),
               ),
             ),
           ],
@@ -570,7 +726,8 @@ children: [
       // PRODUCTS LIST
       // ======================================================
 
-      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      StreamBuilder<
+          QuerySnapshot<Map<String, dynamic>>>(
         stream: productsRef
             .orderBy(
               'CreatedAt',
@@ -578,7 +735,8 @@ children: [
             )
             .snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (snapshot.connectionState ==
+              ConnectionState.waiting) {
             return const Center(
               child: CircularProgressIndicator(),
             );
@@ -587,7 +745,8 @@ children: [
           if (snapshot.hasError) {
             return Card(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding:
+                    const EdgeInsets.all(16),
                 child: Text(
                   'Products error:\n${snapshot.error}',
                 ),
@@ -595,14 +754,16 @@ children: [
             );
           }
 
-          final docs = snapshot.data?.docs ?? [];
+          final docs =
+              snapshot.data?.docs ?? [];
 
           if (docs.isEmpty) {
             return const Card(
               child: Padding(
                 padding: EdgeInsets.all(24),
                 child: Center(
-                  child: Text('No products found'),
+                  child:
+                      Text('No products found'),
                 ),
               ),
             );
@@ -612,68 +773,114 @@ children: [
             children: docs.map((doc) {
               final data = doc.data();
 
-              final name = data['Name']?.toString() ?? '';
-              final category = data['Category']?.toString() ?? '';
-              final price = data['Price']?.toString() ?? '0';
+              final name =
+                  data['Name']?.toString() ??
+                      '';
 
-              final stock = int.tryParse(
-                    data['Stock']?.toString() ?? '0',
-                  ) ??
-                  0;
+              final category =
+                  data['Category']?.toString() ??
+                      '';
 
-              final isActive = data['Active'] == true;
+              final price =
+                  data['Price']?.toString() ??
+                      '0';
 
-              final imageUrl = data['Imageurl']?.toString() ?? '';
+              final stock =
+                  int.tryParse(
+                        data['Stock']
+                                ?.toString() ??
+                            '0',
+                      ) ??
+                      0;
+
+              final isActive =
+                  data['Active'] == true;
+
+              final imageUrl =
+                  data['Imageurl']
+                          ?.toString() ??
+                      '';
 
               return Card(
-                margin: const EdgeInsets.only(bottom: 12),
+                margin:
+                    const EdgeInsets.only(
+                  bottom: 12,
+                ),
                 child: Padding(
-                  padding: const EdgeInsets.all(10),
+                  padding:
+                      const EdgeInsets.all(10),
                   child: Row(
                     children: [
                       SizedBox(
                         width: 65,
                         height: 65,
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: imageUrl.isNotEmpty
-                              ? Image.network(
-                                  imageUrl,
-                                  fit: BoxFit.cover,
-                                  errorBuilder:
-                                      (context, error, stack) {
-                                    return const Icon(
-                                      Icons.image_not_supported,
-                                    );
-                                  },
-                                )
-                              : const Icon(
-                                  Icons.shopping_bag_outlined,
-                                ),
+                          borderRadius:
+                              BorderRadius.circular(
+                            10,
+                          ),
+                          child:
+                              imageUrl.isNotEmpty
+                                  ? Image.network(
+                                      imageUrl,
+                                      fit:
+                                          BoxFit.cover,
+                                      errorBuilder:
+                                          (
+                                        context,
+                                        error,
+                                        stack,
+                                      ) {
+                                        return const Icon(
+                                          Icons
+                                              .image_not_supported,
+                                        );
+                                      },
+                                    )
+                                  : const Icon(
+                                      Icons
+                                          .shopping_bag_outlined,
+                                    ),
                         ),
                       ),
+
                       const SizedBox(width: 12),
+
                       Expanded(
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          crossAxisAlignment:
+                              CrossAxisAlignment
+                                  .start,
                           children: [
                             Text(
-                              name.isEmpty ? 'Unnamed Product' : name,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
+                              name.isEmpty
+                                  ? 'Unnamed Product'
+                                  : name,
+                              style:
+                                  const TextStyle(
+                                fontWeight:
+                                    FontWeight.bold,
                                 fontSize: 16,
                               ),
                             ),
+
                             const SizedBox(height: 4),
+
                             Text(category),
+
                             const SizedBox(height: 4),
+
                             Text(
                               '₹$price',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
+                              style:
+                                  const TextStyle(
+                                fontWeight:
+                                    FontWeight.bold,
                               ),
                             ),
+
                             const SizedBox(height: 5),
+
                             Row(
                               children: [
                                 Text(
@@ -684,30 +891,46 @@ children: [
                                     color: stock <= 0
                                         ? Colors.red
                                         : Colors.green,
-                                    fontWeight: FontWeight.bold,
+                                    fontWeight:
+                                        FontWeight.bold,
                                   ),
                                 ),
+
                                 const SizedBox(width: 10),
+
                                 Container(
-                                  padding: const EdgeInsets.symmetric(
+                                  padding:
+                                      const EdgeInsets
+                                          .symmetric(
                                     horizontal: 8,
                                     vertical: 3,
                                   ),
-                                  decoration: BoxDecoration(
+                                  decoration:
+                                      BoxDecoration(
                                     color: isActive
-                                        ? Colors.green.withOpacity(0.1)
-                                        : Colors.grey.withOpacity(0.1),
+                                        ? Colors.green
+                                            .withOpacity(
+                                            0.1,
+                                          )
+                                        : Colors.grey
+                                            .withOpacity(
+                                            0.1,
+                                          ),
                                     borderRadius:
-                                        BorderRadius.circular(10),
+                                        BorderRadius
+                                            .circular(10),
                                   ),
                                   child: Text(
-                                    isActive ? 'Active' : 'Inactive',
+                                    isActive
+                                        ? 'Active'
+                                        : 'Inactive',
                                     style: TextStyle(
                                       color: isActive
                                           ? Colors.green
                                           : Colors.grey,
                                       fontSize: 11,
-                                      fontWeight: FontWeight.bold,
+                                      fontWeight:
+                                          FontWeight.bold,
                                     ),
                                   ),
                                 ),
@@ -716,6 +939,7 @@ children: [
                           ],
                         ),
                       ),
+
                       IconButton(
                         tooltip: 'Delete Product',
                         icon: const Icon(
@@ -723,7 +947,10 @@ children: [
                           color: Colors.red,
                         ),
                         onPressed: () {
-                          confirmDelete(doc.id, name);
+                          confirmDelete(
+                            doc.id,
+                            name,
+                          );
                         },
                       ),
                     ],
@@ -753,7 +980,8 @@ children: [
           ),
         ),
         child: const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
           children: [
             Text(
               'Customer Orders',
@@ -765,7 +993,7 @@ children: [
             ),
             SizedBox(height: 6),
             Text(
-              'View and manage customer orders',
+              'View, confirm, pack and ship customer orders',
               style: TextStyle(
                 color: Colors.white70,
                 fontSize: 14,
@@ -778,10 +1006,11 @@ children: [
       const SizedBox(height: 15),
 
       // ======================================================
-      // ORDERS LIST
+      // ORDERS
       // ======================================================
 
-      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      StreamBuilder<
+          QuerySnapshot<Map<String, dynamic>>>(
         stream: ordersRef
             .orderBy(
               'createdAt',
@@ -789,7 +1018,8 @@ children: [
             )
             .snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (snapshot.connectionState ==
+              ConnectionState.waiting) {
             return const Center(
               child: CircularProgressIndicator(),
             );
@@ -798,7 +1028,8 @@ children: [
           if (snapshot.hasError) {
             return Card(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding:
+                    const EdgeInsets.all(16),
                 child: Text(
                   'Orders error:\n${snapshot.error}',
                 ),
@@ -806,14 +1037,17 @@ children: [
             );
           }
 
-          final orders = snapshot.data?.docs ?? [];
+          final orders =
+              snapshot.data?.docs ?? [];
 
           if (orders.isEmpty) {
             return const Card(
               child: Padding(
                 padding: EdgeInsets.all(24),
                 child: Center(
-                  child: Text('No customer orders yet.'),
+                  child: Text(
+                    'No customer orders yet.',
+                  ),
                 ),
               ),
             );
@@ -824,344 +1058,494 @@ children: [
               final data = doc.data();
 
               final status =
-                  data['status']?.toString() ?? 'Placed';
+                  data['status']?.toString() ??
+                      'Placed';
 
-              // ==================================================
+              // =================================================
               // CUSTOMER DETAILS
-              // Supports both OLD and NEW order formats
-              // ==================================================
+              // SUPPORT OLD + NEW FIELD NAMES
+              // =================================================
 
-              final customerName =
-                  data['customerName']?.toString() ??
+              final name =
+                  data['customerName']
+                          ?.toString() ??
                       data['name']?.toString() ??
                       'Customer';
 
-              final customerMobile =
-                  data['customerMobile']?.toString() ??
+              final mobile =
+                  data['customerMobile']
+                          ?.toString() ??
                       data['mobile']?.toString() ??
                       data['phone']?.toString() ??
                       '';
 
-              final customerEmail =
-                  data['customerEmail']?.toString() ??
+              final email =
+                  data['customerEmail']
+                          ?.toString() ??
                       data['email']?.toString() ??
                       '';
 
-              final customerAddress =
-                  data['customerAddress']?.toString() ??
+              final address =
+                  data['customerAddress']
+                          ?.toString() ??
                       data['address']?.toString() ??
                       '';
 
-              final customerCity =
-                  data['customerCity']?.toString() ??
+              final city =
+                  data['customerCity']
+                          ?.toString() ??
                       data['city']?.toString() ??
                       '';
 
-              final customerPincode =
-                  data['customerPincode']?.toString() ??
+              final pincode =
+                  data['customerPincode']
+                          ?.toString() ??
                       data['pincode']?.toString() ??
                       '';
 
-              // ==================================================
+              // =================================================
               // GIFT DETAILS
-              // ==================================================
+              // =================================================
 
-              final isGift = data['isGift'] == true ||
-                  data['orderFor']?.toString() == 'Gift';
+              final isGift =
+                  data['isGift'] == true;
 
-              final giftReceiverName =
-                  data['giftReceiverName']?.toString() ?? '';
+              final giftName =
+                  data['giftReceiverName']
+                          ?.toString() ??
+                      '';
 
-              final giftReceiverMobile =
-                  data['giftReceiverMobile']?.toString() ?? '';
+              final giftMobile =
+                  data['giftReceiverMobile']
+                          ?.toString() ??
+                      '';
 
-              final giftReceiverAddress =
-                  data['giftReceiverAddress']?.toString() ?? '';
+              final giftAddress =
+                  data['giftReceiverAddress']
+                          ?.toString() ??
+                      '';
 
-              final giftReceiverCity =
-                  data['giftReceiverCity']?.toString() ?? '';
+              final giftCity =
+                  data['giftReceiverCity']
+                          ?.toString() ??
+                      '';
 
-              final giftReceiverPincode =
-                  data['giftReceiverPincode']?.toString() ?? '';
+              final giftPincode =
+                  data['giftReceiverPincode']
+                          ?.toString() ??
+                      '';
 
-              // ==================================================
-              // ORDER DATA
-              // ==================================================
+              // =================================================
+              // SHIPMENT DETAILS
+              // =================================================
 
-              final total = data['totalAmount'];
-              final createdAt = data['createdAt'];
+              final shipmentId =
+                  data['shipmentId']
+                          ?.toString() ??
+                      '';
 
-              final items = data['items'] is List
-                  ? List<dynamic>.from(data['items'])
-                  : <dynamic>[];
+              final shipmentStatus =
+                  data['shipmentStatus']
+                          ?.toString() ??
+                      '';
 
-              // ==================================================
-              // ACTUAL DELIVERY DETAILS
-              // For Gift order, delivery goes to receiver
-              // ==================================================
+              final total =
+                  data['totalAmount'];
+
+              final createdAt =
+                  data['createdAt'];
+
+              final items =
+                  data['items'] is List
+                      ? List<dynamic>.from(
+                          data['items'],
+                        )
+                      : <dynamic>[];
 
               final deliveryName =
-                  isGift && giftReceiverName.isNotEmpty
-                      ? giftReceiverName
-                      : customerName;
+                  isGift && giftName.isNotEmpty
+                      ? giftName
+                      : name;
 
               final deliveryMobile =
-                  isGift && giftReceiverMobile.isNotEmpty
-                      ? giftReceiverMobile
-                      : customerMobile;
+                  isGift &&
+                          giftMobile.isNotEmpty
+                      ? giftMobile
+                      : mobile;
 
               final deliveryAddress =
-                  isGift && giftReceiverAddress.isNotEmpty
-                      ? giftReceiverAddress
-                      : customerAddress;
-
-              final deliveryCity =
-                  isGift && giftReceiverCity.isNotEmpty
-                      ? giftReceiverCity
-                      : customerCity;
-
-              final deliveryPincode =
-                  isGift && giftReceiverPincode.isNotEmpty
-                      ? giftReceiverPincode
-                      : customerPincode;
+                  isGift
+                      ? [
+                          giftAddress,
+                          giftCity,
+                          giftPincode,
+                        ]
+                          .where(
+                            (value) =>
+                                value.isNotEmpty,
+                          )
+                          .join(', ')
+                      : [
+                          address,
+                          city,
+                          pincode,
+                        ]
+                          .where(
+                            (value) =>
+                                value.isNotEmpty,
+                          )
+                          .join(', ');
 
               return Card(
-                margin: const EdgeInsets.only(bottom: 16),
+                margin:
+                    const EdgeInsets.only(
+                  bottom: 16,
+                ),
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding:
+                      const EdgeInsets.all(16),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
                     children: [
-                      // ==========================================
+
+                      // =========================================
                       // ORDER HEADER
-                      // ==========================================
+                      // =========================================
 
                       Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment:
+                            CrossAxisAlignment
+                                .start,
                         children: [
                           Expanded(
                             child: Column(
                               crossAxisAlignment:
-                                  CrossAxisAlignment.start,
+                                  CrossAxisAlignment
+                                      .start,
                               children: [
                                 Text(
                                   'Order #${doc.id}',
                                   maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
+                                  overflow:
+                                      TextOverflow
+                                          .ellipsis,
+                                  style:
+                                      const TextStyle(
+                                    fontWeight:
+                                        FontWeight
+                                            .bold,
                                     fontSize: 17,
                                   ),
                                 ),
+
                                 const SizedBox(height: 5),
+
                                 Text(
                                   formatDate(createdAt),
                                 ),
                               ],
                             ),
                           ),
+
                           Container(
-                            padding: const EdgeInsets.symmetric(
+                            padding:
+                                const EdgeInsets
+                                    .symmetric(
                               horizontal: 10,
                               vertical: 6,
                             ),
-                            decoration: BoxDecoration(
-                              color: statusColor(status)
-                                  .withOpacity(0.12),
+                            decoration:
+                                BoxDecoration(
+                              color: statusColor(
+                                status,
+                              ).withOpacity(0.12),
                               borderRadius:
-                                  BorderRadius.circular(20),
+                                  BorderRadius.circular(
+                                20,
+                              ),
                             ),
                             child: Text(
                               status,
                               style: TextStyle(
-                                color: statusColor(status),
-                                fontWeight: FontWeight.bold,
+                                color: statusColor(
+                                  status,
+                                ),
+                                fontWeight:
+                                    FontWeight.bold,
                               ),
                             ),
                           ),
                         ],
                       ),
 
-                      const Divider(height: 25),
+                      if (isGift) ...[
+                        const SizedBox(height: 10),
 
-                      // ==========================================
-                      // ORDER TYPE
-                      // ==========================================
-
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 7,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isGift
-                              ? Colors.pink.withOpacity(0.10)
-                              : Colors.blue.withOpacity(0.10),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              isGift
-                                  ? Icons.card_giftcard
-                                  : Icons.person,
-                              size: 18,
-                              color: isGift
-                                  ? Colors.pink
-                                  : Colors.blue,
+                        Container(
+                          padding:
+                              const EdgeInsets
+                                  .symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration:
+                              BoxDecoration(
+                            color: Colors.purple
+                                .withOpacity(0.10),
+                            borderRadius:
+                                BorderRadius.circular(
+                              20,
                             ),
-                            const SizedBox(width: 7),
-                            Text(
-                              isGift
-                                  ? 'Gift Order'
-                                  : 'Self Order',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: isGift
-                                    ? Colors.pink
-                                    : Colors.blue,
-                              ),
+                          ),
+                          child: const Text(
+                            '🎁 Gift Order',
+                            style: TextStyle(
+                              color: Colors.purple,
+                              fontWeight:
+                                  FontWeight.bold,
                             ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // ==========================================
-                      // CUSTOMER DETAILS
-                      // ==========================================
-
-                      const Text(
-                        'Customer Details',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 17,
-                        ),
-                      ),
-
-                      const SizedBox(height: 10),
-
-                      detailRow(
-                        Icons.person_outline,
-                        customerName,
-                      ),
-
-                      detailRow(
-                        Icons.phone_outlined,
-                        customerMobile,
-                      ),
-
-                      detailRow(
-                        Icons.email_outlined,
-                        customerEmail,
-                      ),
-
-                      const SizedBox(height: 10),
-
-                      // ==========================================
-                      // DELIVERY DETAILS
-                      // ==========================================
-
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.06),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: Colors.green.withOpacity(0.25),
                           ),
                         ),
-                        child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                const Icon(
-                                  Icons.local_shipping_outlined,
-                                  color: Colors.green,
+                      ],
+
+                      const Divider(height: 25),
+
+                      // =========================================
+                      // CUSTOMER
+                      // =========================================
+
+                      Text(
+                        isGift
+                            ? 'Order Placed By'
+                            : 'Customer',
+                        style: const TextStyle(
+                          fontWeight:
+                              FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+
+                      const SizedBox(height: 8),
+
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight:
+                              FontWeight.w600,
+                        ),
+                      ),
+
+                      if (mobile.isNotEmpty)
+                        Padding(
+                          padding:
+                              const EdgeInsets.only(
+                            top: 3,
+                          ),
+                          child: Text(mobile),
+                        ),
+
+                      if (email.isNotEmpty)
+                        Padding(
+                          padding:
+                              const EdgeInsets.only(
+                            top: 3,
+                          ),
+                          child: Text(email),
+                        ),
+
+                      const SizedBox(height: 15),
+
+                      // =========================================
+                      // DELIVERY DETAILS
+                      // =========================================
+
+                      Text(
+                        isGift
+                            ? 'Gift Receiver / Delivery Details'
+                            : 'Delivery Address',
+                        style: const TextStyle(
+                          fontWeight:
+                              FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+
+                      const SizedBox(height: 8),
+
+                      Text(
+                        deliveryName,
+                        style: const TextStyle(
+                          fontWeight:
+                              FontWeight.w600,
+                        ),
+                      ),
+
+                      if (deliveryMobile.isNotEmpty)
+                        Padding(
+                          padding:
+                              const EdgeInsets.only(
+                            top: 3,
+                          ),
+                          child:
+                              Text(deliveryMobile),
+                        ),
+
+                      const SizedBox(height: 5),
+
+                      Text(
+                        deliveryAddress.isEmpty
+                            ? 'Address unavailable'
+                            : deliveryAddress,
+                      ),
+
+                      // =========================================
+                      // SHIPMENT DETAILS
+                      // =========================================
+
+                      if (shipmentId.isNotEmpty) ...[
+                        const Divider(height: 28),
+
+                        const Text(
+                          'Shipment Details',
+                          style: TextStyle(
+                            fontWeight:
+                                FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+
+                        const SizedBox(height: 10),
+
+                        Container(
+                          width: double.infinity,
+                          padding:
+                              const EdgeInsets.all(
+                            12,
+                          ),
+                          decoration:
+                              BoxDecoration(
+                            color: Colors.blue
+                                .withOpacity(0.07),
+                            borderRadius:
+                                BorderRadius.circular(
+                              12,
+                            ),
+                            border: Border.all(
+                              color: Colors.blue
+                                  .withOpacity(0.25),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment
+                                    .start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.inventory_2,
+                                    color:
+                                        Colors.blue,
+                                  ),
+
+                                  const SizedBox(
+                                    width: 8,
+                                  ),
+
+                                  const Text(
+                                    'Shipment ID',
+                                    style:
+                                        TextStyle(
+                                      fontWeight:
+                                          FontWeight
+                                              .bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 8),
+
+                              SelectableText(
+                                shipmentId,
+                                style:
+                                    const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight:
+                                      FontWeight.bold,
+                                  letterSpacing: 0.5,
                                 ),
-                                const SizedBox(width: 8),
+                              ),
+
+                              if (shipmentStatus
+                                  .isNotEmpty) ...[
+                                const SizedBox(
+                                  height: 8,
+                                ),
+
                                 Text(
-                                  isGift
-                                      ? 'Gift Delivery Details'
-                                      : 'Delivery Details',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 17,
+                                  'Shipment Status: $shipmentStatus',
+                                  style:
+                                      TextStyle(
+                                    color:
+                                        Colors.grey
+                                            .shade700,
+                                    fontWeight:
+                                        FontWeight.w600,
                                   ),
                                 ),
                               ],
-                            ),
-
-                            const SizedBox(height: 12),
-
-                            detailRow(
-                              Icons.person_outline,
-                              deliveryName,
-                            ),
-
-                            detailRow(
-                              Icons.phone_outlined,
-                              deliveryMobile,
-                            ),
-
-                            detailRow(
-                              Icons.home_outlined,
-                              deliveryAddress,
-                            ),
-
-                            detailRow(
-                              Icons.location_city_outlined,
-                              deliveryCity,
-                            ),
-
-                            detailRow(
-                              Icons.pin_drop_outlined,
-                              deliveryPincode,
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
+                      ],
 
-                      const SizedBox(height: 16),
+                      const Divider(height: 25),
 
-                      // ==========================================
+                      // =========================================
                       // ITEMS
-                      // ==========================================
+                      // =========================================
 
                       if (items.isNotEmpty) ...[
                         const Text(
                           'Items',
                           style: TextStyle(
-                            fontWeight: FontWeight.bold,
+                            fontWeight:
+                                FontWeight.bold,
                             fontSize: 16,
                           ),
                         ),
 
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 7),
 
                         ...items.map(
                           (item) {
                             if (item is! Map) {
-                              return const SizedBox.shrink();
+                              return const SizedBox
+                                  .shrink();
                             }
 
                             final itemName =
-                                item['name']?.toString() ??
+                                item['name']
+                                        ?.toString() ??
                                     'Product';
 
                             final quantity =
-                                item['quantity']?.toString() ??
+                                item['quantity']
+                                        ?.toString() ??
                                     '1';
 
-                            final itemTotal = item['total'];
+                            final itemTotal =
+                                item['total'];
 
                             return Padding(
                               padding:
-                                  const EdgeInsets.only(bottom: 7),
+                                  const EdgeInsets
+                                      .only(
+                                bottom: 6,
+                              ),
                               child: Row(
                                 children: [
                                   Expanded(
@@ -1171,8 +1555,11 @@ children: [
                                   ),
                                   Text(
                                     money(itemTotal),
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
+                                    style:
+                                        const TextStyle(
+                                      fontWeight:
+                                          FontWeight
+                                              .w600,
                                     ),
                                   ),
                                 ],
@@ -1184,89 +1571,110 @@ children: [
 
                       const Divider(height: 25),
 
-                      // ==========================================
+                      // =========================================
                       // TOTAL
-                      // ==========================================
+                      // =========================================
 
                       Row(
                         mainAxisAlignment:
-                            MainAxisAlignment.spaceBetween,
+                            MainAxisAlignment
+                                .spaceBetween,
                         children: [
                           const Text(
                             'Order Total',
                             style: TextStyle(
                               fontSize: 18,
-                              fontWeight: FontWeight.bold,
+                              fontWeight:
+                                  FontWeight.bold,
                             ),
                           ),
                           Text(
                             money(total),
-                            style: const TextStyle(
+                            style:
+                                const TextStyle(
                               fontSize: 21,
-                              fontWeight: FontWeight.bold,
+                              fontWeight:
+                                  FontWeight.bold,
                             ),
                           ),
                         ],
                       ),
 
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 15),
 
-                      const Text(
-                        'Payment: Cash on Delivery',
-                        style: TextStyle(
-                          color: Colors.grey,
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // ==========================================
+                      // =========================================
                       // STATUS
-                      // ==========================================
+                      // =========================================
 
                       DropdownButtonFormField<String>(
                         value: [
                           'Placed',
                           'Confirmed',
+                          'Packed',
                           'Shipped',
+                          'Out for Delivery',
                           'Delivered',
                           'Cancelled',
                         ].contains(status)
                             ? status
                             : 'Placed',
-                        decoration: const InputDecoration(
+
+                        decoration:
+                            const InputDecoration(
                           labelText: 'Order Status',
-                          border: OutlineInputBorder(),
+                          border:
+                              OutlineInputBorder(),
                         ),
+
                         items: const [
                           DropdownMenuItem(
                             value: 'Placed',
-                            child: Text('Placed'),
+                            child:
+                                Text('Placed'),
                           ),
                           DropdownMenuItem(
                             value: 'Confirmed',
-                            child: Text('Confirmed'),
+                            child:
+                                Text('Confirmed'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'Packed',
+                            child:
+                                Text('Packed'),
                           ),
                           DropdownMenuItem(
                             value: 'Shipped',
-                            child: Text('Shipped'),
+                            child:
+                                Text('Shipped'),
+                          ),
+                          DropdownMenuItem(
+                            value:
+                                'Out for Delivery',
+                            child: Text(
+                              'Out for Delivery',
+                            ),
                           ),
                           DropdownMenuItem(
                             value: 'Delivered',
-                            child: Text('Delivered'),
+                            child:
+                                Text('Delivered'),
                           ),
                           DropdownMenuItem(
                             value: 'Cancelled',
-                            child: Text('Cancelled'),
+                            child:
+                                Text('Cancelled'),
                           ),
                         ],
+
                         onChanged: (value) {
-                          if (value == null || value == status) {
+                          if (value == null ||
+                              value == status) {
                             return;
                           }
 
                           updateOrderStatus(
                             doc.id,
+                            status,
                             value,
                           );
                         },
