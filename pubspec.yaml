@@ -21,6 +21,9 @@ dependencies:
   # Persistent cart storage
   shared_preferences: ^2.5.3
 
+  # Location for checkout address
+  geolocator: ^13.0.2
+
   # Existing checkout / Excel / file functionality
   excel: ^4.0.6
   file_picker: ^8.3.7
