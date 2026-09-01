@@ -1,7 +1,10 @@
-import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'checkout_page.dart';
 import 'login_page.dart';
@@ -13,6 +16,8 @@ Future<void> main() async {
 
   try {
     await Firebase.initializeApp();
+    await CartController.initialize();
+
     runApp(const PreeshoApp());
   } catch (e) {
     runApp(
@@ -42,7 +47,16 @@ class Product {
   final String id;
   final String name;
   final String category;
+
+  // Final selling price.
   final String price;
+
+  // Original/MRP price.
+  final String mrp;
+
+  // Discount percentage.
+  final double discountPercent;
+
   final int stock;
   final String imageUrl;
   final String description;
@@ -53,6 +67,8 @@ class Product {
     required this.name,
     required this.category,
     required this.price,
+    required this.mrp,
+    required this.discountPercent,
     required this.stock,
     required this.imageUrl,
     required this.description,
@@ -64,6 +80,72 @@ class Product {
           price.replaceAll(RegExp(r'[^0-9.]'), ''),
         ) ??
         0;
+  }
+
+  double get numericMrp {
+    final value = double.tryParse(
+          mrp.replaceAll(RegExp(r'[^0-9.]'), ''),
+        ) ??
+        0;
+
+    if (value > 0) {
+      return value;
+    }
+
+    return numericPrice;
+  }
+
+  double get calculatedDiscount {
+    if (discountPercent > 0) {
+      return discountPercent;
+    }
+
+    final original = numericMrp;
+    final selling = numericPrice;
+
+    if (original > selling && original > 0) {
+      return ((original - selling) / original) * 100;
+    }
+
+    return 0;
+  }
+
+  Map<String, dynamic> toCartMap() {
+    return {
+      'id': id,
+      'name': name,
+      'category': category,
+      'price': price,
+      'mrp': mrp,
+      'discountPercent': discountPercent,
+      'stock': stock,
+      'imageUrl': imageUrl,
+      'description': description,
+      'active': active,
+    };
+  }
+
+  factory Product.fromCartMap(Map<String, dynamic> data) {
+    return Product(
+      id: data['id']?.toString() ?? '',
+      name: data['name']?.toString() ?? '',
+      category: data['category']?.toString() ?? '',
+      price: data['price']?.toString() ?? '0',
+      mrp: data['mrp']?.toString() ?? '0',
+      discountPercent:
+          double.tryParse(
+                data['discountPercent']?.toString() ?? '0',
+              ) ??
+              0,
+      stock:
+          int.tryParse(
+                data['stock']?.toString() ?? '0',
+              ) ??
+              0,
+      imageUrl: data['imageUrl']?.toString() ?? '',
+      description: data['description']?.toString() ?? '',
+      active: data['active'] == true,
+    );
   }
 }
 
@@ -90,9 +172,39 @@ class CartItem {
 
   double get numericPrice => product.numericPrice;
 
+  double get numericMrp => product.numericMrp;
+
+  double get discountPercent => product.calculatedDiscount;
+
   double get totalPrice => numericPrice * quantity;
 
+  double get totalMrp => numericMrp * quantity;
+
+  double get totalSavings => totalMrp - totalPrice;
+
   int get availableStock => product.stock;
+
+  Map<String, dynamic> toMap() {
+    return {
+      'product': product.toCartMap(),
+      'quantity': quantity,
+    };
+  }
+
+  factory CartItem.fromMap(Map<String, dynamic> data) {
+    return CartItem(
+      product: Product.fromCartMap(
+        Map<String, dynamic>.from(
+          data['product'] as Map? ?? {},
+        ),
+      ),
+      quantity:
+          int.tryParse(
+                data['quantity']?.toString() ?? '1',
+              ) ??
+              1,
+    );
+  }
 }
 
 // ============================================================
@@ -100,12 +212,82 @@ class CartItem {
 // ============================================================
 
 class CartController {
+  static const String _storageKey = 'preesho_cart';
+
   static final List<CartItem> items = [];
+
+  static bool initialized = false;
+
+  static Future<void> initialize() async {
+    if (initialized) return;
+
+    final prefs = await SharedPreferences.getInstance();
+
+    final savedCart = prefs.getString(_storageKey);
+
+    if (savedCart != null && savedCart.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(savedCart);
+
+        if (decoded is List) {
+          items.clear();
+
+          for (final item in decoded) {
+            if (item is Map) {
+              final cartItem = CartItem.fromMap(
+                Map<String, dynamic>.from(item),
+              );
+
+              if (cartItem.product.id.isNotEmpty &&
+                  cartItem.quantity > 0) {
+                items.add(cartItem);
+              }
+            }
+          }
+        }
+      } catch (_) {
+        items.clear();
+      }
+    }
+
+    initialized = true;
+  }
+
+  static Future<void> _save() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final data = items
+        .map((item) => item.toMap())
+        .toList();
+
+    await prefs.setString(
+      _storageKey,
+      jsonEncode(data),
+    );
+  }
 
   static double get total {
     return items.fold(
       0,
       (sum, item) => sum + item.totalPrice,
+    );
+  }
+
+  static double get totalMrp {
+    return items.fold(
+      0,
+      (sum, item) => sum + item.totalMrp,
+    );
+  }
+
+  static double get totalSavings {
+    return totalMrp - total;
+  }
+
+  static int get itemCount {
+    return items.fold(
+      0,
+      (sum, item) => sum + item.quantity,
     );
   }
 
@@ -119,7 +301,7 @@ class CartController {
     }
   }
 
-  static bool addProduct(Product product) {
+  static Future<bool> addProduct(Product product) async {
     if (product.stock <= 0) {
       return false;
     }
@@ -132,6 +314,7 @@ class CartController {
       }
 
       existing.quantity++;
+      await _save();
       return true;
     }
 
@@ -142,10 +325,13 @@ class CartController {
       ),
     );
 
+    await _save();
     return true;
   }
 
-  static bool increaseQuantity(String productId) {
+  static Future<bool> increaseQuantity(
+    String productId,
+  ) async {
     final item = findItem(productId);
 
     if (item == null) return false;
@@ -155,10 +341,14 @@ class CartController {
     }
 
     item.quantity++;
+
+    await _save();
     return true;
   }
 
-  static bool decreaseQuantity(String productId) {
+  static Future<bool> decreaseQuantity(
+    String productId,
+  ) async {
     final item = findItem(productId);
 
     if (item == null) return false;
@@ -169,17 +359,23 @@ class CartController {
       items.remove(item);
     }
 
+    await _save();
     return true;
   }
 
-  static void removeProduct(String productId) {
+  static Future<void> removeProduct(
+    String productId,
+  ) async {
     items.removeWhere(
       (item) => item.id == productId,
     );
+
+    await _save();
   }
 
-  static void clear() {
+  static Future<void> clear() async {
     items.clear();
+    await _save();
   }
 }
 
@@ -219,6 +415,8 @@ class _MainShellState extends State<MainShell> {
   int index = 0;
 
   void refresh() {
+    if (!mounted) return;
+
     setState(() {});
   }
 
@@ -248,23 +446,41 @@ class _MainShellState extends State<MainShell> {
             index = i;
           });
         },
-        destinations: const [
-          NavigationDestination(
+        destinations: [
+          const NavigationDestination(
             icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home),
             label: 'Home',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.category_outlined),
             selectedIcon: Icon(Icons.category),
             label: 'Categories',
           ),
           NavigationDestination(
-            icon: Icon(Icons.shopping_cart_outlined),
-            selectedIcon: Icon(Icons.shopping_cart),
+            icon: Badge(
+              isLabelVisible:
+                  CartController.itemCount > 0,
+              label: Text(
+                '${CartController.itemCount}',
+              ),
+              child: const Icon(
+                Icons.shopping_cart_outlined,
+              ),
+            ),
+            selectedIcon: Badge(
+              isLabelVisible:
+                  CartController.itemCount > 0,
+              label: Text(
+                '${CartController.itemCount}',
+              ),
+              child: const Icon(
+                Icons.shopping_cart,
+              ),
+            ),
             label: 'Cart',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.person_outline),
             selectedIcon: Icon(Icons.person),
             label: 'Profile',
@@ -292,17 +508,43 @@ class ProductStream extends StatelessWidget {
   ) {
     final data = doc.data();
 
+    final sellingPrice =
+        data['Price']?.toString() ?? '0';
+
+    final mrp =
+        data['MRP']?.toString() ??
+        data['Mrp']?.toString() ??
+        data['mrp']?.toString() ??
+        sellingPrice;
+
+    final discount =
+        double.tryParse(
+              data['DiscountPercent']?.toString() ??
+                  data['Discount']?.toString() ??
+                  data['discountPercent']?.toString() ??
+                  '0',
+            ) ??
+            0;
+
     return Product(
       id: doc.id,
       name: data['Name']?.toString() ?? '',
       category: data['Category']?.toString() ?? '',
-      price: data['Price']?.toString() ?? '0',
-      stock: int.tryParse(
-            data['Stock']?.toString() ?? '0',
-          ) ??
-          0,
-      imageUrl: data['Imageurl']?.toString() ?? '',
-      description: data['Description']?.toString() ?? '',
+      price: sellingPrice,
+      mrp: mrp,
+      discountPercent: discount,
+      stock:
+          int.tryParse(
+                data['Stock']?.toString() ?? '0',
+              ) ??
+              0,
+      imageUrl:
+          data['Imageurl']?.toString() ??
+          data['ImageUrl']?.toString() ??
+          data['imageUrl']?.toString() ??
+          '',
+      description:
+          data['Description']?.toString() ?? '',
       active: data['Active'] == true,
     );
   }
@@ -347,6 +589,82 @@ class ProductStream extends StatelessWidget {
 
         return builder(products);
       },
+    );
+  }
+}
+
+// ============================================================
+// PRICE WIDGET
+// ============================================================
+
+class ProductPrice extends StatelessWidget {
+  final Product product;
+  final bool large;
+
+  const ProductPrice({
+    super.key,
+    required this.product,
+    this.large = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final discount = product.calculatedDiscount;
+    final mrp = product.numericMrp;
+    final price = product.numericPrice;
+
+    final showMrp = mrp > price;
+    final showDiscount = discount > 0;
+
+    return Wrap(
+      crossAxisAlignment:
+          WrapCrossAlignment.center,
+      spacing: 8,
+      runSpacing: 4,
+      children: [
+        Text(
+          '₹${price.toStringAsFixed(0)}',
+          style: TextStyle(
+            fontSize: large ? 28 : 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.deepPurple,
+          ),
+        ),
+
+        if (showMrp)
+          Text(
+            '₹${mrp.toStringAsFixed(0)}',
+            style: TextStyle(
+              fontSize: large ? 16 : 13,
+              color: Colors.grey,
+              decoration:
+                  TextDecoration.lineThrough,
+            ),
+          ),
+
+        if (showDiscount)
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 7,
+              vertical: 3,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.green.withValues(
+                alpha: 0.12,
+              ),
+              borderRadius:
+                  BorderRadius.circular(6),
+            ),
+            child: Text(
+              '${discount.toStringAsFixed(0)}% OFF',
+              style: const TextStyle(
+                color: Colors.green,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -448,10 +766,12 @@ class HomePage extends StatelessWidget {
               SizedBox(
                 height: 90,
                 child: ListView(
-                  scrollDirection: Axis.horizontal,
+                  scrollDirection:
+                      Axis.horizontal,
                   children: const [
                     CategoryCard(
-                      icon: Icons.phone_android,
+                      icon:
+                          Icons.phone_android,
                       text: 'Electronics',
                     ),
                     CategoryCard(
@@ -491,7 +811,8 @@ class HomePage extends StatelessWidget {
               ...products.map(
                 (product) => ProductTile(
                   product: product,
-                  onCartChanged: onCartChanged,
+                  onCartChanged:
+                      onCartChanged,
                 ),
               ),
             ],
@@ -568,17 +889,22 @@ class CategoriesPage extends StatelessWidget {
 
           if (categories.isEmpty) {
             return const Center(
-              child: Text('No categories available'),
+              child: Text(
+                'No categories available',
+              ),
             );
           }
 
           return ListView(
             children: categories.map((category) {
-              final categoryProducts = products
-                  .where(
-                    (p) => p.category == category,
-                  )
-                  .toList();
+              final categoryProducts =
+                  products
+                      .where(
+                        (p) =>
+                            p.category ==
+                            category,
+                      )
+                      .toList();
 
               return ExpansionTile(
                 title: Text(category),
@@ -586,7 +912,8 @@ class CategoriesPage extends StatelessWidget {
                     const Icon(Icons.category),
                 children: categoryProducts
                     .map(
-                      (product) => ProductTile(
+                      (product) =>
+                          ProductTile(
                         product: product,
                         onCartChanged:
                             onCartChanged,
@@ -616,6 +943,40 @@ class ProductTile extends StatelessWidget {
     required this.onCartChanged,
   });
 
+  Future<void> addToCart(
+    BuildContext context,
+  ) async {
+    final added =
+        await CartController.addProduct(
+      product,
+    );
+
+    if (added) {
+      onCartChanged();
+
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        const SnackBar(
+          content: Text('Added to cart'),
+          duration:
+              Duration(seconds: 1),
+        ),
+      );
+    } else {
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        const SnackBar(
+          content:
+              Text('Maximum available stock reached'),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cartItem =
@@ -624,17 +985,21 @@ class ProductTile extends StatelessWidget {
     final cartQuantity =
         cartItem?.quantity ?? 0;
 
-    final outOfStock = product.stock <= 0;
+    final outOfStock =
+        product.stock <= 0;
 
     return InkWell(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius:
+          BorderRadius.circular(12),
       onTap: () async {
         await Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => ProductDetailsPage(
+            builder: (_) =>
+                ProductDetailsPage(
               product: product,
-              onCartChanged: onCartChanged,
+              onCartChanged:
+                  onCartChanged,
             ),
           ),
         );
@@ -646,7 +1011,8 @@ class ProductTile extends StatelessWidget {
           bottom: 12,
         ),
         child: Padding(
-          padding: const EdgeInsets.all(10),
+          padding:
+              const EdgeInsets.all(10),
           child: Row(
             children: [
               SizedBox(
@@ -654,27 +1020,38 @@ class ProductTile extends StatelessWidget {
                 height: 75,
                 child: ClipRRect(
                   borderRadius:
-                      BorderRadius.circular(12),
-                  child: product.imageUrl.isNotEmpty
-                      ? Image.network(
-                          product.imageUrl,
-                          fit: BoxFit.cover,
-                          errorBuilder:
-                              (context, error, stack) {
-                            return const ColoredBox(
-                              color: Colors.black12,
+                      BorderRadius.circular(
+                    12,
+                  ),
+                  child:
+                      product.imageUrl.isNotEmpty
+                          ? Image.network(
+                              product.imageUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder:
+                                  (
+                                context,
+                                error,
+                                stack,
+                              ) {
+                                return const ColoredBox(
+                                  color:
+                                      Colors.black12,
+                                  child: Icon(
+                                    Icons
+                                        .image_not_supported,
+                                  ),
+                                );
+                              },
+                            )
+                          : const ColoredBox(
+                              color:
+                                  Colors.black12,
                               child: Icon(
-                                Icons.image_not_supported,
+                                Icons
+                                    .shopping_bag_outlined,
                               ),
-                            );
-                          },
-                        )
-                      : const ColoredBox(
-                          color: Colors.black12,
-                          child: Icon(
-                            Icons.shopping_bag_outlined,
-                          ),
-                        ),
+                            ),
                 ),
               ),
 
@@ -689,8 +1066,10 @@ class ProductTile extends StatelessWidget {
                       product.name.isEmpty
                           ? 'Unnamed Product'
                           : product.name,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
+                      style:
+                          const TextStyle(
+                        fontWeight:
+                            FontWeight.bold,
                         fontSize: 16,
                       ),
                     ),
@@ -700,18 +1079,15 @@ class ProductTile extends StatelessWidget {
                     Text(
                       product.category,
                       style: TextStyle(
-                        color: Colors.grey.shade600,
+                        color:
+                            Colors.grey.shade600,
                       ),
                     ),
 
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 5),
 
-                    Text(
-                      '₹${product.numericPrice.toStringAsFixed(0)}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
+                    ProductPrice(
+                      product: product,
                     ),
 
                     const SizedBox(height: 4),
@@ -724,7 +1100,8 @@ class ProductTile extends StatelessWidget {
                         color: outOfStock
                             ? Colors.red
                             : Colors.green,
-                        fontWeight: FontWeight.w600,
+                        fontWeight:
+                            FontWeight.w600,
                       ),
                     ),
                   ],
@@ -736,36 +1113,19 @@ class ProductTile extends StatelessWidget {
                   width: 95,
                   child: Text(
                     'Out of Stock',
-                    textAlign: TextAlign.center,
+                    textAlign:
+                        TextAlign.center,
                     style: TextStyle(
                       color: Colors.red,
-                      fontWeight: FontWeight.bold,
+                      fontWeight:
+                          FontWeight.bold,
                     ),
                   ),
                 )
               else if (cartQuantity == 0)
                 IconButton.filled(
-                  onPressed: () {
-                    final added =
-                        CartController.addProduct(
-                      product,
-                    );
-
-                    if (added) {
-                      onCartChanged();
-
-                      ScaffoldMessenger.of(
-                        context,
-                      ).showSnackBar(
-                        const SnackBar(
-                          content:
-                              Text('Added to cart'),
-                          duration:
-                              Duration(seconds: 1),
-                        ),
-                      );
-                    }
-                  },
+                  onPressed: () =>
+                      addToCart(context),
                   icon: const Icon(
                     Icons.add_shopping_cart,
                   ),
@@ -776,8 +1136,8 @@ class ProductTile extends StatelessWidget {
                       MainAxisSize.min,
                   children: [
                     IconButton(
-                      onPressed: () {
-                        CartController
+                      onPressed: () async {
+                        await CartController
                             .decreaseQuantity(
                           product.id,
                         );
@@ -785,23 +1145,27 @@ class ProductTile extends StatelessWidget {
                         onCartChanged();
                       },
                       icon: const Icon(
-                        Icons.remove_circle_outline,
+                        Icons
+                            .remove_circle_outline,
                       ),
                     ),
 
                     Text(
                       '$cartQuantity',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
+                      style:
+                          const TextStyle(
+                        fontWeight:
+                            FontWeight.bold,
                       ),
                     ),
 
                     IconButton(
                       onPressed:
-                          cartQuantity >= product.stock
+                          cartQuantity >=
+                                  product.stock
                               ? null
-                              : () {
-                                  CartController
+                              : () async {
+                                  await CartController
                                       .increaseQuantity(
                                     product.id,
                                   );
@@ -809,7 +1173,8 @@ class ProductTile extends StatelessWidget {
                                   onCartChanged();
                                 },
                       icon: const Icon(
-                        Icons.add_circle_outline,
+                        Icons
+                            .add_circle_outline,
                       ),
                     ),
                   ],
@@ -826,7 +1191,8 @@ class ProductTile extends StatelessWidget {
 // PRODUCT DETAILS PAGE
 // ============================================================
 
-class ProductDetailsPage extends StatefulWidget {
+class ProductDetailsPage
+    extends StatefulWidget {
   final Product product;
   final VoidCallback onCartChanged;
 
@@ -848,6 +1214,34 @@ class _ProductDetailsPageState
     widget.onCartChanged();
   }
 
+  Future<void> addProduct() async {
+    final added =
+        await CartController.addProduct(
+      widget.product,
+    );
+
+    if (!mounted) return;
+
+    if (added) {
+      refreshCart();
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        const SnackBar(
+          content: Text('Added to cart'),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        const SnackBar(
+          content:
+              Text('Maximum available stock reached'),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final product = widget.product;
@@ -858,7 +1252,8 @@ class _ProductDetailsPageState
     final quantity =
         cartItem?.quantity ?? 0;
 
-    final outOfStock = product.stock <= 0;
+    final outOfStock =
+        product.stock <= 0;
 
     return Scaffold(
       appBar: AppBar(
@@ -870,39 +1265,53 @@ class _ProductDetailsPageState
         children: [
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.all(16),
+              padding:
+                  const EdgeInsets.all(16),
               children: [
                 Container(
                   height: 300,
                   width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
+                  decoration:
+                      BoxDecoration(
+                    color:
+                        Colors.grey.shade100,
                     borderRadius:
-                        BorderRadius.circular(20),
+                        BorderRadius.circular(
+                      20,
+                    ),
                   ),
                   child: ClipRRect(
                     borderRadius:
-                        BorderRadius.circular(20),
-                    child: product.imageUrl.isNotEmpty
-                        ? Image.network(
-                            product.imageUrl,
-                            fit: BoxFit.cover,
-                            errorBuilder:
-                                (context, error, stack) {
-                              return const Center(
+                        BorderRadius.circular(
+                      20,
+                    ),
+                    child:
+                        product.imageUrl.isNotEmpty
+                            ? Image.network(
+                                product.imageUrl,
+                                fit: BoxFit.cover,
+                                errorBuilder:
+                                    (
+                                  context,
+                                  error,
+                                  stack,
+                                ) {
+                                  return const Center(
+                                    child: Icon(
+                                      Icons
+                                          .image_not_supported,
+                                      size: 70,
+                                    ),
+                                  );
+                                },
+                              )
+                            : const Center(
                                 child: Icon(
-                                  Icons.image_not_supported,
-                                  size: 70,
+                                  Icons
+                                      .shopping_bag_outlined,
+                                  size: 80,
                                 ),
-                              );
-                            },
-                          )
-                        : const Center(
-                            child: Icon(
-                              Icons.shopping_bag_outlined,
-                              size: 80,
-                            ),
-                          ),
+                              ),
                   ),
                 ),
 
@@ -912,29 +1321,61 @@ class _ProductDetailsPageState
                   product.name.isEmpty
                       ? 'Unnamed Product'
                       : product.name,
-                  style: const TextStyle(
+                  style:
+                      const TextStyle(
                     fontSize: 26,
-                    fontWeight: FontWeight.bold,
+                    fontWeight:
+                        FontWeight.bold,
                   ),
                 ),
 
                 const SizedBox(height: 8),
 
-                if (product.category.isNotEmpty)
+                if (product.category
+                    .isNotEmpty)
                   Chip(
-                    label: Text(product.category),
+                    label: Text(
+                      product.category,
+                    ),
                   ),
 
                 const SizedBox(height: 10),
 
-                Text(
-                  '₹${product.numericPrice.toStringAsFixed(0)}',
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.deepPurple,
-                  ),
+                ProductPrice(
+                  product: product,
+                  large: true,
                 ),
+
+                const SizedBox(height: 12),
+
+                if (product.calculatedDiscount >
+                    0)
+                  Container(
+                    padding:
+                        const EdgeInsets.all(
+                      12,
+                    ),
+                    decoration:
+                        BoxDecoration(
+                      borderRadius:
+                          BorderRadius.circular(
+                        12,
+                      ),
+                      color:
+                          Colors.green.withValues(
+                        alpha: 0.10,
+                      ),
+                    ),
+                    child: Text(
+                      'You save ₹${(product.numericMrp - product.numericPrice).toStringAsFixed(0)} on this product',
+                      style:
+                          const TextStyle(
+                        color: Colors.green,
+                        fontWeight:
+                            FontWeight.bold,
+                      ),
+                    ),
+                  ),
 
                 const SizedBox(height: 12),
 
@@ -942,13 +1383,17 @@ class _ProductDetailsPageState
                   children: [
                     Icon(
                       outOfStock
-                          ? Icons.cancel_outlined
-                          : Icons.check_circle_outline,
+                          ? Icons
+                              .cancel_outlined
+                          : Icons
+                              .check_circle_outline,
                       color: outOfStock
                           ? Colors.red
                           : Colors.green,
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(
+                      width: 8,
+                    ),
                     Text(
                       outOfStock
                           ? 'Out of Stock'
@@ -957,7 +1402,8 @@ class _ProductDetailsPageState
                         color: outOfStock
                             ? Colors.red
                             : Colors.green,
-                        fontWeight: FontWeight.bold,
+                        fontWeight:
+                            FontWeight.bold,
                       ),
                     ),
                   ],
@@ -967,9 +1413,11 @@ class _ProductDetailsPageState
 
                 const Text(
                   'Description',
-                  style: TextStyle(
+                  style:
+                      TextStyle(
                     fontSize: 20,
-                    fontWeight: FontWeight.bold,
+                    fontWeight:
+                        FontWeight.bold,
                   ),
                 ),
 
@@ -982,7 +1430,8 @@ class _ProductDetailsPageState
                   style: TextStyle(
                     fontSize: 16,
                     height: 1.5,
-                    color: Colors.grey.shade700,
+                    color:
+                        Colors.grey.shade700,
                   ),
                 ),
 
@@ -992,13 +1441,17 @@ class _ProductDetailsPageState
           ),
 
           Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
+            padding:
+                const EdgeInsets.all(16),
+            decoration:
+                BoxDecoration(
               color: Theme.of(context)
                   .scaffoldBackgroundColor,
-              border: Border(
+              border:
+                  Border(
                 top: BorderSide(
-                  color: Colors.grey.shade300,
+                  color:
+                      Colors.grey.shade300,
                 ),
               ),
             ),
@@ -1010,95 +1463,103 @@ class _ProductDetailsPageState
                 child: outOfStock
                     ? FilledButton(
                         onPressed: null,
-                        child: const Text(
+                        child:
+                            const Text(
                           'Out of Stock',
                         ),
                       )
                     : quantity == 0
                         ? FilledButton.icon(
-                            onPressed: () {
-                              final added =
-                                  CartController.addProduct(
-                                product,
-                              );
-
-                              if (added) {
-                                refreshCart();
-
-                                ScaffoldMessenger.of(
-                                  context,
-                                ).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Added to cart',
-                                    ),
-                                  ),
-                                );
-                              }
-                            },
-                            icon: const Icon(
-                              Icons.add_shopping_cart,
+                            onPressed:
+                                addProduct,
+                            icon:
+                                const Icon(
+                              Icons
+                                  .add_shopping_cart,
                             ),
-                            label: const Text(
+                            label:
+                                const Text(
                               'Add to Cart',
-                              style: TextStyle(
-                                fontSize: 16,
+                              style:
+                                  TextStyle(
+                                fontSize:
+                                    16,
                                 fontWeight:
-                                    FontWeight.bold,
+                                    FontWeight
+                                        .bold,
                               ),
                             ),
                           )
                         : Row(
                             children: [
                               Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: () {
-                                    CartController
+                                child:
+                                    OutlinedButton
+                                        .icon(
+                                  onPressed:
+                                      () async {
+                                    await CartController
                                         .decreaseQuantity(
                                       product.id,
                                     );
 
                                     refreshCart();
                                   },
-                                  icon: const Icon(
-                                    Icons.remove,
+                                  icon:
+                                      const Icon(
+                                    Icons
+                                        .remove,
                                   ),
-                                  label: const Text(
+                                  label:
+                                      const Text(
                                     'Remove',
                                   ),
                                 ),
                               ),
 
-                              const SizedBox(width: 12),
+                              const SizedBox(
+                                width: 12,
+                              ),
 
                               Text(
                                 '$quantity',
-                                style: const TextStyle(
+                                style:
+                                    const TextStyle(
                                   fontSize: 20,
                                   fontWeight:
-                                      FontWeight.bold,
+                                      FontWeight
+                                          .bold,
                                 ),
                               ),
 
-                              const SizedBox(width: 12),
+                              const SizedBox(
+                                width: 12,
+                              ),
 
                               Expanded(
-                                child: FilledButton.icon(
+                                child:
+                                    FilledButton
+                                        .icon(
                                   onPressed:
-                                      quantity >= product.stock
+                                      quantity >=
+                                              product
+                                                  .stock
                                           ? null
-                                          : () {
-                                              CartController
+                                          : () async {
+                                              await CartController
                                                   .increaseQuantity(
-                                                product.id,
+                                                product
+                                                    .id,
                                               );
 
                                               refreshCart();
                                             },
-                                  icon: const Icon(
+                                  icon:
+                                      const Icon(
                                     Icons.add,
                                   ),
-                                  label: const Text(
+                                  label:
+                                      const Text(
                                     'Add',
                                   ),
                                 ),
@@ -1131,14 +1592,52 @@ class CartPage extends StatefulWidget {
       _CartPageState();
 }
 
-class _CartPageState extends State<CartPage> {
+class _CartPageState
+    extends State<CartPage> {
+  Future<void> decrease(
+    String productId,
+  ) async {
+    await CartController.decreaseQuantity(
+      productId,
+    );
+
+    setState(() {});
+    widget.onCartChanged();
+  }
+
+  Future<void> increase(
+    String productId,
+  ) async {
+    await CartController.increaseQuantity(
+      productId,
+    );
+
+    setState(() {});
+    widget.onCartChanged();
+  }
+
+  Future<void> remove(
+    String productId,
+  ) async {
+    await CartController.removeProduct(
+      productId,
+    );
+
+    setState(() {});
+    widget.onCartChanged();
+  }
+
   @override
   Widget build(BuildContext context) {
     final items = CartController.items;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My Cart'),
+        title: Text(
+          CartController.itemCount > 0
+              ? 'My Cart (${CartController.itemCount})'
+              : 'My Cart',
+        ),
       ),
       body: items.isEmpty
           ? const Center(
@@ -1149,13 +1648,17 @@ class _CartPageState extends State<CartPage> {
           : Column(
               children: [
                 Expanded(
-                  child: ListView.builder(
+                  child:
+                      ListView.builder(
                     padding:
-                        const EdgeInsets.all(12),
+                        const EdgeInsets.all(
+                      12,
+                    ),
                     itemCount: items.length,
                     itemBuilder:
                         (context, index) {
-                      final item = items[index];
+                      final item =
+                          items[index];
 
                       return Card(
                         margin:
@@ -1172,17 +1675,21 @@ class _CartPageState extends State<CartPage> {
                               SizedBox(
                                 width: 70,
                                 height: 70,
-                                child: ClipRRect(
+                                child:
+                                    ClipRRect(
                                   borderRadius:
-                                      BorderRadius.circular(
+                                      BorderRadius
+                                          .circular(
                                     10,
                                   ),
-                                  child: item.imageUrl
+                                  child: item
+                                          .imageUrl
                                           .isNotEmpty
                                       ? Image.network(
                                           item.imageUrl,
                                           fit: BoxFit.cover,
-                                          errorBuilder: (
+                                          errorBuilder:
+                                              (
                                             context,
                                             error,
                                             stack,
@@ -1205,7 +1712,8 @@ class _CartPageState extends State<CartPage> {
                               ),
 
                               Expanded(
-                                child: Column(
+                                child:
+                                    Column(
                                   crossAxisAlignment:
                                       CrossAxisAlignment
                                           .start,
@@ -1215,7 +1723,8 @@ class _CartPageState extends State<CartPage> {
                                       style:
                                           const TextStyle(
                                         fontWeight:
-                                            FontWeight.bold,
+                                            FontWeight
+                                                .bold,
                                       ),
                                     ),
 
@@ -1223,8 +1732,9 @@ class _CartPageState extends State<CartPage> {
                                       height: 5,
                                     ),
 
-                                    Text(
-                                      '₹${item.numericPrice.toStringAsFixed(0)}',
+                                    ProductPrice(
+                                      product:
+                                          item.product,
                                     ),
 
                                     const SizedBox(
@@ -1234,17 +1744,11 @@ class _CartPageState extends State<CartPage> {
                                     Row(
                                       children: [
                                         IconButton(
-                                          onPressed: () {
-                                            setState(() {
-                                              CartController
-                                                  .decreaseQuantity(
-                                                item.id,
-                                              );
-                                            });
-
-                                            widget
-                                                .onCartChanged();
-                                          },
+                                          onPressed:
+                                              () =>
+                                                  decrease(
+                                            item.id,
+                                          ),
                                           icon:
                                               const Icon(
                                             Icons
@@ -1266,19 +1770,10 @@ class _CartPageState extends State<CartPage> {
                                           onPressed: item.quantity >=
                                                   item.availableStock
                                               ? null
-                                              : () {
-                                                  setState(
-                                                    () {
-                                                      CartController
-                                                          .increaseQuantity(
-                                                        item.id,
-                                                      );
-                                                    },
-                                                  );
-
-                                                  widget
-                                                      .onCartChanged();
-                                                },
+                                              : () =>
+                                                  increase(
+                                                    item.id,
+                                                  ),
                                           icon:
                                               const Icon(
                                             Icons
@@ -1292,19 +1787,16 @@ class _CartPageState extends State<CartPage> {
                               ),
 
                               IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    CartController
-                                        .removeProduct(
-                                      item.id,
-                                    );
-                                  });
-
-                                  widget.onCartChanged();
-                                },
-                                icon: const Icon(
-                                  Icons.delete_outline,
-                                  color: Colors.red,
+                                onPressed:
+                                    () => remove(
+                                  item.id,
+                                ),
+                                icon:
+                                    const Icon(
+                                  Icons
+                                      .delete_outline,
+                                  color:
+                                      Colors.red,
                                 ),
                               ),
                             ],
@@ -1317,17 +1809,63 @@ class _CartPageState extends State<CartPage> {
 
                 Container(
                   padding:
-                      const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    border: Border(
+                      const EdgeInsets.all(
+                    16,
+                  ),
+                  decoration:
+                      BoxDecoration(
+                    border:
+                        Border(
                       top: BorderSide(
-                        color:
-                            Colors.grey.shade300,
+                        color: Colors
+                            .grey
+                            .shade300,
                       ),
                     ),
                   ),
-                  child: Column(
+                  child:
+                      Column(
                     children: [
+                      if (CartController
+                              .totalSavings >
+                          0)
+                        Row(
+                          mainAxisAlignment:
+                              MainAxisAlignment
+                                  .spaceBetween,
+                          children: [
+                            const Text(
+                              'You save',
+                              style:
+                                  TextStyle(
+                                color:
+                                    Colors.green,
+                                fontWeight:
+                                    FontWeight
+                                        .bold,
+                              ),
+                            ),
+                            Text(
+                              '₹${CartController.totalSavings.toStringAsFixed(0)}',
+                              style:
+                                  const TextStyle(
+                                color:
+                                    Colors.green,
+                                fontWeight:
+                                    FontWeight
+                                        .bold,
+                              ),
+                            ),
+                          ],
+                        ),
+
+                      if (CartController
+                              .totalSavings >
+                          0)
+                        const SizedBox(
+                          height: 6,
+                        ),
+
                       Row(
                         mainAxisAlignment:
                             MainAxisAlignment
@@ -1335,18 +1873,22 @@ class _CartPageState extends State<CartPage> {
                         children: [
                           const Text(
                             'Total',
-                            style: TextStyle(
+                            style:
+                                TextStyle(
                               fontSize: 20,
                               fontWeight:
-                                  FontWeight.bold,
+                                  FontWeight
+                                      .bold,
                             ),
                           ),
                           Text(
                             '₹${CartController.total.toStringAsFixed(0)}',
-                            style: const TextStyle(
+                            style:
+                                const TextStyle(
                               fontSize: 22,
                               fontWeight:
-                                  FontWeight.bold,
+                                  FontWeight
+                                      .bold,
                             ),
                           ),
                         ],
@@ -1357,26 +1899,32 @@ class _CartPageState extends State<CartPage> {
                       ),
 
                       SizedBox(
-                        width: double.infinity,
+                        width:
+                            double.infinity,
                         height: 52,
-                        child: FilledButton(
-                          onPressed: () async {
+                        child:
+                            FilledButton(
+                          onPressed:
+                              () async {
                             final user =
                                 FirebaseAuth
                                     .instance
                                     .currentUser;
 
-                            if (user == null) {
+                            if (user ==
+                                null) {
                               final loginResult =
                                   await Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (_) =>
-                                      const LoginPage(),
+                                  builder:
+                                      (_) =>
+                                          const LoginPage(),
                                 ),
                               );
 
-                              if (loginResult != true ||
+                              if (loginResult !=
+                                      true ||
                                   FirebaseAuth
                                           .instance
                                           .currentUser ==
@@ -1389,22 +1937,31 @@ class _CartPageState extends State<CartPage> {
                                 await Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) =>
-                                    const CheckoutPage(),
+                                builder:
+                                    (_) =>
+                                        const CheckoutPage(),
                               ),
                             );
 
-                            if (result == true) {
-                              setState(() {});
-                              widget.onCartChanged();
+                            if (result ==
+                                    true &&
+                                mounted) {
+                              setState(
+                                () {},
+                              );
+                              widget
+                                  .onCartChanged();
                             }
                           },
-                          child: const Text(
+                          child:
+                              const Text(
                             'Proceed to Checkout',
-                            style: TextStyle(
+                            style:
+                                TextStyle(
                               fontSize: 16,
                               fontWeight:
-                                  FontWeight.bold,
+                                  FontWeight
+                                      .bold,
                             ),
                           ),
                         ),
@@ -1435,18 +1992,23 @@ class ProfilePage extends StatefulWidget {
       _ProfilePageState();
 }
 
-class _ProfilePageState extends State<ProfilePage> {
+class _ProfilePageState
+    extends State<ProfilePage> {
   Future<void> logout() async {
     try {
-      await FirebaseAuth.instance.signOut();
+      await FirebaseAuth.instance
+          .signOut();
 
-      CartController.clear();
+      // Important:
+      // Cart is NOT cleared during logout.
+      // It remains stored locally.
 
       if (!mounted) return;
 
       widget.onProfileChanged();
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
         const SnackBar(
           content: Text(
             'Logged out successfully',
@@ -1458,7 +2020,8 @@ class _ProfilePageState extends State<ProfilePage> {
     } catch (_) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
         const SnackBar(
           content: Text(
             'Could not logout. Please try again.',
@@ -1472,7 +2035,8 @@ class _ProfilePageState extends State<ProfilePage> {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => const LoginPage(),
+        builder: (_) =>
+            const LoginPage(),
       ),
     );
 
@@ -1499,14 +2063,18 @@ class _ProfilePageState extends State<ProfilePage> {
             : 'Preesho Customer';
 
     final email = user?.email ?? '';
-    final mobile = user?.phoneNumber ?? '';
+    final mobile =
+        user?.phoneNumber ?? '';
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My Profile'),
+        title: const Text(
+          'My Profile',
+        ),
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding:
+            const EdgeInsets.all(16),
         children: [
           CircleAvatar(
             radius: 42,
@@ -1523,9 +2091,11 @@ class _ProfilePageState extends State<ProfilePage> {
           Center(
             child: Text(
               userName,
-              style: const TextStyle(
+              style:
+                  const TextStyle(
                 fontSize: 20,
-                fontWeight: FontWeight.bold,
+                fontWeight:
+                    FontWeight.bold,
               ),
             ),
           ),
@@ -1537,7 +2107,8 @@ class _ProfilePageState extends State<ProfilePage> {
               child: Text(
                 email,
                 style: TextStyle(
-                  color: Colors.grey.shade700,
+                  color:
+                      Colors.grey.shade700,
                 ),
               ),
             ),
@@ -1550,7 +2121,8 @@ class _ProfilePageState extends State<ProfilePage> {
               child: Text(
                 mobile,
                 style: TextStyle(
-                  color: Colors.grey.shade700,
+                  color:
+                      Colors.grey.shade700,
                 ),
               ),
             ),
@@ -1565,7 +2137,8 @@ class _ProfilePageState extends State<ProfilePage> {
               title: const Text(
                 'Login / Sign Up',
               ),
-              subtitle: const Text(
+              subtitle:
+                  const Text(
                 'Login with OTP or password',
               ),
               onTap: openLogin,
@@ -1574,8 +2147,11 @@ class _ProfilePageState extends State<ProfilePage> {
             ListTile(
               leading:
                   const Icon(Icons.logout),
-              title: const Text('Logout'),
-              subtitle: const Text(
+              title: const Text(
+                'Logout',
+              ),
+              subtitle:
+                  const Text(
                 'Sign out from your account',
               ),
               onTap: logout,
@@ -1591,18 +2167,21 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
 
           ListTile(
-            leading: const Icon(
+            leading:
+                const Icon(
               Icons.receipt_long,
             ),
             title: const Text(
               'My Orders',
             ),
-            subtitle: const Text(
+            subtitle:
+                const Text(
               'View your placed orders',
             ),
             onTap: () async {
               if (FirebaseAuth
-                      .instance.currentUser ==
+                      .instance
+                      .currentUser ==
                   null) {
                 final result =
                     await Navigator.push(
@@ -1631,7 +2210,8 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
 
           ListTile(
-            leading: const Icon(
+            leading:
+                const Icon(
               Icons.admin_panel_settings_outlined,
             ),
             title: const Text(
@@ -1680,7 +2260,8 @@ class ProductSearch
         onPressed: () {
           query = '';
         },
-        icon: const Icon(Icons.clear),
+        icon:
+            const Icon(Icons.clear),
       ),
     ];
   }
@@ -1693,7 +2274,9 @@ class ProductSearch
       onPressed: () {
         close(context, null);
       },
-      icon: const Icon(Icons.arrow_back),
+      icon: const Icon(
+        Icons.arrow_back,
+      ),
     );
   }
 
@@ -1703,13 +2286,32 @@ class ProductSearch
   ) {
     return ProductStream(
       builder: (products) {
+        final searchQuery =
+            query.trim().toLowerCase();
+
         final results = products
             .where(
-              (product) => product.name
-                  .toLowerCase()
-                  .contains(
-                    query.toLowerCase(),
-                  ),
+              (product) {
+                if (searchQuery.isEmpty) {
+                  return true;
+                }
+
+                return product.name
+                        .toLowerCase()
+                        .contains(
+                          searchQuery,
+                        ) ||
+                    product.category
+                        .toLowerCase()
+                        .contains(
+                          searchQuery,
+                        ) ||
+                    product.description
+                        .toLowerCase()
+                        .contains(
+                          searchQuery,
+                        );
+              },
             )
             .toList();
 
@@ -1727,13 +2329,32 @@ class ProductSearch
   ) {
     return ProductStream(
       builder: (products) {
+        final searchQuery =
+            query.trim().toLowerCase();
+
         final results = products
             .where(
-              (product) => product.name
-                  .toLowerCase()
-                  .contains(
-                    query.toLowerCase(),
-                  ),
+              (product) {
+                if (searchQuery.isEmpty) {
+                  return true;
+                }
+
+                return product.name
+                        .toLowerCase()
+                        .contains(
+                          searchQuery,
+                        ) ||
+                    product.category
+                        .toLowerCase()
+                        .contains(
+                          searchQuery,
+                        ) ||
+                    product.description
+                        .toLowerCase()
+                        .contains(
+                          searchQuery,
+                        );
+              },
             )
             .toList();
 
@@ -1758,10 +2379,12 @@ class ProductSearch
     }
 
     return ListView(
-      padding: const EdgeInsets.all(12),
+      padding:
+          const EdgeInsets.all(12),
       children: products
           .map(
-            (product) => ProductTile(
+            (product) =>
+                ProductTile(
               product: product,
               onCartChanged:
                   onCartChanged,
