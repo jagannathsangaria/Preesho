@@ -43,7 +43,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   bool isGift = false;
 
   // ============================================================
-  // SAVED ADDRESS BOOK
+  // ADDRESS BOOK
   // ============================================================
 
   List<CustomerAddress> savedAddresses = [];
@@ -62,6 +62,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
   double? longitude;
 
   // ============================================================
+  // CURRENT USER
+  // ============================================================
+
+  User? get currentUser =>
+      FirebaseAuth.instance.currentUser;
+
+  // ============================================================
   // INIT
   // ============================================================
 
@@ -72,13 +79,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }
 
   // ============================================================
-  // CURRENT USER
-  // ============================================================
-
-  User? get currentUser => FirebaseAuth.instance.currentUser;
-
-  // ============================================================
-  // LOAD USER
+  // LOAD CURRENT USER
   // ============================================================
 
   Future<void> loadCurrentUser() async {
@@ -95,9 +96,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
         return;
       }
 
-      final authName = user.displayName?.trim() ?? '';
-      final authEmail = user.email?.trim() ?? '';
-      final authPhone = user.phoneNumber?.trim() ?? '';
+      // Firebase Authentication details.
+      final authName =
+          user.displayName?.trim() ?? '';
+
+      final authEmail =
+          user.email?.trim() ?? '';
+
+      final authPhone =
+          user.phoneNumber?.trim() ?? '';
 
       if (authName.isNotEmpty) {
         nameController.text = authName;
@@ -108,10 +115,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
       }
 
       if (authPhone.isNotEmpty) {
-        mobileController.text = cleanPhoneNumber(authPhone);
+        mobileController.text =
+            cleanPhoneNumber(authPhone);
       }
 
+      // Firestore details.
       await loadUserDetails(user.uid);
+
+      // Saved address book.
       await loadAddressBook(user.uid);
     } catch (e) {
       if (mounted) {
@@ -129,16 +140,16 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }
 
   // ============================================================
-  // CLEAN PHONE
+  // CLEAN PHONE NUMBER
   // ============================================================
 
   String cleanPhoneNumber(String phone) {
-    String cleaned = phone.replaceAll('+91', '');
-
-    cleaned = cleaned.replaceAll(
-      RegExp(r'[^0-9]'),
-      '',
-    );
+    String cleaned = phone
+        .replaceAll('+91', '')
+        .replaceAll(
+          RegExp(r'[^0-9]'),
+          '',
+        );
 
     if (cleaned.length > 10) {
       cleaned = cleaned.substring(
@@ -153,18 +164,22 @@ class _CheckoutPageState extends State<CheckoutPage> {
   // LOAD USER DETAILS
   // ============================================================
 
-  Future<void> loadUserDetails(String uid) async {
+  Future<void> loadUserDetails(
+    String uid,
+  ) async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .get();
+      final doc =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(uid)
+              .get();
 
       if (!doc.exists) {
         return;
       }
 
-      final data = doc.data();
+      final data =
+          doc.data();
 
       if (data == null) {
         return;
@@ -196,36 +211,81 @@ class _CheckoutPageState extends State<CheckoutPage> {
           data['address']?.toString().trim() ?? '';
 
       if (savedAddress.isNotEmpty) {
-        addressController.text = savedAddress;
+        addressController.text =
+            savedAddress;
       }
 
       final savedCity =
           data['city']?.toString().trim() ?? '';
 
       if (savedCity.isNotEmpty) {
-        cityController.text = savedCity;
+        cityController.text =
+            savedCity;
       }
 
       final savedPincode =
           data['pincode']?.toString().trim() ?? '';
 
       if (savedPincode.isNotEmpty) {
-        pincodeController.text = savedPincode;
+        pincodeController.text =
+            savedPincode;
       }
     } catch (e) {
       if (mounted) {
         showMessage(
-          'Could not read saved address details.',
+          'Could not read saved customer details.',
         );
       }
     }
   }
 
   // ============================================================
+  // CREATE SAFE ADDRESS ID
+  // ============================================================
+
+  String createAddressId() {
+    return 'addr_${DateTime.now().microsecondsSinceEpoch}';
+  }
+
+  // ============================================================
+  // NORMALIZE ADDRESS
+  // ============================================================
+
+  CustomerAddress normalizeAddress(
+    CustomerAddress address, {
+    required String defaultId,
+  }) {
+    final id =
+        address.addressId.trim().isEmpty
+            ? createAddressId()
+            : address.addressId.trim();
+
+    return CustomerAddress(
+      addressId: id,
+      name: address.name.trim(),
+      phone: cleanPhoneNumber(
+        address.phone,
+      ),
+      house: address.house.trim(),
+      street: address.street.trim(),
+      city: address.city.trim(),
+      state:
+          address.state.trim().isEmpty
+              ? 'Rajasthan'
+              : address.state.trim(),
+      pincode: address.pincode.trim(),
+      landmark: address.landmark.trim(),
+      isDefault: id == defaultId,
+    );
+  }
+
+  // ============================================================
   // LOAD ADDRESS BOOK
   // ============================================================
 
-  Future<void> loadAddressBook(String uid) async {
+  Future<void> loadAddressBook(
+    String uid,
+  ) async {
     if (mounted) {
       setState(() {
         loadingAddresses = true;
@@ -233,20 +293,28 @@ class _CheckoutPageState extends State<CheckoutPage> {
     }
 
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .get();
+      final doc =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(uid)
+              .get();
 
       if (!doc.exists) {
         return;
       }
 
-      final data = doc.data() ?? <String, dynamic>{};
+      final data =
+          doc.data() ?? <String, dynamic>{};
 
-      final rawAddresses = data['addresses'];
+      final parsed =
+          <CustomerAddress>[];
 
-      final parsed = <CustomerAddress>[];
+      // ----------------------------------------------------------
+      // READ NEW ADDRESS LIST
+      // ----------------------------------------------------------
+
+      final rawAddresses =
+          data['addresses'];
 
       if (rawAddresses is List) {
         for (final item in rawAddresses) {
@@ -254,16 +322,33 @@ class _CheckoutPageState extends State<CheckoutPage> {
             final map =
                 Map<String, dynamic>.from(item);
 
-            final id =
-                (map['addressId'] ?? '')
-                    .toString()
-                    .trim();
+            CustomerAddress address =
+                CustomerAddress.fromMap(map);
 
-            if (id.isNotEmpty) {
-              parsed.add(
-                CustomerAddress.fromMap(map),
+            // Fix old/empty address ID.
+            if (address.addressId
+                .trim()
+                .isEmpty) {
+              address = CustomerAddress(
+                addressId:
+                    createAddressId(),
+                name: address.name,
+                phone:
+                    cleanPhoneNumber(
+                  address.phone,
+                ),
+                house: address.house,
+                street: address.street,
+                city: address.city,
+                state: address.state,
+                pincode: address.pincode,
+                landmark: address.landmark,
+                isDefault:
+                    address.isDefault,
               );
             }
+
+            parsed.add(address);
           }
         }
       }
@@ -316,23 +401,26 @@ class _CheckoutPageState extends State<CheckoutPage> {
           parsed.add(
             CustomerAddress(
               addressId:
-                  'legacy_${uid.substring(
-                0,
-                uid.length > 8
-                    ? 8
-                    : uid.length,
-              )}',
-              name: oldName.isNotEmpty
-                  ? oldName
-                  : nameController.text.trim(),
-              phone: oldPhone.isNotEmpty
-                  ? cleanPhoneNumber(oldPhone)
-                  : mobileController.text.trim(),
+                  createAddressId(),
+              name:
+                  oldName.isNotEmpty
+                      ? oldName
+                      : nameController.text
+                          .trim(),
+              phone:
+                  oldPhone.isNotEmpty
+                      ? cleanPhoneNumber(
+                          oldPhone,
+                        )
+                      : mobileController
+                          .text
+                          .trim(),
               street: oldAddress,
               city: oldCity,
-              state: oldState.isNotEmpty
-                  ? oldState
-                  : 'Rajasthan',
+              state:
+                  oldState.isNotEmpty
+                      ? oldState
+                      : 'Rajasthan',
               pincode: oldPin,
               isDefault: true,
             ),
@@ -340,52 +428,102 @@ class _CheckoutPageState extends State<CheckoutPage> {
         }
       }
 
-      final defaultId =
+      if (parsed.isEmpty) {
+        if (mounted) {
+          setState(() {
+            savedAddresses = [];
+            selectedAddressId = null;
+          });
+        }
+        return;
+      }
+
+      // ----------------------------------------------------------
+      // FIND DEFAULT
+      // ----------------------------------------------------------
+
+      final storedDefaultId =
           (data['defaultAddressId'] ?? '')
               .toString()
               .trim();
 
-      String? selected;
+      String defaultId = '';
 
-      if (defaultId.isNotEmpty &&
+      if (storedDefaultId.isNotEmpty &&
           parsed.any(
-            (a) => a.addressId == defaultId,
+            (a) =>
+                a.addressId ==
+                storedDefaultId,
           )) {
-        selected = defaultId;
-      } else if (parsed.isNotEmpty) {
-        final marked = parsed
-            .where((a) => a.isDefault)
-            .toList();
+        defaultId = storedDefaultId;
+      } else {
+        final marked =
+            parsed.where(
+              (a) => a.isDefault,
+            );
 
-        selected = marked.isNotEmpty
-            ? marked.first.addressId
-            : parsed.first.addressId;
+        if (marked.isNotEmpty) {
+          defaultId =
+              marked.first.addressId;
+        } else {
+          defaultId =
+              parsed.first.addressId;
+        }
       }
+
+      // ----------------------------------------------------------
+      // NORMALIZE ALL ADDRESSES
+      // ----------------------------------------------------------
+
+      final normalized =
+          parsed.map((address) {
+        return normalizeAddress(
+          address,
+          defaultId: defaultId,
+        );
+      }).toList();
+
+      final actualDefaultId =
+          normalized.firstWhere(
+        (a) => a.isDefault,
+        orElse: () =>
+            normalized.first,
+      ).addressId;
 
       if (mounted) {
         setState(() {
-          savedAddresses = parsed;
-          selectedAddressId = selected;
+          savedAddresses = normalized;
+          selectedAddressId =
+              actualDefaultId;
         });
       }
 
-      if (selected != null) {
-        final selectedAddress =
-            parsed.firstWhere(
-          (a) => a.addressId == selected,
-        );
+      // ----------------------------------------------------------
+      // AUTOMATICALLY REPAIR FIRESTORE
+      // ----------------------------------------------------------
 
-        _applyAddressToForm(selectedAddress);
-      }
+      await _saveAddressBook(
+        uid,
+        normalized,
+        actualDefaultId,
+      );
 
-      if (parsed.isNotEmpty &&
-          rawAddresses is! List) {
-        await _saveAddressBook(
-          uid,
-          parsed,
-          selected ?? parsed.first.addressId,
-        );
-      }
+      // ----------------------------------------------------------
+      // APPLY DEFAULT ADDRESS TO FORM
+      // ----------------------------------------------------------
+
+      final defaultAddress =
+          normalized.firstWhere(
+        (a) =>
+            a.addressId ==
+            actualDefaultId,
+        orElse: () =>
+            normalized.first,
+      );
+
+      _applyAddressToForm(
+        defaultAddress,
+      );
     } catch (e) {
       if (mounted) {
         showMessage(
@@ -402,16 +540,19 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }
 
   // ============================================================
-  // APPLY ADDRESS
+  // APPLY ADDRESS TO FORM
   // ============================================================
 
   void _applyAddressToForm(
     CustomerAddress address,
   ) {
-    nameController.text = address.name;
+    nameController.text =
+        address.name;
 
     mobileController.text =
-        cleanPhoneNumber(address.phone);
+        cleanPhoneNumber(
+      address.phone,
+    );
 
     addressController.text =
         address.fullAddress;
@@ -432,15 +573,23 @@ class _CheckoutPageState extends State<CheckoutPage> {
     required bool isDefault,
   }) {
     return CustomerAddress(
-      addressId: addressId,
-      name: nameController.text.trim(),
-      phone: cleanPhoneNumber(
+      addressId:
+          addressId.trim().isEmpty
+              ? createAddressId()
+              : addressId.trim(),
+      name:
+          nameController.text.trim(),
+      phone:
+          cleanPhoneNumber(
         mobileController.text.trim(),
       ),
-      street: addressController.text.trim(),
-      city: cityController.text.trim(),
+      street:
+          addressController.text.trim(),
+      city:
+          cityController.text.trim(),
       state: 'Rajasthan',
-      pincode: pincodeController.text.trim(),
+      pincode:
+          pincodeController.text.trim(),
       isDefault: isDefault,
     );
   }
@@ -454,9 +603,60 @@ class _CheckoutPageState extends State<CheckoutPage> {
     List<CustomerAddress> addresses,
     String defaultId,
   ) async {
-    final normalized = addresses.map((address) {
+    final normalized =
+        addresses.map((address) {
       return CustomerAddress(
-        addressId: address.addressId,
+        addressId:
+            address.addressId.trim().isEmpty
+                ? createAddressId()
+                : address.addressId.trim(),
+        name:
+            address.name.trim(),
+        phone:
+            cleanPhoneNumber(
+          address.phone,
+        ),
+        house:
+            address.house.trim(),
+        street:
+            address.street.trim(),
+        city:
+            address.city.trim(),
+        state:
+            address.state.trim().isEmpty
+                ? 'Rajasthan'
+                : address.state.trim(),
+        pincode:
+            address.pincode.trim(),
+        landmark:
+            address.landmark.trim(),
+        isDefault:
+            address.addressId ==
+                defaultId,
+      );
+    }).toList();
+
+    // Make sure exactly one address is default.
+    String finalDefaultId =
+        defaultId.trim();
+
+    if (finalDefaultId.isEmpty ||
+        !normalized.any(
+          (a) =>
+              a.addressId ==
+              finalDefaultId,
+        )) {
+      finalDefaultId =
+          normalized.isNotEmpty
+              ? normalized.first.addressId
+              : '';
+    }
+
+    final finalAddresses =
+        normalized.map((address) {
+      return CustomerAddress(
+        addressId:
+            address.addressId,
         name: address.name,
         phone: address.phone,
         house: address.house,
@@ -466,7 +666,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
         pincode: address.pincode,
         landmark: address.landmark,
         isDefault:
-            address.addressId == defaultId,
+            address.addressId ==
+                finalDefaultId,
       );
     }).toList();
 
@@ -475,10 +676,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
         .doc(uid)
         .set(
       {
-        'addresses': normalized
-            .map((address) => address.toMap())
-            .toList(),
-        'defaultAddressId': defaultId,
+        'addresses':
+            finalAddresses
+                .map(
+                  (address) =>
+                      address.toMap(),
+                )
+                .toList(),
+        'defaultAddressId':
+            finalDefaultId,
         'updatedAt':
             FieldValue.serverTimestamp(),
       },
@@ -496,24 +702,16 @@ class _CheckoutPageState extends State<CheckoutPage> {
     final user = currentUser;
 
     if (user == null) {
+      await goToLogin();
       return;
     }
 
     try {
-      await _saveAddressBook(
-        user.uid,
-        savedAddresses,
-        address.addressId,
-      );
-
-      if (!mounted) {
-        return;
-      }
-
       final normalized =
           savedAddresses.map((a) {
         return CustomerAddress(
-          addressId: a.addressId,
+          addressId:
+              a.addressId,
           name: a.name,
           phone: a.phone,
           house: a.house,
@@ -528,8 +726,19 @@ class _CheckoutPageState extends State<CheckoutPage> {
         );
       }).toList();
 
+      await _saveAddressBook(
+        user.uid,
+        normalized,
+        address.addressId,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
       setState(() {
-        savedAddresses = normalized;
+        savedAddresses =
+            normalized;
         selectedAddressId =
             address.addressId;
       });
@@ -570,7 +779,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
       ),
     );
 
-    if (result == null || !mounted) {
+    if (result == null ||
+        !mounted) {
       return;
     }
 
@@ -586,30 +796,76 @@ class _CheckoutPageState extends State<CheckoutPage> {
     });
 
     try {
-      final list = [...savedAddresses];
+      final resultId =
+          result.addressId.trim().isEmpty
+              ? createAddressId()
+              : result.addressId.trim();
 
-      final index = list.indexWhere(
+      final cleanedResult =
+          CustomerAddress(
+        addressId: resultId,
+        name: result.name.trim(),
+        phone:
+            cleanPhoneNumber(
+          result.phone,
+        ),
+        house: result.house.trim(),
+        street:
+            result.street.trim(),
+        city: result.city.trim(),
+        state:
+            result.state.trim().isEmpty
+                ? 'Rajasthan'
+                : result.state.trim(),
+        pincode:
+            result.pincode.trim(),
+        landmark:
+            result.landmark.trim(),
+        isDefault:
+            result.isDefault,
+      );
+
+      final list =
+          [...savedAddresses];
+
+      final index =
+          list.indexWhere(
         (a) =>
             a.addressId ==
-            result.addressId,
+            resultId,
       );
 
       if (index >= 0) {
-        list[index] = result;
+        list[index] =
+            cleanedResult;
       } else {
-        list.add(result);
+        list.add(
+          cleanedResult,
+        );
       }
 
-      final shouldDefault =
-          result.isDefault ||
-              list.length == 1 ||
-              selectedAddressId == null;
+      // ----------------------------------------------------------
+      // DEFAULT ADDRESS DECISION
+      // ----------------------------------------------------------
 
-      final defaultId =
-          shouldDefault
-              ? result.addressId
-              : (selectedAddressId ??
-                  list.first.addressId);
+      String defaultId;
+
+      if (cleanedResult.isDefault) {
+        defaultId =
+            resultId;
+      } else if (selectedAddressId !=
+              null &&
+          list.any(
+            (a) =>
+                a.addressId ==
+                selectedAddressId,
+          )) {
+        defaultId =
+            selectedAddressId!;
+      } else {
+        defaultId =
+            list.first.addressId;
+      }
 
       await _saveAddressBook(
         user.uid,
@@ -617,14 +873,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
         defaultId,
       );
 
-      if (!mounted) {
-        return;
-      }
+      // ----------------------------------------------------------
+      // NORMALIZE LOCAL LIST
+      // ----------------------------------------------------------
 
       final normalized =
           list.map((a) {
         return CustomerAddress(
-          addressId: a.addressId,
+          addressId:
+              a.addressId,
           name: a.name,
           phone: a.phone,
           house: a.house,
@@ -634,22 +891,28 @@ class _CheckoutPageState extends State<CheckoutPage> {
           pincode: a.pincode,
           landmark: a.landmark,
           isDefault:
-              a.addressId == defaultId,
+              a.addressId ==
+                  defaultId,
         );
       }).toList();
 
+      if (!mounted) {
+        return;
+      }
+
       setState(() {
-        savedAddresses = normalized;
-        selectedAddressId = defaultId;
+        savedAddresses =
+            normalized;
+        selectedAddressId =
+            defaultId;
       });
 
-      final defaultAddress =
-          normalized.firstWhere(
-        (a) => a.addressId == defaultId,
-      );
-
       _applyAddressToForm(
-        defaultAddress,
+        normalized.firstWhere(
+          (a) =>
+              a.addressId ==
+              defaultId,
+        ),
       );
 
       showMessage(
@@ -692,7 +955,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
       builder: (dialogContext) {
         return AlertDialog(
           title:
-              const Text('Delete address?'),
+              const Text(
+            'Delete address?',
+          ),
           content:
               const Text(
             'This saved address will be removed from your account.',
@@ -705,7 +970,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 false,
               ),
               child:
-                  const Text('Cancel'),
+                  const Text(
+                'Cancel',
+              ),
             ),
             FilledButton(
               onPressed: () =>
@@ -714,7 +981,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 true,
               ),
               child:
-                  const Text('Delete'),
+                  const Text(
+                'Delete',
+              ),
             ),
           ],
         );
@@ -732,24 +1001,34 @@ class _CheckoutPageState extends State<CheckoutPage> {
     }
 
     try {
-      final list = savedAddresses
-          .where(
-            (a) =>
-                a.addressId !=
-                address.addressId,
-          )
-          .toList();
+      final list =
+          savedAddresses
+              .where(
+                (a) =>
+                    a.addressId !=
+                    address.addressId,
+              )
+              .toList();
+
+      if (list.isEmpty) {
+        showMessage(
+          'At least one saved address is required.',
+        );
+        return;
+      }
 
       String defaultId;
 
       if (address.addressId ==
           selectedAddressId) {
-        defaultId = list.first.addressId;
+        defaultId =
+            list.first.addressId;
       } else {
         defaultId =
             list
                 .firstWhere(
-                  (a) => a.isDefault,
+                  (a) =>
+                      a.isDefault,
                   orElse: () =>
                       list.first,
                 )
@@ -762,14 +1041,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
         defaultId,
       );
 
-      if (!mounted) {
-        return;
-      }
-
       final normalized =
           list.map((a) {
         return CustomerAddress(
-          addressId: a.addressId,
+          addressId:
+              a.addressId,
           name: a.name,
           phone: a.phone,
           house: a.house,
@@ -779,22 +1055,33 @@ class _CheckoutPageState extends State<CheckoutPage> {
           pincode: a.pincode,
           landmark: a.landmark,
           isDefault:
-              a.addressId == defaultId,
+              a.addressId ==
+                  defaultId,
         );
       }).toList();
 
+      if (!mounted) {
+        return;
+      }
+
       setState(() {
-        savedAddresses = normalized;
-        selectedAddressId = defaultId;
+        savedAddresses =
+            normalized;
+        selectedAddressId =
+            defaultId;
       });
 
       _applyAddressToForm(
         normalized.firstWhere(
-          (a) => a.addressId == defaultId,
+          (a) =>
+              a.addressId ==
+              defaultId,
         ),
       );
 
-      showMessage('Address deleted.');
+      showMessage(
+        'Address deleted.',
+      );
     } catch (e) {
       if (mounted) {
         showMessage(
@@ -809,10 +1096,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
   // ============================================================
 
   Future<void> goToLogin() async {
-    final result = await Navigator.push(
+    final result =
+        await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => const LoginPage(),
+        builder: (_) =>
+            const LoginPage(),
       ),
     );
 
@@ -847,12 +1136,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
       }
 
       LocationPermission permission =
-          await Geolocator.checkPermission();
+          await Geolocator
+              .checkPermission();
 
       if (permission ==
           LocationPermission.denied) {
         permission =
-            await Geolocator.requestPermission();
+            await Geolocator
+                .requestPermission();
       }
 
       if (permission ==
@@ -872,10 +1163,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
       }
 
       final position =
-          await Geolocator.getCurrentPosition(
+          await Geolocator
+              .getCurrentPosition(
         locationSettings:
             const LocationSettings(
-          accuracy: LocationAccuracy.high,
+          accuracy:
+              LocationAccuracy.high,
         ),
       );
 
@@ -884,8 +1177,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
       }
 
       setState(() {
-        latitude = position.latitude;
-        longitude = position.longitude;
+        latitude =
+            position.latitude;
+        longitude =
+            position.longitude;
       });
 
       showMessage(
@@ -922,7 +1217,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
       'name':
           nameController.text.trim(),
       'mobile':
-          mobileController.text.trim(),
+          cleanPhoneNumber(
+        mobileController.text.trim(),
+      ),
       'email':
           emailController.text.trim(),
       'address':
@@ -943,18 +1240,30 @@ class _CheckoutPageState extends State<CheckoutPage> {
       SetOptions(merge: true),
     );
 
-    final addressId =
-        selectedAddressId ??
-            'addr_${DateTime.now().microsecondsSinceEpoch}';
+    // ----------------------------------------------------------
+    // SAVE CURRENT ADDRESS
+    // ----------------------------------------------------------
 
-    final current = _addressFromForm(
+    final addressId =
+        selectedAddressId != null &&
+                selectedAddressId!
+                    .trim()
+                    .isNotEmpty
+            ? selectedAddressId!
+            : createAddressId();
+
+    final current =
+        _addressFromForm(
       addressId: addressId,
-      isDefault: savedAddresses.isEmpty,
+      isDefault:
+          savedAddresses.isEmpty,
     );
 
-    final list = [...savedAddresses];
+    final list =
+        [...savedAddresses];
 
-    final index = list.indexWhere(
+    final index =
+        list.indexWhere(
       (a) =>
           a.addressId ==
           current.addressId,
@@ -982,27 +1291,31 @@ class _CheckoutPageState extends State<CheckoutPage> {
       defaultId,
     );
 
+    final normalized =
+        list.map((a) {
+      return CustomerAddress(
+        addressId:
+            a.addressId,
+        name: a.name,
+        phone: a.phone,
+        house: a.house,
+        street: a.street,
+        city: a.city,
+        state: a.state,
+        pincode: a.pincode,
+        landmark: a.landmark,
+        isDefault:
+            a.addressId ==
+                defaultId,
+      );
+    }).toList();
+
     if (mounted) {
       setState(() {
         savedAddresses =
-            list.map((a) {
-          return CustomerAddress(
-            addressId: a.addressId,
-            name: a.name,
-            phone: a.phone,
-            house: a.house,
-            street: a.street,
-            city: a.city,
-            state: a.state,
-            pincode: a.pincode,
-            landmark: a.landmark,
-            isDefault:
-                a.addressId ==
-                    defaultId,
-          );
-        }).toList();
-
-        selectedAddressId = defaultId;
+            normalized;
+        selectedAddressId =
+            defaultId;
       });
     }
   }
@@ -1036,7 +1349,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
       return false;
     }
 
-    if (!RegExp(r'^\d{10}$').hasMatch(mobile)) {
+    if (!RegExp(r'^\d{10}$')
+        .hasMatch(mobile)) {
       showMessage(
         'Please enter a valid 10-digit mobile number.',
       );
@@ -1057,15 +1371,24 @@ class _CheckoutPageState extends State<CheckoutPage> {
       return false;
     }
 
-    if (!RegExp(r'^\d{6}$').hasMatch(pincode)) {
+    if (!RegExp(r'^\d{6}$')
+        .hasMatch(pincode)) {
       showMessage(
         'Please enter a valid 6-digit PIN code.',
       );
       return false;
     }
 
+    // ----------------------------------------------------------
+    // GIFT VALIDATION
+    // ----------------------------------------------------------
+
     if (isGift) {
-      if (giftNameController.text.trim().length < 2) {
+      if (giftNameController
+              .text
+              .trim()
+              .length <
+          2) {
         showMessage(
           'Please enter gift receiver name.',
         );
@@ -1074,7 +1397,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
       final giftMobile =
           cleanPhoneNumber(
-        giftMobileController.text.trim(),
+        giftMobileController
+            .text
+            .trim(),
       );
 
       if (!RegExp(r'^\d{10}$')
@@ -1085,7 +1410,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
         return false;
       }
 
-      if (giftAddressController.text
+      if (giftAddressController
+              .text
               .trim()
               .length <
           3) {
@@ -1095,7 +1421,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
         return false;
       }
 
-      if (giftCityController.text
+      if (giftCityController
+          .text
           .trim()
           .isEmpty) {
         showMessage(
@@ -1105,7 +1432,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
       }
 
       if (!RegExp(r'^\d{6}$').hasMatch(
-        giftPincodeController.text.trim(),
+        giftPincodeController
+            .text
+            .trim(),
       )) {
         showMessage(
           'Please enter a valid gift PIN code.',
@@ -1137,10 +1466,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
       return;
     }
 
-    // ==========================================================
-    // DIRECTLY USE EXISTING CART CONTROLLER
-    // ==========================================================
-
     final cartItems =
         CartController.items;
 
@@ -1156,13 +1481,18 @@ class _CheckoutPageState extends State<CheckoutPage> {
     });
 
     try {
+      // --------------------------------------------------------
+      // SAVE CUSTOMER + ADDRESS
+      // --------------------------------------------------------
+
       await saveCustomerDetails(
         user.uid,
       );
 
       CustomerAddress selectedAddress;
 
-      if (selectedAddressId != null &&
+      if (selectedAddressId !=
+              null &&
           savedAddresses.any(
             (a) =>
                 a.addressId ==
@@ -1178,14 +1508,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
         selectedAddress =
             _addressFromForm(
           addressId:
-              'checkout_${DateTime.now().microsecondsSinceEpoch}',
+              createAddressId(),
           isDefault: true,
         );
       }
 
-      // ========================================================
+      // --------------------------------------------------------
       // CREATE ORDER ITEMS
-      // ========================================================
+      // --------------------------------------------------------
 
       double total = 0;
 
@@ -1220,9 +1550,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
         };
       }).toList();
 
-      // ========================================================
-      // CREATE ORDER DOCUMENT
-      // ========================================================
+      // --------------------------------------------------------
+      // CREATE ORDER
+      // --------------------------------------------------------
 
       final orderRef =
           FirebaseFirestore.instance
@@ -1238,15 +1568,18 @@ class _CheckoutPageState extends State<CheckoutPage> {
             user.uid,
 
         'customerName':
-            nameController.text.trim(),
+            nameController.text
+                .trim(),
 
         'customerMobile':
             cleanPhoneNumber(
-          mobileController.text.trim(),
+          mobileController.text
+              .trim(),
         ),
 
         'customerEmail':
-            emailController.text.trim(),
+            emailController.text
+                .trim(),
 
         // Complete address snapshot.
         'deliveryAddress':
@@ -1327,17 +1660,21 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 : null,
 
         'createdAt':
-            FieldValue.serverTimestamp(),
+            FieldValue
+                .serverTimestamp(),
 
         'updatedAt':
-            FieldValue.serverTimestamp(),
+            FieldValue
+                .serverTimestamp(),
       };
 
-      await orderRef.set(orderData);
+      await orderRef.set(
+        orderData,
+      );
 
-      // ========================================================
+      // --------------------------------------------------------
       // CLEAR CART
-      // ========================================================
+      // --------------------------------------------------------
 
       CartController.clear();
 
@@ -1349,9 +1686,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
         'Order placed successfully.',
       );
 
-      // ========================================================
-      // GO TO ORDERS PAGE
-      // ========================================================
+      // --------------------------------------------------------
+      // ORDERS PAGE
+      // --------------------------------------------------------
 
       Navigator.pushReplacement(
         context,
@@ -1379,7 +1716,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
   // SNACKBAR
   // ============================================================
 
-  void showMessage(String message) {
+  void showMessage(
+    String message,
+  ) {
     if (!mounted) {
       return;
     }
@@ -1390,7 +1729,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
     ScaffoldMessenger.of(context)
         .showSnackBar(
       SnackBar(
-        content: Text(message),
+        content:
+            Text(message),
       ),
     );
   }
@@ -1443,15 +1783,19 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 children: [
                   Icon(
                     selected
-                        ? Icons.radio_button_checked
-                        : Icons.radio_button_off,
+                        ? Icons
+                            .radio_button_checked
+                        : Icons
+                            .radio_button_off,
                     color: selected
                         ? Theme.of(context)
                             .colorScheme
                             .primary
                         : Colors.grey,
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(
+                    width: 8,
+                  ),
                   Expanded(
                     child: Text(
                       address.name,
@@ -1475,15 +1819,18 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           BoxDecoration(
                         borderRadius:
                             BorderRadius
-                                .circular(20),
-                        color: Theme.of(
+                                .circular(
+                          20,
+                        ),
+                        color:
+                            Theme.of(
                           context,
                         )
-                            .colorScheme
-                            .primary
-                            .withValues(
-                              alpha: .1,
-                            ),
+                                .colorScheme
+                                .primary
+                                .withValues(
+                          alpha: .1,
+                        ),
                       ),
                       child:
                           const Text(
@@ -1498,7 +1845,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(
+                height: 8,
+              ),
               Text(
                 address.fullAddress,
                 style:
@@ -1506,7 +1855,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   height: 1.4,
                 ),
               ),
-              const SizedBox(height: 5),
+              const SizedBox(
+                height: 5,
+              ),
               Text(
                 '📞 ${address.phone}',
                 style:
@@ -1514,7 +1865,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   color: Colors.grey,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(
+                height: 8,
+              ),
               Row(
                 mainAxisAlignment:
                     MainAxisAlignment.end,
@@ -1522,15 +1875,19 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   TextButton.icon(
                     onPressed: () =>
                         openAddressEditor(
-                      existing: address,
+                      existing:
+                          address,
                     ),
                     icon:
                         const Icon(
-                      Icons.edit_outlined,
+                      Icons
+                          .edit_outlined,
                       size: 18,
                     ),
                     label:
-                        const Text('Edit'),
+                        const Text(
+                      'Edit',
+                    ),
                   ),
                   TextButton.icon(
                     onPressed: () =>
@@ -1539,11 +1896,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     ),
                     icon:
                         const Icon(
-                      Icons.delete_outline,
+                      Icons
+                          .delete_outline,
                       size: 18,
                     ),
                     label:
-                        const Text('Delete'),
+                        const Text(
+                      'Delete',
+                    ),
                   ),
                 ],
               ),
@@ -1559,13 +1919,17 @@ class _CheckoutPageState extends State<CheckoutPage> {
   // ============================================================
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final user = currentUser;
 
     return Scaffold(
       appBar: AppBar(
         title:
-            const Text('Checkout'),
+            const Text(
+          'Checkout',
+        ),
         centerTitle: true,
       ),
       body:
@@ -1579,23 +1943,27 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   child:
                       SingleChildScrollView(
                     padding:
-                        const EdgeInsets.all(16),
+                        const EdgeInsets
+                            .all(16),
                     child:
                         Column(
                       crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                          CrossAxisAlignment
+                              .start,
                       children: [
                         if (user == null)
                           Card(
                             child:
                                 Padding(
                               padding:
-                                  const EdgeInsets.all(14),
+                                  const EdgeInsets
+                                      .all(14),
                               child:
                                   Row(
                                 children: [
                                   const Icon(
-                                    Icons.account_circle_outlined,
+                                    Icons
+                                        .account_circle_outlined,
                                     size: 36,
                                   ),
                                   const SizedBox(
@@ -1621,7 +1989,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           ),
 
                         if (user == null)
-                          const SizedBox(height: 16),
+                          const SizedBox(
+                            height: 16,
+                          ),
 
                         // ==================================================
                         // SAVED ADDRESSES
@@ -1661,12 +2031,16 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           ],
                         ),
 
-                        const SizedBox(height: 8),
+                        const SizedBox(
+                          height: 8,
+                        ),
 
                         if (loadingAddresses)
                           const Padding(
                             padding:
-                                EdgeInsets.all(20),
+                                EdgeInsets.all(
+                              20,
+                            ),
                             child:
                                 Center(
                               child:
@@ -1688,12 +2062,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
                             child:
                                 Padding(
                               padding:
-                                  const EdgeInsets.all(16),
+                                  const EdgeInsets
+                                      .all(16),
                               child:
                                   Column(
                                 children: [
                                   const Icon(
-                                    Icons.location_on_outlined,
+                                    Icons
+                                        .location_on_outlined,
                                     size: 42,
                                   ),
                                   const SizedBox(
@@ -1704,7 +2080,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                     style:
                                         TextStyle(
                                       fontWeight:
-                                          FontWeight.bold,
+                                          FontWeight
+                                              .bold,
                                     ),
                                   ),
                                   const SizedBox(
@@ -1713,12 +2090,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                   const Text(
                                     'Add your delivery address to continue.',
                                     textAlign:
-                                        TextAlign.center,
+                                        TextAlign
+                                            .center,
                                   ),
                                   const SizedBox(
                                     height: 12,
                                   ),
-                                  FilledButton.icon(
+                                  FilledButton
+                                      .icon(
                                     onPressed:
                                         user == null
                                             ? goToLogin
@@ -1738,7 +2117,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
                             ),
                           ),
 
-                        const SizedBox(height: 18),
+                        const SizedBox(
+                          height: 18,
+                        ),
 
                         // ==================================================
                         // SELECTED ADDRESS
@@ -1754,69 +2135,85 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           ),
                         ),
 
-                        const SizedBox(height: 10),
+                        const SizedBox(
+                          height: 10,
+                        ),
 
                         TextFormField(
                           controller:
                               nameController,
                           textCapitalization:
-                              TextCapitalization.words,
+                              TextCapitalization
+                                  .words,
                           decoration:
                               const InputDecoration(
                             labelText:
                                 'Full Name',
                             prefixIcon:
                                 Icon(
-                              Icons.person_outline,
+                              Icons
+                                  .person_outline,
                             ),
                             border:
                                 OutlineInputBorder(),
                           ),
                         ),
 
-                        const SizedBox(height: 12),
+                        const SizedBox(
+                          height: 12,
+                        ),
 
                         TextFormField(
                           controller:
                               mobileController,
                           keyboardType:
-                              TextInputType.phone,
-                          maxLength: 10,
+                              TextInputType
+                                  .phone,
+                          maxLength:
+                              10,
                           decoration:
                               const InputDecoration(
                             labelText:
                                 'Mobile Number',
                             prefixIcon:
                                 Icon(
-                              Icons.phone_outlined,
+                              Icons
+                                  .phone_outlined,
                             ),
                             border:
                                 OutlineInputBorder(),
-                            counterText: '',
+                            counterText:
+                                '',
                           ),
                         ),
 
-                        const SizedBox(height: 12),
+                        const SizedBox(
+                          height: 12,
+                        ),
 
                         TextFormField(
                           controller:
                               emailController,
                           keyboardType:
-                              TextInputType.emailAddress,
+                              TextInputType
+                                  .emailAddress,
                           decoration:
                               const InputDecoration(
                             labelText:
                                 'Email',
                             prefixIcon:
                                 Icon(
-                              Icons.email_outlined,
+                              Icons
+                                  .email_outlined,
                             ),
                             border:
                                 OutlineInputBorder(),
                           ),
                         ),
 
-                        const SizedBox(height: 12),
+                        const SizedBox(
+                          height: 12,
+                        ),
 
                         TextFormField(
                           controller:
@@ -1830,62 +2227,76 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                 'House no., street, area',
                             prefixIcon:
                                 Icon(
-                              Icons.home_outlined,
+                              Icons
+                                  .home_outlined,
                             ),
                             border:
                                 OutlineInputBorder(),
                           ),
                         ),
 
-                        const SizedBox(height: 12),
+                        const SizedBox(
+                          height: 12,
+                        ),
 
                         TextFormField(
                           controller:
                               cityController,
                           textCapitalization:
-                              TextCapitalization.words,
+                              TextCapitalization
+                                  .words,
                           decoration:
                               const InputDecoration(
                             labelText:
                                 'City',
                             prefixIcon:
                                 Icon(
-                              Icons.location_city_outlined,
+                              Icons
+                                  .location_city_outlined,
                             ),
                             border:
                                 OutlineInputBorder(),
                           ),
                         ),
 
-                        const SizedBox(height: 12),
+                        const SizedBox(
+                          height: 12,
+                        ),
 
                         TextFormField(
                           controller:
                               pincodeController,
                           keyboardType:
-                              TextInputType.number,
-                          maxLength: 6,
+                              TextInputType
+                                  .number,
+                          maxLength:
+                              6,
                           decoration:
                               const InputDecoration(
                             labelText:
                                 'PIN Code',
                             prefixIcon:
                                 Icon(
-                              Icons.pin_drop_outlined,
+                              Icons
+                                  .pin_drop_outlined,
                             ),
                             border:
                                 OutlineInputBorder(),
-                            counterText: '',
+                            counterText:
+                                '',
                           ),
                         ),
 
-                        const SizedBox(height: 10),
+                        const SizedBox(
+                          height: 10,
+                        ),
 
                         // ==================================================
                         // LOCATION
                         // ==================================================
 
-                        OutlinedButton.icon(
+                        OutlinedButton
+                            .icon(
                           onPressed:
                               gettingLocation
                                   ? null
@@ -1893,27 +2304,34 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           icon:
                               gettingLocation
                                   ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
+                                      width:
+                                          18,
+                                      height:
+                                          18,
                                       child:
                                           CircularProgressIndicator(
-                                        strokeWidth: 2,
+                                        strokeWidth:
+                                            2,
                                       ),
                                     )
                                   : const Icon(
-                                      Icons.my_location,
+                                      Icons
+                                          .my_location,
                                     ),
                           label:
                               Text(
                             gettingLocation
                                 ? 'Getting Location...'
-                                : latitude != null
+                                : latitude !=
+                                        null
                                     ? 'Location Captured'
                                     : 'Use Current Location',
                           ),
                         ),
 
-                        const SizedBox(height: 24),
+                        const SizedBox(
+                          height: 24,
+                        ),
 
                         // ==================================================
                         // GIFT
@@ -1924,7 +2342,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                               Column(
                             children: [
                               SwitchListTile(
-                                value: isGift,
+                                value:
+                                    isGift,
                                 onChanged:
                                     (value) {
                                   setState(() {
@@ -1938,7 +2357,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                   style:
                                       TextStyle(
                                     fontWeight:
-                                        FontWeight.bold,
+                                        FontWeight
+                                            .bold,
                                   ),
                                 ),
                                 subtitle:
@@ -1949,7 +2369,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                               if (isGift)
                                 Padding(
                                   padding:
-                                      const EdgeInsets.fromLTRB(
+                                      const EdgeInsets
+                                          .fromLTRB(
                                     16,
                                     0,
                                     16,
@@ -1971,7 +2392,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                         controller:
                                             giftMobileController,
                                         keyboardType:
-                                            TextInputType.phone,
+                                            TextInputType
+                                                .phone,
                                         maxLength:
                                             10,
                                         decoration:
@@ -1985,7 +2407,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                       TextField(
                                         controller:
                                             giftAddressController,
-                                        maxLines: 2,
+                                        maxLines:
+                                            2,
                                         decoration:
                                             const InputDecoration(
                                           labelText:
@@ -2005,7 +2428,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                         controller:
                                             giftPincodeController,
                                         keyboardType:
-                                            TextInputType.number,
+                                            TextInputType
+                                                .number,
                                         maxLength:
                                             6,
                                         decoration:
@@ -2023,7 +2447,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           ),
                         ),
 
-                        const SizedBox(height: 22),
+                        const SizedBox(
+                          height: 22,
+                        ),
 
                         // ==================================================
                         // PAYMENT
@@ -2039,14 +2465,20 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           ),
                         ),
 
-                        const SizedBox(height: 10),
+                        const SizedBox(
+                          height: 10,
+                        ),
 
                         Card(
                           child:
-                              RadioListTile<String>(
-                            value: 'COD',
-                            groupValue: 'COD',
-                            onChanged: null,
+                              RadioListTile<
+                                  String>(
+                            value:
+                                'COD',
+                            groupValue:
+                                'COD',
+                            onChanged:
+                                null,
                             title:
                                 const Text(
                               'Cash on Delivery',
@@ -2062,12 +2494,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
                             ),
                             secondary:
                                 const Icon(
-                              Icons.payments_outlined,
+                              Icons
+                                  .payments_outlined,
                             ),
                           ),
                         ),
 
-                        const SizedBox(height: 22),
+                        const SizedBox(
+                          height: 22,
+                        ),
 
                         // ==================================================
                         // ORDER SUMMARY
@@ -2083,13 +2518,16 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           ),
                         ),
 
-                        const SizedBox(height: 12),
+                        const SizedBox(
+                          height: 12,
+                        ),
 
                         Card(
                           child:
                               Padding(
                             padding:
-                                const EdgeInsets.all(16),
+                                const EdgeInsets
+                                    .all(16),
                             child:
                                 Column(
                               children: [
@@ -2113,7 +2551,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                 ),
 
                                 const Divider(
-                                  height: 28,
+                                  height:
+                                      28,
                                 ),
 
                                 Row(
@@ -2136,7 +2575,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                 ),
 
                                 const Divider(
-                                  height: 28,
+                                  height:
+                                      28,
                                 ),
 
                                 Row(
@@ -2148,7 +2588,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                       'Order Total',
                                       style:
                                           TextStyle(
-                                        fontSize: 18,
+                                        fontSize:
+                                            18,
                                         fontWeight:
                                             FontWeight.bold,
                                       ),
@@ -2157,7 +2598,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                       '₹${CartController.total.toStringAsFixed(0)}',
                                       style:
                                           const TextStyle(
-                                        fontSize: 20,
+                                        fontSize:
+                                            20,
                                         fontWeight:
                                             FontWeight.bold,
                                       ),
@@ -2169,7 +2611,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           ),
                         ),
 
-                        const SizedBox(height: 22),
+                        const SizedBox(
+                          height: 22,
+                        ),
 
                         // ==================================================
                         // PLACE ORDER
@@ -2180,7 +2624,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                               double.infinity,
                           height: 55,
                           child:
-                              FilledButton.icon(
+                              FilledButton
+                                  .icon(
                             onPressed:
                                 placingOrder ||
                                         loadingUserDetails
@@ -2189,17 +2634,22 @@ class _CheckoutPageState extends State<CheckoutPage> {
                             icon:
                                 placingOrder
                                     ? const SizedBox(
-                                        width: 22,
-                                        height: 22,
+                                        width:
+                                            22,
+                                        height:
+                                            22,
                                         child:
                                             CircularProgressIndicator(
-                                          strokeWidth: 2,
+                                          strokeWidth:
+                                              2,
                                         ),
                                       )
                                     : Icon(
                                         user == null
-                                            ? Icons.login
-                                            : Icons.shopping_bag_outlined,
+                                            ? Icons
+                                                .login
+                                            : Icons
+                                                .shopping_bag_outlined,
                                       ),
                             label:
                                 Text(
@@ -2210,15 +2660,19 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                       : 'Place Order',
                               style:
                                   const TextStyle(
-                                fontSize: 17,
+                                fontSize:
+                                    17,
                                 fontWeight:
-                                    FontWeight.bold,
+                                    FontWeight
+                                        .bold,
                               ),
                             ),
                           ),
                         ),
 
-                        const SizedBox(height: 30),
+                        const SizedBox(
+                          height: 30,
+                        ),
                       ],
                     ),
                   ),
@@ -2250,7 +2704,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
 }
 
 // =================================================================
-// ADDRESS EDITOR
+// ADDRESS EDITOR DIALOG
 // =================================================================
 
 class _AddressEditorDialog
@@ -2290,31 +2744,37 @@ class _AddressEditorDialogState
 
     final a = widget.existing;
 
-    name = TextEditingController(
+    name =
+        TextEditingController(
       text:
           a?.name ??
               widget.defaultName,
     );
 
-    phone = TextEditingController(
+    phone =
+        TextEditingController(
       text:
           a?.phone ??
               widget.defaultPhone,
     );
 
-    house = TextEditingController(
+    house =
+        TextEditingController(
       text: a?.house ?? '',
     );
 
-    street = TextEditingController(
+    street =
+        TextEditingController(
       text: a?.street ?? '',
     );
 
-    city = TextEditingController(
+    city =
+        TextEditingController(
       text: a?.city ?? '',
     );
 
-    state = TextEditingController(
+    state =
+        TextEditingController(
       text:
           a != null &&
                   a.state.isNotEmpty
@@ -2322,12 +2782,16 @@ class _AddressEditorDialogState
               : 'Rajasthan',
     );
 
-    pin = TextEditingController(
-      text: a?.pincode ?? '',
+    pin =
+        TextEditingController(
+      text:
+          a?.pincode ?? '',
     );
 
-    landmark = TextEditingController(
-      text: a?.landmark ?? '',
+    landmark =
+        TextEditingController(
+      text:
+          a?.landmark ?? '',
     );
 
     isDefault =
@@ -2348,7 +2812,9 @@ class _AddressEditorDialogState
     super.dispose();
   }
 
-  String cleanPhone(String value) {
+  String cleanPhone(
+    String value,
+  ) {
     String result =
         value.replaceAll(
       RegExp(r'[^0-9]'),
@@ -2361,11 +2827,20 @@ class _AddressEditorDialogState
           result.substring(2);
     }
 
+    if (result.length > 10) {
+      result =
+          result.substring(
+        result.length - 10,
+      );
+    }
+
     return result;
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return AlertDialog(
       title:
           Text(
@@ -2375,7 +2850,8 @@ class _AddressEditorDialogState
       ),
       content:
           SizedBox(
-        width: double.maxFinite,
+        width:
+            double.maxFinite,
         child:
             SingleChildScrollView(
           child:
@@ -2384,52 +2860,63 @@ class _AddressEditorDialogState
                 MainAxisSize.min,
             children: [
               TextField(
-                controller: name,
+                controller:
+                    name,
                 textCapitalization:
-                    TextCapitalization.words,
+                    TextCapitalization
+                        .words,
                 decoration:
                     const InputDecoration(
                   labelText:
                       'Full Name',
                   prefixIcon:
                       Icon(
-                    Icons.person_outline,
+                    Icons
+                        .person_outline,
                   ),
                 ),
               ),
 
               TextField(
-                controller: phone,
+                controller:
+                    phone,
                 keyboardType:
-                    TextInputType.phone,
-                maxLength: 10,
+                    TextInputType
+                        .phone,
+                maxLength:
+                    10,
                 decoration:
                     const InputDecoration(
                   labelText:
                       'Mobile Number',
                   prefixIcon:
                       Icon(
-                    Icons.phone_outlined,
+                    Icons
+                        .phone_outlined,
                   ),
-                  counterText: '',
+                  counterText:
+                      '',
                 ),
               ),
 
               TextField(
-                controller: house,
+                controller:
+                    house,
                 decoration:
                     const InputDecoration(
                   labelText:
                       'House / Flat No.',
                   prefixIcon:
                       Icon(
-                    Icons.home_outlined,
+                    Icons
+                        .home_outlined,
                   ),
                 ),
               ),
 
               TextField(
-                controller: street,
+                controller:
+                    street,
                 maxLines: 2,
                 decoration:
                     const InputDecoration(
@@ -2437,78 +2924,93 @@ class _AddressEditorDialogState
                       'Street / Area / Address',
                   prefixIcon:
                       Icon(
-                    Icons.location_on_outlined,
+                    Icons
+                        .location_on_outlined,
                   ),
                 ),
               ),
 
               TextField(
-                controller: landmark,
+                controller:
+                    landmark,
                 decoration:
                     const InputDecoration(
                   labelText:
                       'Landmark (Optional)',
                   prefixIcon:
                       Icon(
-                    Icons.place_outlined,
+                    Icons
+                        .place_outlined,
                   ),
                 ),
               ),
 
               TextField(
-                controller: city,
+                controller:
+                    city,
                 textCapitalization:
-                    TextCapitalization.words,
+                    TextCapitalization
+                        .words,
                 decoration:
                     const InputDecoration(
                   labelText:
                       'City',
                   prefixIcon:
                       Icon(
-                    Icons.location_city_outlined,
+                    Icons
+                        .location_city_outlined,
                   ),
                 ),
               ),
 
               TextField(
-                controller: state,
+                controller:
+                    state,
                 decoration:
                     const InputDecoration(
                   labelText:
                       'State',
                   prefixIcon:
                       Icon(
-                    Icons.map_outlined,
+                    Icons
+                        .map_outlined,
                   ),
                 ),
               ),
 
               TextField(
-                controller: pin,
+                controller:
+                    pin,
                 keyboardType:
-                    TextInputType.number,
-                maxLength: 6,
+                    TextInputType
+                        .number,
+                maxLength:
+                    6,
                 decoration:
                     const InputDecoration(
                   labelText:
                       'PIN Code',
                   prefixIcon:
                       Icon(
-                    Icons.pin_drop_outlined,
+                    Icons
+                        .pin_drop_outlined,
                   ),
-                  counterText: '',
+                  counterText:
+                      '',
                 ),
               ),
 
               CheckboxListTile(
                 contentPadding:
                     EdgeInsets.zero,
-                value: isDefault,
+                value:
+                    isDefault,
                 onChanged:
                     (value) {
                   setState(() {
                     isDefault =
-                        value ?? false;
+                        value ??
+                            false;
                   });
                 },
                 title:
@@ -2531,7 +3033,9 @@ class _AddressEditorDialogState
             context,
           ),
           child:
-              const Text('Cancel'),
+              const Text(
+            'Cancel',
+          ),
         ),
         FilledButton(
           onPressed: () {
@@ -2541,7 +3045,10 @@ class _AddressEditorDialogState
             );
 
             final validName =
-                name.text.trim().length >= 2;
+                name.text
+                        .trim()
+                        .length >=
+                    2;
 
             final validPhone =
                 RegExp(
@@ -2551,10 +3058,15 @@ class _AddressEditorDialogState
             );
 
             final validStreet =
-                street.text.trim().length >= 3;
+                street.text
+                        .trim()
+                        .length >=
+                    3;
 
             final validCity =
-                city.text.trim().isNotEmpty;
+                city.text
+                    .trim()
+                    .isNotEmpty;
 
             final validPin =
                 RegExp(
@@ -2585,8 +3097,13 @@ class _AddressEditorDialogState
                 CustomerAddress(
               addressId:
                   widget.existing
-                          ?.addressId ??
-                      'addr_${DateTime.now().microsecondsSinceEpoch}',
+                          ?.addressId
+                          .trim()
+                          .isNotEmpty ==
+                      true
+                  ? widget.existing!
+                      .addressId
+                  : 'addr_${DateTime.now().microsecondsSinceEpoch}',
               name:
                   name.text.trim(),
               phone:
