@@ -1,9 +1,9 @@
 import 'dart:convert';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'checkout_page.dart';
@@ -16,6 +16,7 @@ Future<void> main() async {
 
   try {
     await Firebase.initializeApp();
+
     await CartController.initialize();
 
     runApp(const PreeshoApp());
@@ -48,31 +49,29 @@ class Product {
   final String name;
   final String category;
 
-  // Final selling price.
+  // Existing price field
   final String price;
-
-  // Original/MRP price.
-  final String mrp;
-
-  // Discount percentage.
-  final double discountPercent;
 
   final int stock;
   final String imageUrl;
   final String description;
   final bool active;
 
+  // New discount fields
+  final double mrp;
+  final double discountPercent;
+
   Product({
     required this.id,
     required this.name,
     required this.category,
     required this.price,
-    required this.mrp,
-    required this.discountPercent,
     required this.stock,
     required this.imageUrl,
     required this.description,
     required this.active,
+    this.mrp = 0,
+    this.discountPercent = 0,
   });
 
   double get numericPrice {
@@ -82,70 +81,29 @@ class Product {
         0;
   }
 
-  double get numericMrp {
-    final value = double.tryParse(
-          mrp.replaceAll(RegExp(r'[^0-9.]'), ''),
-        ) ??
-        0;
+  // Selling price after discount.
+  double get sellingPrice {
+    if (discountPercent > 0 && mrp > 0) {
+      final calculated =
+          mrp - (mrp * discountPercent / 100);
 
-    if (value > 0) {
-      return value;
+      return calculated > 0 ? calculated : 0;
     }
 
     return numericPrice;
   }
 
-  double get calculatedDiscount {
-    if (discountPercent > 0) {
-      return discountPercent;
+  double get originalPrice {
+    if (mrp > 0) {
+      return mrp;
     }
 
-    final original = numericMrp;
-    final selling = numericPrice;
-
-    if (original > selling && original > 0) {
-      return ((original - selling) / original) * 100;
-    }
-
-    return 0;
+    return numericPrice;
   }
 
-  Map<String, dynamic> toCartMap() {
-    return {
-      'id': id,
-      'name': name,
-      'category': category,
-      'price': price,
-      'mrp': mrp,
-      'discountPercent': discountPercent,
-      'stock': stock,
-      'imageUrl': imageUrl,
-      'description': description,
-      'active': active,
-    };
-  }
-
-  factory Product.fromCartMap(Map<String, dynamic> data) {
-    return Product(
-      id: data['id']?.toString() ?? '',
-      name: data['name']?.toString() ?? '',
-      category: data['category']?.toString() ?? '',
-      price: data['price']?.toString() ?? '0',
-      mrp: data['mrp']?.toString() ?? '0',
-      discountPercent:
-          double.tryParse(
-                data['discountPercent']?.toString() ?? '0',
-              ) ??
-              0,
-      stock:
-          int.tryParse(
-                data['stock']?.toString() ?? '0',
-              ) ??
-              0,
-      imageUrl: data['imageUrl']?.toString() ?? '',
-      description: data['description']?.toString() ?? '',
-      active: data['active'] == true,
-    );
+  bool get hasDiscount {
+    return discountPercent > 0 &&
+        originalPrice > sellingPrice;
   }
 }
 
@@ -170,41 +128,17 @@ class CartItem {
 
   String get imageUrl => product.imageUrl;
 
-  double get numericPrice => product.numericPrice;
+  double get numericPrice => product.sellingPrice;
 
-  double get numericMrp => product.numericMrp;
+  double get originalPrice => product.originalPrice;
 
-  double get discountPercent => product.calculatedDiscount;
+  double get discountPercent =>
+      product.discountPercent;
 
-  double get totalPrice => numericPrice * quantity;
-
-  double get totalMrp => numericMrp * quantity;
-
-  double get totalSavings => totalMrp - totalPrice;
+  double get totalPrice =>
+      numericPrice * quantity;
 
   int get availableStock => product.stock;
-
-  Map<String, dynamic> toMap() {
-    return {
-      'product': product.toCartMap(),
-      'quantity': quantity,
-    };
-  }
-
-  factory CartItem.fromMap(Map<String, dynamic> data) {
-    return CartItem(
-      product: Product.fromCartMap(
-        Map<String, dynamic>.from(
-          data['product'] as Map? ?? {},
-        ),
-      ),
-      quantity:
-          int.tryParse(
-                data['quantity']?.toString() ?? '1',
-              ) ??
-              1,
-    );
-  }
 }
 
 // ============================================================
@@ -212,59 +146,162 @@ class CartItem {
 // ============================================================
 
 class CartController {
-  static const String _storageKey = 'preesho_cart';
+  static const String _storageKey =
+      'preesho_cart_v2';
 
   static final List<CartItem> items = [];
 
-  static bool initialized = false;
+  static SharedPreferences? _preferences;
+
+  static bool _initialized = false;
+
+  // ----------------------------------------------------------
+  // INITIALIZE CART
+  // ----------------------------------------------------------
 
   static Future<void> initialize() async {
-    if (initialized) return;
+    if (_initialized) return;
 
-    final prefs = await SharedPreferences.getInstance();
+    _preferences =
+        await SharedPreferences.getInstance();
 
-    final savedCart = prefs.getString(_storageKey);
+    await _loadCart();
 
-    if (savedCart != null && savedCart.isNotEmpty) {
-      try {
-        final decoded = jsonDecode(savedCart);
+    _initialized = true;
+  }
 
-        if (decoded is List) {
-          items.clear();
+  // ----------------------------------------------------------
+  // LOAD CART
+  // ----------------------------------------------------------
 
-          for (final item in decoded) {
-            if (item is Map) {
-              final cartItem = CartItem.fromMap(
-                Map<String, dynamic>.from(item),
-              );
+  static Future<void> _loadCart() async {
+    try {
+      final saved =
+          _preferences?.getString(_storageKey);
 
-              if (cartItem.product.id.isNotEmpty &&
-                  cartItem.quantity > 0) {
-                items.add(cartItem);
-              }
-            }
-          }
-        }
-      } catch (_) {
-        items.clear();
+      if (saved == null || saved.isEmpty) {
+        return;
       }
+
+      final decoded =
+          jsonDecode(saved);
+
+      if (decoded is! List) {
+        return;
+      }
+
+      for (final item in decoded) {
+        if (item is! Map) continue;
+
+        final productData =
+            item['product'];
+
+        if (productData is! Map) {
+          continue;
+        }
+
+        final product = Product(
+          id: productData['id']?.toString() ?? '',
+          name:
+              productData['name']?.toString() ?? '',
+          category:
+              productData['category']?.toString() ?? '',
+          price:
+              productData['price']?.toString() ?? '0',
+          stock: int.tryParse(
+                productData['stock']?.toString() ??
+                    '0',
+              ) ??
+              0,
+          imageUrl:
+              productData['imageUrl']?.toString() ??
+                  '',
+          description:
+              productData['description']?.toString() ??
+                  '',
+          active:
+              productData['active'] == true,
+          mrp:
+              double.tryParse(
+                    productData['mrp']?.toString() ??
+                        '0',
+                  ) ??
+                  0,
+          discountPercent:
+              double.tryParse(
+                    productData['discountPercent']
+                            ?.toString() ??
+                        '0',
+                  ) ??
+                  0,
+        );
+
+        final quantity =
+            int.tryParse(
+                  item['quantity']?.toString() ??
+                      '1',
+                ) ??
+                1;
+
+        if (product.id.isEmpty ||
+            quantity <= 0 ||
+            product.stock <= 0) {
+          continue;
+        }
+
+        final safeQuantity =
+            quantity > product.stock
+                ? product.stock
+                : quantity;
+
+        items.add(
+          CartItem(
+            product: product,
+            quantity: safeQuantity,
+          ),
+        );
+      }
+    } catch (_) {
+      items.clear();
     }
-
-    initialized = true;
   }
 
-  static Future<void> _save() async {
-    final prefs = await SharedPreferences.getInstance();
+  // ----------------------------------------------------------
+  // SAVE CART
+  // ----------------------------------------------------------
 
-    final data = items
-        .map((item) => item.toMap())
-        .toList();
+  static Future<void> _saveCart() async {
+    try {
+      final data = items.map((item) {
+        return {
+          'quantity': item.quantity,
+          'product': {
+            'id': item.product.id,
+            'name': item.product.name,
+            'category': item.product.category,
+            'price': item.product.price,
+            'stock': item.product.stock,
+            'imageUrl': item.product.imageUrl,
+            'description':
+                item.product.description,
+            'active': item.product.active,
+            'mrp': item.product.mrp,
+            'discountPercent':
+                item.product.discountPercent,
+          },
+        };
+      }).toList();
 
-    await prefs.setString(
-      _storageKey,
-      jsonEncode(data),
-    );
+      await _preferences?.setString(
+        _storageKey,
+        jsonEncode(data),
+      );
+    } catch (_) {}
   }
+
+  // ----------------------------------------------------------
+  // TOTAL
+  // ----------------------------------------------------------
 
   static double get total {
     return items.fold(
@@ -273,25 +310,38 @@ class CartController {
     );
   }
 
-  static double get totalMrp {
+  // ----------------------------------------------------------
+  // ORIGINAL TOTAL
+  // ----------------------------------------------------------
+
+  static double get originalTotal {
     return items.fold(
       0,
-      (sum, item) => sum + item.totalMrp,
+      (sum, item) =>
+          sum +
+          (item.originalPrice *
+              item.quantity),
     );
   }
 
-  static double get totalSavings {
-    return totalMrp - total;
+  // ----------------------------------------------------------
+  // PRODUCT DISCOUNT SAVING
+  // ----------------------------------------------------------
+
+  static double get productSavings {
+    final saving =
+        originalTotal - total;
+
+    return saving > 0 ? saving : 0;
   }
 
-  static int get itemCount {
-    return items.fold(
-      0,
-      (sum, item) => sum + item.quantity,
-    );
-  }
+  // ----------------------------------------------------------
+  // FIND ITEM
+  // ----------------------------------------------------------
 
-  static CartItem? findItem(String productId) {
+  static CartItem? findItem(
+    String productId,
+  ) {
     try {
       return items.firstWhere(
         (item) => item.id == productId,
@@ -301,20 +351,30 @@ class CartController {
     }
   }
 
-  static Future<bool> addProduct(Product product) async {
+  // ----------------------------------------------------------
+  // ADD PRODUCT
+  // ----------------------------------------------------------
+
+  static Future<bool> addProduct(
+    Product product,
+  ) async {
     if (product.stock <= 0) {
       return false;
     }
 
-    final existing = findItem(product.id);
+    final existing =
+        findItem(product.id);
 
     if (existing != null) {
-      if (existing.quantity >= product.stock) {
+      if (existing.quantity >=
+          product.stock) {
         return false;
       }
 
       existing.quantity++;
-      await _save();
+
+      await _saveCart();
+
       return true;
     }
 
@@ -325,33 +385,50 @@ class CartController {
       ),
     );
 
-    await _save();
+    await _saveCart();
+
     return true;
   }
+
+  // ----------------------------------------------------------
+  // INCREASE
+  // ----------------------------------------------------------
 
   static Future<bool> increaseQuantity(
     String productId,
   ) async {
-    final item = findItem(productId);
+    final item =
+        findItem(productId);
 
-    if (item == null) return false;
+    if (item == null) {
+      return false;
+    }
 
-    if (item.quantity >= item.availableStock) {
+    if (item.quantity >=
+        item.availableStock) {
       return false;
     }
 
     item.quantity++;
 
-    await _save();
+    await _saveCart();
+
     return true;
   }
+
+  // ----------------------------------------------------------
+  // DECREASE
+  // ----------------------------------------------------------
 
   static Future<bool> decreaseQuantity(
     String productId,
   ) async {
-    final item = findItem(productId);
+    final item =
+        findItem(productId);
 
-    if (item == null) return false;
+    if (item == null) {
+      return false;
+    }
 
     if (item.quantity > 1) {
       item.quantity--;
@@ -359,9 +436,14 @@ class CartController {
       items.remove(item);
     }
 
-    await _save();
+    await _saveCart();
+
     return true;
   }
+
+  // ----------------------------------------------------------
+  // REMOVE
+  // ----------------------------------------------------------
 
   static Future<void> removeProduct(
     String productId,
@@ -370,12 +452,19 @@ class CartController {
       (item) => item.id == productId,
     );
 
-    await _save();
+    await _saveCart();
   }
+
+  // ----------------------------------------------------------
+  // CLEAR
+  // ----------------------------------------------------------
 
   static Future<void> clear() async {
     items.clear();
-    await _save();
+
+    await _preferences?.remove(
+      _storageKey,
+    );
   }
 }
 
@@ -393,7 +482,8 @@ class PreeshoApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        colorSchemeSeed: Colors.deepPurple,
+        colorSchemeSeed:
+            Colors.deepPurple,
       ),
       home: const MainShell(),
     );
@@ -408,10 +498,12 @@ class MainShell extends StatefulWidget {
   const MainShell({super.key});
 
   @override
-  State<MainShell> createState() => _MainShellState();
+  State<MainShell> createState() =>
+      _MainShellState();
 }
 
-class _MainShellState extends State<MainShell> {
+class _MainShellState
+    extends State<MainShell> {
   int index = 0;
 
   void refresh() {
@@ -439,50 +531,46 @@ class _MainShellState extends State<MainShell> {
 
     return Scaffold(
       body: pages[index],
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar:
+          NavigationBar(
         selectedIndex: index,
-        onDestinationSelected: (i) {
+        onDestinationSelected:
+            (i) {
           setState(() {
             index = i;
           });
         },
-        destinations: [
-          const NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
+        destinations: const [
+          NavigationDestination(
+            icon:
+                Icon(Icons.home_outlined),
+            selectedIcon:
+                Icon(Icons.home),
             label: 'Home',
           ),
-          const NavigationDestination(
-            icon: Icon(Icons.category_outlined),
-            selectedIcon: Icon(Icons.category),
+          NavigationDestination(
+            icon: Icon(
+              Icons.category_outlined,
+            ),
+            selectedIcon:
+                Icon(Icons.category),
             label: 'Categories',
           ),
           NavigationDestination(
-            icon: Badge(
-              isLabelVisible:
-                  CartController.itemCount > 0,
-              label: Text(
-                '${CartController.itemCount}',
-              ),
-              child: const Icon(
-                Icons.shopping_cart_outlined,
-              ),
+            icon: Icon(
+              Icons.shopping_cart_outlined,
             ),
-            selectedIcon: Badge(
-              isLabelVisible:
-                  CartController.itemCount > 0,
-              label: Text(
-                '${CartController.itemCount}',
-              ),
-              child: const Icon(
-                Icons.shopping_cart,
-              ),
+            selectedIcon: Icon(
+              Icons.shopping_cart,
             ),
             label: 'Cart',
           ),
-          const NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
+          NavigationDestination(
+            icon: Icon(
+              Icons.person_outline,
+            ),
+            selectedIcon:
+                Icon(Icons.person),
             label: 'Profile',
           ),
         ],
@@ -495,8 +583,11 @@ class _MainShellState extends State<MainShell> {
 // FIRESTORE PRODUCT STREAM
 // ============================================================
 
-class ProductStream extends StatelessWidget {
-  final Widget Function(List<Product> products) builder;
+class ProductStream
+    extends StatelessWidget {
+  final Widget Function(
+    List<Product> products,
+  ) builder;
 
   const ProductStream({
     super.key,
@@ -504,82 +595,106 @@ class ProductStream extends StatelessWidget {
   });
 
   Product productFromDocument(
-    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    QueryDocumentSnapshot<
+        Map<String, dynamic>> doc,
   ) {
     final data = doc.data();
 
-    final sellingPrice =
-        data['Price']?.toString() ?? '0';
-
-    final mrp =
-        data['MRP']?.toString() ??
-        data['Mrp']?.toString() ??
-        data['mrp']?.toString() ??
-        sellingPrice;
-
-    final discount =
+    final rawMrp =
         double.tryParse(
-              data['DiscountPercent']?.toString() ??
-                  data['Discount']?.toString() ??
-                  data['discountPercent']?.toString() ??
+              data['MRP']?.toString() ??
+                  data['Mrp']?.toString() ??
+                  '0',
+            ) ??
+            0;
+
+    final rawDiscount =
+        double.tryParse(
+              data['DiscountPercent']
+                      ?.toString() ??
+                  data['Discount']
+                      ?.toString() ??
                   '0',
             ) ??
             0;
 
     return Product(
       id: doc.id,
-      name: data['Name']?.toString() ?? '',
-      category: data['Category']?.toString() ?? '',
-      price: sellingPrice,
-      mrp: mrp,
-      discountPercent: discount,
-      stock:
-          int.tryParse(
-                data['Stock']?.toString() ?? '0',
-              ) ??
-              0,
+      name:
+          data['Name']?.toString() ?? '',
+      category:
+          data['Category']?.toString() ??
+              '',
+      price:
+          data['Price']?.toString() ??
+              '0',
+      stock: int.tryParse(
+            data['Stock']?.toString() ??
+                '0',
+          ) ??
+          0,
       imageUrl:
           data['Imageurl']?.toString() ??
-          data['ImageUrl']?.toString() ??
-          data['imageUrl']?.toString() ??
-          '',
+              data['ImageUrl']
+                  ?.toString() ??
+              '',
       description:
-          data['Description']?.toString() ?? '',
-      active: data['Active'] == true,
+          data['Description']
+                  ?.toString() ??
+              '',
+      active:
+          data['Active'] == true,
+      mrp: rawMrp,
+      discountPercent:
+          rawDiscount,
     );
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return StreamBuilder<
-        QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
+        QuerySnapshot<
+            Map<String, dynamic>>>(
+      stream: FirebaseFirestore
+          .instance
           .collection('products')
           .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState ==
+      builder:
+          (context, snapshot) {
+        if (snapshot
+                .connectionState ==
             ConnectionState.waiting) {
           return const Center(
-            child: CircularProgressIndicator(),
+            child:
+                CircularProgressIndicator(),
           );
         }
 
         if (snapshot.hasError) {
           return Center(
             child: Padding(
-              padding: const EdgeInsets.all(20),
+              padding:
+                  const EdgeInsets.all(
+                20,
+              ),
               child: Text(
                 'Unable to load products.\n\n${snapshot.error}',
-                textAlign: TextAlign.center,
+                textAlign:
+                    TextAlign.center,
               ),
             ),
           );
         }
 
-        final docs = snapshot.data?.docs ?? [];
+        final docs =
+            snapshot.data?.docs ?? [];
 
         final products = docs
-            .map(productFromDocument)
+            .map(
+              productFromDocument,
+            )
             .where(
               (product) =>
                   product.active &&
@@ -594,86 +709,11 @@ class ProductStream extends StatelessWidget {
 }
 
 // ============================================================
-// PRICE WIDGET
-// ============================================================
-
-class ProductPrice extends StatelessWidget {
-  final Product product;
-  final bool large;
-
-  const ProductPrice({
-    super.key,
-    required this.product,
-    this.large = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final discount = product.calculatedDiscount;
-    final mrp = product.numericMrp;
-    final price = product.numericPrice;
-
-    final showMrp = mrp > price;
-    final showDiscount = discount > 0;
-
-    return Wrap(
-      crossAxisAlignment:
-          WrapCrossAlignment.center,
-      spacing: 8,
-      runSpacing: 4,
-      children: [
-        Text(
-          '₹${price.toStringAsFixed(0)}',
-          style: TextStyle(
-            fontSize: large ? 28 : 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.deepPurple,
-          ),
-        ),
-
-        if (showMrp)
-          Text(
-            '₹${mrp.toStringAsFixed(0)}',
-            style: TextStyle(
-              fontSize: large ? 16 : 13,
-              color: Colors.grey,
-              decoration:
-                  TextDecoration.lineThrough,
-            ),
-          ),
-
-        if (showDiscount)
-          Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 7,
-              vertical: 3,
-            ),
-            decoration: BoxDecoration(
-              color: Colors.green.withValues(
-                alpha: 0.12,
-              ),
-              borderRadius:
-                  BorderRadius.circular(6),
-            ),
-            child: Text(
-              '${discount.toStringAsFixed(0)}% OFF',
-              style: const TextStyle(
-                color: Colors.green,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-// ============================================================
 // HOME PAGE
 // ============================================================
 
-class HomePage extends StatelessWidget {
+class HomePage
+    extends StatelessWidget {
   final VoidCallback onCartChanged;
 
   const HomePage({
@@ -682,13 +722,16 @@ class HomePage extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
           'Preesho',
           style: TextStyle(
-            fontWeight: FontWeight.bold,
+            fontWeight:
+                FontWeight.bold,
           ),
         ),
         actions: [
@@ -696,12 +739,15 @@ class HomePage extends StatelessWidget {
             onPressed: () {
               showSearch(
                 context: context,
-                delegate: ProductSearch(
+                delegate:
+                    ProductSearch(
                   onCartChanged,
                 ),
               );
             },
-            icon: const Icon(Icons.search),
+            icon: const Icon(
+              Icons.search,
+            ),
           ),
           IconButton(
             onPressed: () {},
@@ -714,14 +760,24 @@ class HomePage extends StatelessWidget {
       body: ProductStream(
         builder: (products) {
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding:
+                const EdgeInsets.all(
+              16,
+            ),
             children: [
               Container(
-                padding: const EdgeInsets.all(22),
-                decoration: BoxDecoration(
+                padding:
+                    const EdgeInsets.all(
+                  22,
+                ),
+                decoration:
+                    BoxDecoration(
                   borderRadius:
-                      BorderRadius.circular(22),
-                  gradient: const LinearGradient(
+                      BorderRadius.circular(
+                    22,
+                  ),
+                  gradient:
+                      const LinearGradient(
                     colors: [
                       Color(0xff5E35B1),
                       Color(0xff8E24AA),
@@ -730,77 +786,101 @@ class HomePage extends StatelessWidget {
                 ),
                 child: const Column(
                   crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                      CrossAxisAlignment
+                          .start,
                   children: [
                     Text(
                       'Welcome to Preesho',
                       style: TextStyle(
-                        color: Colors.white,
+                        color:
+                            Colors.white,
                         fontSize: 25,
-                        fontWeight: FontWeight.bold,
+                        fontWeight:
+                            FontWeight.bold,
                       ),
                     ),
-                    SizedBox(height: 7),
+                    SizedBox(
+                      height: 7,
+                    ),
                     Text(
                       'Shop smarter. Shop faster.',
-                      style: TextStyle(
-                        color: Colors.white70,
+                      style:
+                          TextStyle(
+                        color: Colors
+                            .white70,
                       ),
                     ),
                   ],
                 ),
               ),
 
-              const SizedBox(height: 22),
+              const SizedBox(
+                height: 22,
+              ),
 
               const Text(
                 'Categories',
                 style: TextStyle(
                   fontSize: 20,
-                  fontWeight: FontWeight.bold,
+                  fontWeight:
+                      FontWeight.bold,
                 ),
               ),
 
-              const SizedBox(height: 10),
+              const SizedBox(
+                height: 10,
+              ),
 
               SizedBox(
                 height: 90,
                 child: ListView(
                   scrollDirection:
                       Axis.horizontal,
-                  children: const [
+                  children:
+                      const [
                     CategoryCard(
-                      icon:
-                          Icons.phone_android,
-                      text: 'Electronics',
+                      icon: Icons
+                          .phone_android,
+                      text:
+                          'Electronics',
                     ),
                     CategoryCard(
-                      icon: Icons.checkroom,
+                      icon: Icons
+                          .checkroom,
                       text: 'Fashion',
                     ),
                     CategoryCard(
-                      icon: Icons.home,
+                      icon:
+                          Icons.home,
                       text: 'Home',
                     ),
                   ],
                 ),
               ),
 
-              const SizedBox(height: 18),
+              const SizedBox(
+                height: 18,
+              ),
 
               const Text(
                 'Products',
                 style: TextStyle(
                   fontSize: 20,
-                  fontWeight: FontWeight.bold,
+                  fontWeight:
+                      FontWeight.bold,
                 ),
               ),
 
-              const SizedBox(height: 10),
+              const SizedBox(
+                height: 10,
+              ),
 
               if (products.isEmpty)
                 const Padding(
-                  padding: EdgeInsets.all(30),
+                  padding:
+                      EdgeInsets.all(
+                    30,
+                  ),
                   child: Center(
                     child: Text(
                       'No products available',
@@ -809,8 +889,10 @@ class HomePage extends StatelessWidget {
                 ),
 
               ...products.map(
-                (product) => ProductTile(
-                  product: product,
+                (product) =>
+                    ProductTile(
+                  product:
+                      product,
                   onCartChanged:
                       onCartChanged,
                 ),
@@ -827,7 +909,8 @@ class HomePage extends StatelessWidget {
 // CATEGORY CARD
 // ============================================================
 
-class CategoryCard extends StatelessWidget {
+class CategoryCard
+    extends StatelessWidget {
   final IconData icon;
   final String text;
 
@@ -838,19 +921,25 @@ class CategoryCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Card(
       child: SizedBox(
         width: 115,
         child: Column(
           mainAxisAlignment:
-              MainAxisAlignment.center,
+              MainAxisAlignment
+                  .center,
           children: [
             Icon(icon),
-            const SizedBox(height: 5),
+            const SizedBox(
+              height: 5,
+            ),
             Text(
               text,
-              style: const TextStyle(
+              style:
+                  const TextStyle(
                 fontSize: 12,
               ),
             ),
@@ -865,7 +954,8 @@ class CategoryCard extends StatelessWidget {
 // CATEGORIES PAGE
 // ============================================================
 
-class CategoriesPage extends StatelessWidget {
+class CategoriesPage
+    extends StatelessWidget {
   final VoidCallback onCartChanged;
 
   const CategoriesPage({
@@ -874,20 +964,30 @@ class CategoriesPage extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Categories'),
+        title:
+            const Text('Categories'),
       ),
       body: ProductStream(
         builder: (products) {
-          final categories = products
-              .map((p) => p.category)
-              .where((c) => c.isNotEmpty)
-              .toSet()
-              .toList();
+          final categories =
+              products
+                  .map(
+                    (p) => p.category,
+                  )
+                  .where(
+                    (c) =>
+                        c.isNotEmpty,
+                  )
+                  .toSet()
+                  .toList();
 
-          if (categories.isEmpty) {
+          if (categories
+              .isEmpty) {
             return const Center(
               child: Text(
                 'No categories available',
@@ -896,32 +996,39 @@ class CategoriesPage extends StatelessWidget {
           }
 
           return ListView(
-            children: categories.map((category) {
-              final categoryProducts =
-                  products
-                      .where(
-                        (p) =>
-                            p.category ==
-                            category,
-                      )
-                      .toList();
+            children:
+                categories.map(
+              (category) {
+                final categoryProducts =
+                    products
+                        .where(
+                          (p) =>
+                              p.category ==
+                              category,
+                        )
+                        .toList();
 
-              return ExpansionTile(
-                title: Text(category),
-                leading:
-                    const Icon(Icons.category),
-                children: categoryProducts
-                    .map(
-                      (product) =>
-                          ProductTile(
-                        product: product,
-                        onCartChanged:
-                            onCartChanged,
-                      ),
-                    )
-                    .toList(),
-              );
-            }).toList(),
+                return ExpansionTile(
+                  title:
+                      Text(category),
+                  leading:
+                      const Icon(
+                    Icons.category,
+                  ),
+                  children:
+                      categoryProducts
+                          .map(
+                    (product) =>
+                        ProductTile(
+                      product:
+                          product,
+                      onCartChanged:
+                          onCartChanged,
+                    ),
+                  ).toList(),
+                );
+              },
+            ).toList(),
           );
         },
       ),
@@ -933,7 +1040,8 @@ class CategoriesPage extends StatelessWidget {
 // PRODUCT TILE
 // ============================================================
 
-class ProductTile extends StatelessWidget {
+class ProductTile
+    extends StatelessWidget {
   final Product product;
   final VoidCallback onCartChanged;
 
@@ -943,44 +1051,14 @@ class ProductTile extends StatelessWidget {
     required this.onCartChanged,
   });
 
-  Future<void> addToCart(
-    BuildContext context,
-  ) async {
-    final added =
-        await CartController.addProduct(
-      product,
-    );
-
-    if (added) {
-      onCartChanged();
-
-      if (!context.mounted) return;
-
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
-        const SnackBar(
-          content: Text('Added to cart'),
-          duration:
-              Duration(seconds: 1),
-        ),
-      );
-    } else {
-      if (!context.mounted) return;
-
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
-        const SnackBar(
-          content:
-              Text('Maximum available stock reached'),
-        ),
-      );
-    }
-  }
-
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final cartItem =
-        CartController.findItem(product.id);
+        CartController.findItem(
+      product.id,
+    );
 
     final cartQuantity =
         cartItem?.quantity ?? 0;
@@ -1007,12 +1085,15 @@ class ProductTile extends StatelessWidget {
         onCartChanged();
       },
       child: Card(
-        margin: const EdgeInsets.only(
+        margin:
+            const EdgeInsets.only(
           bottom: 12,
         ),
         child: Padding(
           padding:
-              const EdgeInsets.all(10),
+              const EdgeInsets.all(
+            10,
+          ),
           child: Row(
             children: [
               SizedBox(
@@ -1023,85 +1104,150 @@ class ProductTile extends StatelessWidget {
                       BorderRadius.circular(
                     12,
                   ),
-                  child:
-                      product.imageUrl.isNotEmpty
-                          ? Image.network(
-                              product.imageUrl,
-                              fit: BoxFit.cover,
-                              errorBuilder:
-                                  (
-                                context,
-                                error,
-                                stack,
-                              ) {
-                                return const ColoredBox(
-                                  color:
-                                      Colors.black12,
-                                  child: Icon(
-                                    Icons
-                                        .image_not_supported,
-                                  ),
-                                );
-                              },
-                            )
-                          : const ColoredBox(
-                              color:
-                                  Colors.black12,
-                              child: Icon(
+                  child: product
+                          .imageUrl
+                          .isNotEmpty
+                      ? Image.network(
+                          product
+                              .imageUrl,
+                          fit: BoxFit
+                              .cover,
+                          errorBuilder:
+                              (
+                            context,
+                            error,
+                            stack,
+                          ) {
+                            return const ColoredBox(
+                              color: Colors
+                                  .black12,
+                              child:
+                                  Icon(
                                 Icons
-                                    .shopping_bag_outlined,
+                                    .image_not_supported,
                               ),
-                            ),
+                            );
+                          },
+                        )
+                      : const ColoredBox(
+                          color:
+                              Colors.black12,
+                          child:
+                              Icon(
+                            Icons
+                                .shopping_bag_outlined,
+                          ),
+                        ),
                 ),
               ),
 
-              const SizedBox(width: 12),
+              const SizedBox(
+                width: 12,
+              ),
 
               Expanded(
                 child: Column(
                   crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                      CrossAxisAlignment
+                          .start,
                   children: [
                     Text(
-                      product.name.isEmpty
+                      product.name
+                              .isEmpty
                           ? 'Unnamed Product'
                           : product.name,
                       style:
                           const TextStyle(
                         fontWeight:
-                            FontWeight.bold,
+                            FontWeight
+                                .bold,
                         fontSize: 16,
                       ),
                     ),
 
-                    const SizedBox(height: 4),
+                    const SizedBox(
+                      height: 4,
+                    ),
 
                     Text(
                       product.category,
                       style: TextStyle(
-                        color:
-                            Colors.grey.shade600,
+                        color: Colors
+                            .grey
+                            .shade600,
                       ),
                     ),
 
-                    const SizedBox(height: 5),
-
-                    ProductPrice(
-                      product: product,
+                    const SizedBox(
+                      height: 4,
                     ),
 
-                    const SizedBox(height: 4),
+                    if (product
+                        .hasDiscount)
+                      Row(
+                        children: [
+                          Text(
+                            '₹${product.originalPrice.toStringAsFixed(0)}',
+                            style:
+                                TextStyle(
+                              color: Colors
+                                  .grey
+                                  .shade600,
+                              decoration:
+                                  TextDecoration
+                                      .lineThrough,
+                            ),
+                          ),
+                          const SizedBox(
+                            width: 7,
+                          ),
+                          Text(
+                            '${product.discountPercent.toStringAsFixed(0)}% OFF',
+                            style:
+                                const TextStyle(
+                              color: Colors
+                                  .green,
+                              fontWeight:
+                                  FontWeight
+                                      .bold,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                    const SizedBox(
+                      height: 2,
+                    ),
+
+                    Text(
+                      '₹${product.sellingPrice.toStringAsFixed(0)}',
+                      style:
+                          const TextStyle(
+                        fontWeight:
+                            FontWeight
+                                .bold,
+                        fontSize: 16,
+                      ),
+                    ),
+
+                    const SizedBox(
+                      height: 4,
+                    ),
 
                     Text(
                       outOfStock
                           ? 'Out of Stock'
                           : 'Stock: ${product.stock}',
                       style: TextStyle(
-                        color: outOfStock
-                            ? Colors.red
-                            : Colors.green,
+                        color:
+                            outOfStock
+                                ? Colors
+                                    .red
+                                : Colors
+                                    .green,
                         fontWeight:
-                            FontWeight.w600,
+                            FontWeight
+                                .w600,
                       ),
                     ),
                   ],
@@ -1115,19 +1261,54 @@ class ProductTile extends StatelessWidget {
                     'Out of Stock',
                     textAlign:
                         TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.red,
+                    style:
+                        TextStyle(
+                      color:
+                          Colors.red,
                       fontWeight:
-                          FontWeight.bold,
+                          FontWeight
+                              .bold,
                     ),
                   ),
                 )
-              else if (cartQuantity == 0)
+              else if (cartQuantity ==
+                  0)
                 IconButton.filled(
-                  onPressed: () =>
-                      addToCart(context),
+                  onPressed:
+                      () async {
+                    final added =
+                        await CartController
+                            .addProduct(
+                      product,
+                    );
+
+                    if (added) {
+                      onCartChanged();
+
+                      if (!context
+                          .mounted) {
+                        return;
+                      }
+
+                      ScaffoldMessenger
+                          .of(
+                        context,
+                      ).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Added to cart',
+                          ),
+                          duration:
+                              Duration(
+                            seconds: 1,
+                          ),
+                        ),
+                      );
+                    }
+                  },
                   icon: const Icon(
-                    Icons.add_shopping_cart,
+                    Icons
+                        .add_shopping_cart,
                   ),
                 )
               else
@@ -1136,7 +1317,8 @@ class ProductTile extends StatelessWidget {
                       MainAxisSize.min,
                   children: [
                     IconButton(
-                      onPressed: () async {
+                      onPressed:
+                          () async {
                         await CartController
                             .decreaseQuantity(
                           product.id,
@@ -1155,19 +1337,22 @@ class ProductTile extends StatelessWidget {
                       style:
                           const TextStyle(
                         fontWeight:
-                            FontWeight.bold,
+                            FontWeight
+                                .bold,
                       ),
                     ),
 
                     IconButton(
                       onPressed:
                           cartQuantity >=
-                                  product.stock
+                                  product
+                                      .stock
                               ? null
                               : () async {
                                   await CartController
                                       .increaseQuantity(
-                                    product.id,
+                                    product
+                                        .id,
                                   );
 
                                   onCartChanged();
@@ -1203,51 +1388,30 @@ class ProductDetailsPage
   });
 
   @override
-  State<ProductDetailsPage> createState() =>
-      _ProductDetailsPageState();
+  State<ProductDetailsPage>
+      createState() =>
+          _ProductDetailsPageState();
 }
 
 class _ProductDetailsPageState
-    extends State<ProductDetailsPage> {
+    extends State<
+        ProductDetailsPage> {
   void refreshCart() {
     setState(() {});
     widget.onCartChanged();
   }
 
-  Future<void> addProduct() async {
-    final added =
-        await CartController.addProduct(
-      widget.product,
-    );
-
-    if (!mounted) return;
-
-    if (added) {
-      refreshCart();
-
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
-        const SnackBar(
-          content: Text('Added to cart'),
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
-        const SnackBar(
-          content:
-              Text('Maximum available stock reached'),
-        ),
-      );
-    }
-  }
-
   @override
-  Widget build(BuildContext context) {
-    final product = widget.product;
+  Widget build(
+    BuildContext context,
+  ) {
+    final product =
+        widget.product;
 
     final cartItem =
-        CartController.findItem(product.id);
+        CartController.findItem(
+      product.id,
+    );
 
     final quantity =
         cartItem?.quantity ?? 0;
@@ -1266,118 +1430,158 @@ class _ProductDetailsPageState
           Expanded(
             child: ListView(
               padding:
-                  const EdgeInsets.all(16),
+                  const EdgeInsets.all(
+                16,
+              ),
               children: [
                 Container(
                   height: 300,
-                  width: double.infinity,
+                  width:
+                      double.infinity,
                   decoration:
                       BoxDecoration(
-                    color:
-                        Colors.grey.shade100,
+                    color: Colors
+                        .grey
+                        .shade100,
                     borderRadius:
-                        BorderRadius.circular(
+                        BorderRadius
+                            .circular(
                       20,
                     ),
                   ),
-                  child: ClipRRect(
+                  child:
+                      ClipRRect(
                     borderRadius:
-                        BorderRadius.circular(
+                        BorderRadius
+                            .circular(
                       20,
                     ),
-                    child:
-                        product.imageUrl.isNotEmpty
-                            ? Image.network(
-                                product.imageUrl,
-                                fit: BoxFit.cover,
-                                errorBuilder:
-                                    (
-                                  context,
-                                  error,
-                                  stack,
-                                ) {
-                                  return const Center(
-                                    child: Icon(
-                                      Icons
-                                          .image_not_supported,
-                                      size: 70,
-                                    ),
-                                  );
-                                },
-                              )
-                            : const Center(
-                                child: Icon(
+                    child: product
+                            .imageUrl
+                            .isNotEmpty
+                        ? Image.network(
+                            product
+                                .imageUrl,
+                            fit: BoxFit
+                                .cover,
+                            errorBuilder:
+                                (
+                              context,
+                              error,
+                              stack,
+                            ) {
+                              return const Center(
+                                child:
+                                    Icon(
                                   Icons
-                                      .shopping_bag_outlined,
-                                  size: 80,
+                                      .image_not_supported,
+                                  size: 70,
                                 ),
-                              ),
+                              );
+                            },
+                          )
+                        : const Center(
+                            child:
+                                Icon(
+                              Icons
+                                  .shopping_bag_outlined,
+                              size: 80,
+                            ),
+                          ),
                   ),
                 ),
 
-                const SizedBox(height: 20),
+                const SizedBox(
+                  height: 20,
+                ),
 
                 Text(
-                  product.name.isEmpty
+                  product.name
+                          .isEmpty
                       ? 'Unnamed Product'
                       : product.name,
                   style:
                       const TextStyle(
                     fontSize: 26,
                     fontWeight:
-                        FontWeight.bold,
+                        FontWeight
+                            .bold,
                   ),
                 ),
 
-                const SizedBox(height: 8),
+                const SizedBox(
+                  height: 8,
+                ),
 
-                if (product.category
+                if (product
+                    .category
                     .isNotEmpty)
                   Chip(
                     label: Text(
-                      product.category,
+                      product
+                          .category,
                     ),
                   ),
 
-                const SizedBox(height: 10),
-
-                ProductPrice(
-                  product: product,
-                  large: true,
+                const SizedBox(
+                  height: 10,
                 ),
 
-                const SizedBox(height: 12),
-
-                if (product.calculatedDiscount >
-                    0)
-                  Container(
-                    padding:
-                        const EdgeInsets.all(
-                      12,
-                    ),
-                    decoration:
-                        BoxDecoration(
-                      borderRadius:
-                          BorderRadius.circular(
-                        12,
+                if (product
+                    .hasDiscount)
+                  Row(
+                    children: [
+                      Text(
+                        '₹${product.originalPrice.toStringAsFixed(0)}',
+                        style:
+                            TextStyle(
+                          fontSize: 18,
+                          color: Colors
+                              .grey
+                              .shade600,
+                          decoration:
+                              TextDecoration
+                                  .lineThrough,
+                        ),
                       ),
-                      color:
-                          Colors.green.withValues(
-                        alpha: 0.10,
+                      const SizedBox(
+                        width: 10,
                       ),
-                    ),
-                    child: Text(
-                      'You save ₹${(product.numericMrp - product.numericPrice).toStringAsFixed(0)} on this product',
-                      style:
-                          const TextStyle(
-                        color: Colors.green,
-                        fontWeight:
-                            FontWeight.bold,
+                      Text(
+                        '${product.discountPercent.toStringAsFixed(0)}% OFF',
+                        style:
+                            const TextStyle(
+                          fontSize: 17,
+                          color: Colors
+                              .green,
+                          fontWeight:
+                              FontWeight
+                                  .bold,
+                        ),
                       ),
-                    ),
+                    ],
                   ),
 
-                const SizedBox(height: 12),
+                const SizedBox(
+                  height: 4,
+                ),
+
+                Text(
+                  '₹${product.sellingPrice.toStringAsFixed(0)}',
+                  style:
+                      const TextStyle(
+                    fontSize: 28,
+                    fontWeight:
+                        FontWeight
+                            .bold,
+                    color: Colors
+                        .deepPurple,
+                  ),
+                ),
+
+                const SizedBox(
+                  height: 12,
+                ),
 
                 Row(
                   children: [
@@ -1387,9 +1591,12 @@ class _ProductDetailsPageState
                               .cancel_outlined
                           : Icons
                               .check_circle_outline,
-                      color: outOfStock
-                          ? Colors.red
-                          : Colors.green,
+                      color:
+                          outOfStock
+                              ? Colors
+                                  .red
+                              : Colors
+                                  .green,
                     ),
                     const SizedBox(
                       width: 8,
@@ -1398,18 +1605,25 @@ class _ProductDetailsPageState
                       outOfStock
                           ? 'Out of Stock'
                           : '${product.stock} items available',
-                      style: TextStyle(
-                        color: outOfStock
-                            ? Colors.red
-                            : Colors.green,
+                      style:
+                          TextStyle(
+                        color:
+                            outOfStock
+                                ? Colors
+                                    .red
+                                : Colors
+                                    .green,
                         fontWeight:
-                            FontWeight.bold,
+                            FontWeight
+                                .bold,
                       ),
                     ),
                   ],
                 ),
 
-                const SizedBox(height: 24),
+                const SizedBox(
+                  height: 24,
+                ),
 
                 const Text(
                   'Description',
@@ -1417,61 +1631,107 @@ class _ProductDetailsPageState
                       TextStyle(
                     fontSize: 20,
                     fontWeight:
-                        FontWeight.bold,
+                        FontWeight
+                            .bold,
                   ),
                 ),
 
-                const SizedBox(height: 8),
+                const SizedBox(
+                  height: 8,
+                ),
 
                 Text(
-                  product.description.isEmpty
+                  product
+                          .description
+                          .isEmpty
                       ? 'No description available for this product.'
-                      : product.description,
+                      : product
+                          .description,
                   style: TextStyle(
                     fontSize: 16,
                     height: 1.5,
-                    color:
-                        Colors.grey.shade700,
+                    color: Colors
+                        .grey
+                        .shade700,
                   ),
                 ),
 
-                const SizedBox(height: 30),
+                const SizedBox(
+                  height: 30,
+                ),
               ],
             ),
           ),
 
           Container(
             padding:
-                const EdgeInsets.all(16),
+                const EdgeInsets.all(
+              16,
+            ),
             decoration:
                 BoxDecoration(
-              color: Theme.of(context)
+              color: Theme.of(
+                context,
+              )
                   .scaffoldBackgroundColor,
               border:
                   Border(
-                top: BorderSide(
-                  color:
-                      Colors.grey.shade300,
+                top:
+                    BorderSide(
+                  color: Colors
+                      .grey
+                      .shade300,
                 ),
               ),
             ),
             child: SafeArea(
               top: false,
               child: SizedBox(
-                width: double.infinity,
+                width:
+                    double.infinity,
                 height: 54,
                 child: outOfStock
                     ? FilledButton(
-                        onPressed: null,
+                        onPressed:
+                            null,
                         child:
                             const Text(
                           'Out of Stock',
                         ),
                       )
-                    : quantity == 0
-                        ? FilledButton.icon(
+                    : quantity ==
+                            0
+                        ? FilledButton
+                            .icon(
                             onPressed:
-                                addProduct,
+                                () async {
+                              final added =
+                                  await CartController
+                                      .addProduct(
+                                product,
+                              );
+
+                              if (added) {
+                                refreshCart();
+
+                                if (!context
+                                    .mounted) {
+                                  return;
+                                }
+
+                                ScaffoldMessenger
+                                    .of(
+                                  context,
+                                ).showSnackBar(
+                                  const SnackBar(
+                                    content:
+                                        Text(
+                                      'Added to cart',
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
                             icon:
                                 const Icon(
                               Icons
@@ -1494,13 +1754,13 @@ class _ProductDetailsPageState
                             children: [
                               Expanded(
                                 child:
-                                    OutlinedButton
-                                        .icon(
+                                    OutlinedButton.icon(
                                   onPressed:
                                       () async {
                                     await CartController
                                         .decreaseQuantity(
-                                      product.id,
+                                      product
+                                          .id,
                                     );
 
                                     refreshCart();
@@ -1525,7 +1785,8 @@ class _ProductDetailsPageState
                                 '$quantity',
                                 style:
                                     const TextStyle(
-                                  fontSize: 20,
+                                  fontSize:
+                                      20,
                                   fontWeight:
                                       FontWeight
                                           .bold,
@@ -1538,8 +1799,7 @@ class _ProductDetailsPageState
 
                               Expanded(
                                 child:
-                                    FilledButton
-                                        .icon(
+                                    FilledButton.icon(
                                   onPressed:
                                       quantity >=
                                               product
@@ -1579,7 +1839,8 @@ class _ProductDetailsPageState
 // CART PAGE
 // ============================================================
 
-class CartPage extends StatefulWidget {
+class CartPage
+    extends StatefulWidget {
   final VoidCallback onCartChanged;
 
   const CartPage({
@@ -1594,50 +1855,17 @@ class CartPage extends StatefulWidget {
 
 class _CartPageState
     extends State<CartPage> {
-  Future<void> decrease(
-    String productId,
-  ) async {
-    await CartController.decreaseQuantity(
-      productId,
-    );
-
-    setState(() {});
-    widget.onCartChanged();
-  }
-
-  Future<void> increase(
-    String productId,
-  ) async {
-    await CartController.increaseQuantity(
-      productId,
-    );
-
-    setState(() {});
-    widget.onCartChanged();
-  }
-
-  Future<void> remove(
-    String productId,
-  ) async {
-    await CartController.removeProduct(
-      productId,
-    );
-
-    setState(() {});
-    widget.onCartChanged();
-  }
-
   @override
-  Widget build(BuildContext context) {
-    final items = CartController.items;
+  Widget build(
+    BuildContext context,
+  ) {
+    final items =
+        CartController.items;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          CartController.itemCount > 0
-              ? 'My Cart (${CartController.itemCount})'
-              : 'My Cart',
-        ),
+        title:
+            const Text('My Cart'),
       ),
       body: items.isEmpty
           ? const Center(
@@ -1651,30 +1879,38 @@ class _CartPageState
                   child:
                       ListView.builder(
                     padding:
-                        const EdgeInsets.all(
+                        const EdgeInsets
+                            .all(
                       12,
                     ),
-                    itemCount: items.length,
+                    itemCount:
+                        items.length,
                     itemBuilder:
-                        (context, index) {
+                        (context,
+                            index) {
                       final item =
                           items[index];
 
                       return Card(
                         margin:
-                            const EdgeInsets.only(
+                            const EdgeInsets
+                                .only(
                           bottom: 12,
                         ),
-                        child: Padding(
+                        child:
+                            Padding(
                           padding:
-                              const EdgeInsets.all(
+                              const EdgeInsets
+                                  .all(
                             10,
                           ),
                           child: Row(
                             children: [
                               SizedBox(
-                                width: 70,
-                                height: 70,
+                                width:
+                                    70,
+                                height:
+                                    70,
                                 child:
                                     ClipRRect(
                                   borderRadius:
@@ -1685,9 +1921,12 @@ class _CartPageState
                                   child: item
                                           .imageUrl
                                           .isNotEmpty
-                                      ? Image.network(
-                                          item.imageUrl,
-                                          fit: BoxFit.cover,
+                                      ? Image
+                                          .network(
+                                          item
+                                              .imageUrl,
+                                          fit: BoxFit
+                                              .cover,
                                           errorBuilder:
                                               (
                                             context,
@@ -1719,7 +1958,8 @@ class _CartPageState
                                           .start,
                                   children: [
                                     Text(
-                                      item.name,
+                                      item
+                                          .name,
                                       style:
                                           const TextStyle(
                                         fontWeight:
@@ -1729,26 +1969,78 @@ class _CartPageState
                                     ),
 
                                     const SizedBox(
-                                      height: 5,
+                                      height:
+                                          5,
                                     ),
 
-                                    ProductPrice(
-                                      product:
-                                          item.product,
+                                    if (item
+                                            .originalPrice >
+                                        item
+                                            .numericPrice)
+                                      Text(
+                                        '₹${item.originalPrice.toStringAsFixed(0)}',
+                                        style:
+                                            TextStyle(
+                                          color: Colors
+                                              .grey
+                                              .shade600,
+                                          decoration:
+                                              TextDecoration
+                                                  .lineThrough,
+                                        ),
+                                      ),
+
+                                    Text(
+                                      '₹${item.numericPrice.toStringAsFixed(0)}',
+                                      style:
+                                          const TextStyle(
+                                        fontWeight:
+                                            FontWeight
+                                                .bold,
+                                      ),
                                     ),
+
+                                    if (item
+                                            .discountPercent >
+                                        0)
+                                      Text(
+                                        '${item.discountPercent.toStringAsFixed(0)}% OFF',
+                                        style:
+                                            const TextStyle(
+                                          color:
+                                              Colors.green,
+                                          fontWeight:
+                                              FontWeight.bold,
+                                        ),
+                                      ),
 
                                     const SizedBox(
-                                      height: 8,
+                                      height:
+                                          8,
                                     ),
 
                                     Row(
                                       children: [
                                         IconButton(
                                           onPressed:
-                                              () =>
-                                                  decrease(
-                                            item.id,
-                                          ),
+                                              () async {
+                                            await CartController
+                                                .decreaseQuantity(
+                                              item
+                                                  .id,
+                                            );
+
+                                            if (!mounted) {
+                                              return;
+                                            }
+
+                                            setState(
+                                              () {},
+                                            );
+
+                                            widget
+                                                .onCartChanged();
+                                          },
                                           icon:
                                               const Icon(
                                             Icons
@@ -1767,13 +2059,28 @@ class _CartPageState
                                         ),
 
                                         IconButton(
-                                          onPressed: item.quantity >=
-                                                  item.availableStock
-                                              ? null
-                                              : () =>
-                                                  increase(
-                                                    item.id,
-                                                  ),
+                                          onPressed:
+                                              item.quantity >=
+                                                      item.availableStock
+                                                  ? null
+                                                  : () async {
+                                                      await CartController
+                                                          .increaseQuantity(
+                                                        item
+                                                            .id,
+                                                      );
+
+                                                      if (!mounted) {
+                                                        return;
+                                                      }
+
+                                                      setState(
+                                                        () {},
+                                                      );
+
+                                                      widget
+                                                          .onCartChanged();
+                                                    },
                                           icon:
                                               const Icon(
                                             Icons
@@ -1788,15 +2095,29 @@ class _CartPageState
 
                               IconButton(
                                 onPressed:
-                                    () => remove(
-                                  item.id,
-                                ),
+                                    () async {
+                                  await CartController
+                                      .removeProduct(
+                                    item.id,
+                                  );
+
+                                  if (!mounted) {
+                                    return;
+                                  }
+
+                                  setState(
+                                    () {},
+                                  );
+
+                                  widget
+                                      .onCartChanged();
+                                },
                                 icon:
                                     const Icon(
                                   Icons
                                       .delete_outline,
-                                  color:
-                                      Colors.red,
+                                  color: Colors
+                                      .red,
                                 ),
                               ),
                             ],
@@ -1809,14 +2130,16 @@ class _CartPageState
 
                 Container(
                   padding:
-                      const EdgeInsets.all(
+                      const EdgeInsets
+                          .all(
                     16,
                   ),
                   decoration:
                       BoxDecoration(
                     border:
                         Border(
-                      top: BorderSide(
+                      top:
+                          BorderSide(
                         color: Colors
                             .grey
                             .shade300,
@@ -1827,7 +2150,7 @@ class _CartPageState
                       Column(
                     children: [
                       if (CartController
-                              .totalSavings >
+                              .productSavings >
                           0)
                         Row(
                           mainAxisAlignment:
@@ -1835,36 +2158,24 @@ class _CartPageState
                                   .spaceBetween,
                           children: [
                             const Text(
-                              'You save',
-                              style:
-                                  TextStyle(
-                                color:
-                                    Colors.green,
-                                fontWeight:
-                                    FontWeight
-                                        .bold,
-                              ),
+                              'Product Savings',
                             ),
                             Text(
-                              '₹${CartController.totalSavings.toStringAsFixed(0)}',
+                              '- ₹${CartController.productSavings.toStringAsFixed(0)}',
                               style:
                                   const TextStyle(
                                 color:
                                     Colors.green,
                                 fontWeight:
-                                    FontWeight
-                                        .bold,
+                                    FontWeight.bold,
                               ),
                             ),
                           ],
                         ),
 
-                      if (CartController
-                              .totalSavings >
-                          0)
-                        const SizedBox(
-                          height: 6,
-                        ),
+                      const SizedBox(
+                        height: 6,
+                      ),
 
                       Row(
                         mainAxisAlignment:
@@ -1875,7 +2186,8 @@ class _CartPageState
                             'Total',
                             style:
                                 TextStyle(
-                              fontSize: 20,
+                              fontSize:
+                                  20,
                               fontWeight:
                                   FontWeight
                                       .bold,
@@ -1885,7 +2197,8 @@ class _CartPageState
                             '₹${CartController.total.toStringAsFixed(0)}',
                             style:
                                 const TextStyle(
-                              fontSize: 22,
+                              fontSize:
+                                  22,
                               fontWeight:
                                   FontWeight
                                       .bold,
@@ -1914,7 +2227,8 @@ class _CartPageState
                             if (user ==
                                 null) {
                               final loginResult =
-                                  await Navigator.push(
+                                  await Navigator
+                                      .push(
                                 context,
                                 MaterialPageRoute(
                                   builder:
@@ -1934,7 +2248,8 @@ class _CartPageState
                             }
 
                             final result =
-                                await Navigator.push(
+                                await Navigator
+                                    .push(
                               context,
                               MaterialPageRoute(
                                 builder:
@@ -1944,11 +2259,15 @@ class _CartPageState
                             );
 
                             if (result ==
-                                    true &&
-                                mounted) {
+                                true) {
+                              if (!mounted) {
+                                return;
+                              }
+
                               setState(
                                 () {},
                               );
+
                               widget
                                   .onCartChanged();
                             }
@@ -1958,7 +2277,8 @@ class _CartPageState
                             'Proceed to Checkout',
                             style:
                                 TextStyle(
-                              fontSize: 16,
+                              fontSize:
+                                  16,
                               fontWeight:
                                   FontWeight
                                       .bold,
@@ -1979,8 +2299,10 @@ class _CartPageState
 // PROFILE PAGE
 // ============================================================
 
-class ProfilePage extends StatefulWidget {
-  final VoidCallback onProfileChanged;
+class ProfilePage
+    extends StatefulWidget {
+  final VoidCallback
+      onProfileChanged;
 
   const ProfilePage({
     super.key,
@@ -1996,19 +2318,26 @@ class _ProfilePageState
     extends State<ProfilePage> {
   Future<void> logout() async {
     try {
-      await FirebaseAuth.instance
+      await FirebaseAuth
+          .instance
           .signOut();
 
       // Important:
-      // Cart is NOT cleared during logout.
-      // It remains stored locally.
+      // Cart is NOT cleared on logout.
+      //
+      // This fixes the issue where customer
+      // goes back / logs out and cart disappears.
+      //
+      // Later we can make cart user-specific.
 
       if (!mounted) return;
 
-      widget.onProfileChanged();
+      widget
+          .onProfileChanged();
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(
         const SnackBar(
           content: Text(
             'Logged out successfully',
@@ -2020,8 +2349,9 @@ class _ProfilePageState
     } catch (_) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(
         const SnackBar(
           content: Text(
             'Could not logout. Please try again.',
@@ -2032,7 +2362,8 @@ class _ProfilePageState
   }
 
   Future<void> openLogin() async {
-    final result = await Navigator.push(
+    final result =
+        await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) =>
@@ -2040,41 +2371,53 @@ class _ProfilePageState
       ),
     );
 
-    if (result == true && mounted) {
-      widget.onProfileChanged();
+    if (result == true &&
+        mounted) {
+      widget
+          .onProfileChanged();
+
       setState(() {});
     }
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final user =
-        FirebaseAuth.instance.currentUser;
+        FirebaseAuth
+            .instance
+            .currentUser;
 
-    final isLoggedIn = user != null;
+    final isLoggedIn =
+        user != null;
 
     final displayName =
         user?.displayName?.trim();
 
     final userName =
         (displayName != null &&
-                displayName.isNotEmpty)
+                displayName
+                    .isNotEmpty)
             ? displayName
             : 'Preesho Customer';
 
-    final email = user?.email ?? '';
+    final email =
+        user?.email ?? '';
+
     final mobile =
         user?.phoneNumber ?? '';
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'My Profile',
-        ),
+        title:
+            const Text('My Profile'),
       ),
       body: ListView(
         padding:
-            const EdgeInsets.all(16),
+            const EdgeInsets.all(
+          16,
+        ),
         children: [
           CircleAvatar(
             radius: 42,
@@ -2086,7 +2429,9 @@ class _ProfilePageState
             ),
           ),
 
-          const SizedBox(height: 10),
+          const SizedBox(
+            height: 10,
+          ),
 
           Center(
             child: Text(
@@ -2102,13 +2447,16 @@ class _ProfilePageState
 
           if (isLoggedIn &&
               email.isNotEmpty) ...[
-            const SizedBox(height: 4),
+            const SizedBox(
+              height: 4,
+            ),
             Center(
               child: Text(
                 email,
                 style: TextStyle(
-                  color:
-                      Colors.grey.shade700,
+                  color: Colors
+                      .grey
+                      .shade700,
                 ),
               ),
             ),
@@ -2116,45 +2464,57 @@ class _ProfilePageState
 
           if (isLoggedIn &&
               mobile.isNotEmpty) ...[
-            const SizedBox(height: 4),
+            const SizedBox(
+              height: 4,
+            ),
             Center(
               child: Text(
                 mobile,
                 style: TextStyle(
-                  color:
-                      Colors.grey.shade700,
+                  color: Colors
+                      .grey
+                      .shade700,
                 ),
               ),
             ),
           ],
 
-          const SizedBox(height: 20),
+          const SizedBox(
+            height: 20,
+          ),
 
           if (!isLoggedIn)
             ListTile(
-              leading:
-                  const Icon(Icons.login),
-              title: const Text(
+              leading: const Icon(
+                Icons.login,
+              ),
+              title:
+                  const Text(
                 'Login / Sign Up',
               ),
               subtitle:
                   const Text(
                 'Login with OTP or password',
               ),
-              onTap: openLogin,
+              onTap:
+                  openLogin,
             )
           else
             ListTile(
               leading:
-                  const Icon(Icons.logout),
-              title: const Text(
+                  const Icon(
+                Icons.logout,
+              ),
+              title:
+                  const Text(
                 'Logout',
               ),
               subtitle:
                   const Text(
                 'Sign out from your account',
               ),
-              onTap: logout,
+              onTap:
+                  logout,
             ),
 
           const ListTile(
@@ -2171,7 +2531,8 @@ class _ProfilePageState
                 const Icon(
               Icons.receipt_long,
             ),
-            title: const Text(
+            title:
+                const Text(
               'My Orders',
             ),
             subtitle:
@@ -2184,7 +2545,8 @@ class _ProfilePageState
                       .currentUser ==
                   null) {
                 final result =
-                    await Navigator.push(
+                    await Navigator
+                        .push(
                   context,
                   MaterialPageRoute(
                     builder: (_) =>
@@ -2192,12 +2554,15 @@ class _ProfilePageState
                   ),
                 );
 
-                if (result != true) {
+                if (result !=
+                    true) {
                   return;
                 }
               }
 
-              if (!mounted) return;
+              if (!mounted) {
+                return;
+              }
 
               Navigator.push(
                 context,
@@ -2209,12 +2574,21 @@ class _ProfilePageState
             },
           ),
 
+          // --------------------------------------------------
+          // NOTE:
+          // Admin will be moved to separate app.
+          // Existing button is kept temporarily so
+          // current project doesn't break.
+          // --------------------------------------------------
+
           ListTile(
             leading:
                 const Icon(
-              Icons.admin_panel_settings_outlined,
+              Icons
+                  .admin_panel_settings_outlined,
             ),
-            title: const Text(
+            title:
+                const Text(
               'Admin Login',
             ),
             onTap: () {
@@ -2230,8 +2604,11 @@ class _ProfilePageState
 
           const ListTile(
             leading:
-                Icon(Icons.help_outline),
-            title: Text(
+                Icon(
+              Icons.help_outline,
+            ),
+            title:
+                Text(
               'Help & Support',
             ),
           ),
@@ -2249,7 +2626,9 @@ class ProductSearch
     extends SearchDelegate<Product?> {
   final VoidCallback onCartChanged;
 
-  ProductSearch(this.onCartChanged);
+  ProductSearch(
+    this.onCartChanged,
+  );
 
   @override
   List<Widget>? buildActions(
@@ -2260,8 +2639,9 @@ class ProductSearch
         onPressed: () {
           query = '';
         },
-        icon:
-            const Icon(Icons.clear),
+        icon: const Icon(
+          Icons.clear,
+        ),
       ),
     ];
   }
@@ -2272,7 +2652,10 @@ class ProductSearch
   ) {
     return IconButton(
       onPressed: () {
-        close(context, null);
+        close(
+          context,
+          null,
+        );
       },
       icon: const Icon(
         Icons.arrow_back,
@@ -2287,33 +2670,35 @@ class ProductSearch
     return ProductStream(
       builder: (products) {
         final searchQuery =
-            query.trim().toLowerCase();
+            query
+                .trim()
+                .toLowerCase();
 
-        final results = products
-            .where(
-              (product) {
-                if (searchQuery.isEmpty) {
-                  return true;
-                }
+        final results =
+            products.where(
+          (product) {
+            if (searchQuery
+                .isEmpty) {
+              return true;
+            }
 
-                return product.name
-                        .toLowerCase()
-                        .contains(
-                          searchQuery,
-                        ) ||
-                    product.category
-                        .toLowerCase()
-                        .contains(
-                          searchQuery,
-                        ) ||
-                    product.description
-                        .toLowerCase()
-                        .contains(
-                          searchQuery,
-                        );
-              },
-            )
-            .toList();
+            return product.name
+                    .toLowerCase()
+                    .contains(
+                      searchQuery,
+                    ) ||
+                product.category
+                    .toLowerCase()
+                    .contains(
+                      searchQuery,
+                    ) ||
+                product.description
+                    .toLowerCase()
+                    .contains(
+                      searchQuery,
+                    );
+          },
+        ).toList();
 
         return _searchList(
           context,
@@ -2330,33 +2715,35 @@ class ProductSearch
     return ProductStream(
       builder: (products) {
         final searchQuery =
-            query.trim().toLowerCase();
+            query
+                .trim()
+                .toLowerCase();
 
-        final results = products
-            .where(
-              (product) {
-                if (searchQuery.isEmpty) {
-                  return true;
-                }
+        final results =
+            products.where(
+          (product) {
+            if (searchQuery
+                .isEmpty) {
+              return true;
+            }
 
-                return product.name
-                        .toLowerCase()
-                        .contains(
-                          searchQuery,
-                        ) ||
-                    product.category
-                        .toLowerCase()
-                        .contains(
-                          searchQuery,
-                        ) ||
-                    product.description
-                        .toLowerCase()
-                        .contains(
-                          searchQuery,
-                        );
-              },
-            )
-            .toList();
+            return product.name
+                    .toLowerCase()
+                    .contains(
+                      searchQuery,
+                    ) ||
+                product.category
+                    .toLowerCase()
+                    .contains(
+                      searchQuery,
+                    ) ||
+                product.description
+                    .toLowerCase()
+                    .contains(
+                      searchQuery,
+                    );
+          },
+        ).toList();
 
         return _searchList(
           context,
@@ -2380,7 +2767,9 @@ class ProductSearch
 
     return ListView(
       padding:
-          const EdgeInsets.all(12),
+          const EdgeInsets.all(
+        12,
+      ),
       children: products
           .map(
             (product) =>
