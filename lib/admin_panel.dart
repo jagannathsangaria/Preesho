@@ -148,7 +148,6 @@ class _AdminPanelState extends State<AdminPanel> {
         TextCellValue('Active'),
       ]);
 
-      // Example row
       sheet.appendRow([
         TextCellValue('Water Bottle'),
         TextCellValue('Home & Kitchen'),
@@ -166,7 +165,6 @@ class _AdminPanelState extends State<AdminPanel> {
         TextCellValue('TRUE'),
       ]);
 
-      // Instructions example
       sheet.appendRow([
         TextCellValue('Example Product 2'),
         TextCellValue('Stationery'),
@@ -188,10 +186,12 @@ class _AdminPanelState extends State<AdminPanel> {
         throw Exception('Unable to create Excel file');
       }
 
+      // FIX:
+      // file_saver 0.3.1 uses fileExtension, not ext.
       await FileSaver.instance.saveFile(
         name: 'Preesho_Product_Template',
         bytes: Uint8List.fromList(bytes),
-        ext: 'xlsx',
+        fileExtension: 'xlsx',
         mimeType: MimeType.microsoftExcel,
       );
 
@@ -235,16 +235,11 @@ class _AdminPanelState extends State<AdminPanel> {
         withData: true,
       );
 
-      if (result == null) {
-        return;
-      }
-
-      if (result.files.isEmpty) {
+      if (result == null || result.files.isEmpty) {
         return;
       }
 
       final file = result.files.first;
-
       final bytes = file.bytes;
 
       if (bytes == null) {
@@ -272,10 +267,6 @@ class _AdminPanelState extends State<AdminPanel> {
         );
       }
 
-      // ========================================================
-      // READ HEADERS
-      // ========================================================
-
       final headers = <String, int>{};
 
       for (int i = 0; i < sheet.rows.first.length; i++) {
@@ -292,7 +283,6 @@ class _AdminPanelState extends State<AdminPanel> {
         }
       }
 
-      // Required columns
       const requiredHeaders = [
         'name',
         'category',
@@ -313,16 +303,16 @@ class _AdminPanelState extends State<AdminPanel> {
       int successCount = 0;
       int skippedCount = 0;
 
-      WriteBatch batch = FirebaseFirestore.instance.batch();
+      WriteBatch batch =
+          FirebaseFirestore.instance.batch();
+
       int batchCount = 0;
 
-      // ========================================================
-      // PROCESS ROWS
-      // ========================================================
-
-      for (int rowIndex = 1;
-          rowIndex < sheet.rows.length;
-          rowIndex++) {
+      for (
+        int rowIndex = 1;
+        rowIndex < sheet.rows.length;
+        rowIndex++
+      ) {
         final row = sheet.rows[rowIndex];
 
         String getCell(String columnName) {
@@ -349,7 +339,6 @@ class _AdminPanelState extends State<AdminPanel> {
         final remark = getCell('remark');
         final activeText = getCell('active');
 
-        // Skip completely empty rows
         if (name.isEmpty &&
             category.isEmpty &&
             price.isEmpty &&
@@ -358,7 +347,6 @@ class _AdminPanelState extends State<AdminPanel> {
           continue;
         }
 
-        // Required validation
         if (name.isEmpty ||
             category.isEmpty ||
             price.isEmpty) {
@@ -366,8 +354,7 @@ class _AdminPanelState extends State<AdminPanel> {
           continue;
         }
 
-        final numericPrice =
-            double.tryParse(
+        final numericPrice = double.tryParse(
           price.replaceAll(
             RegExp(r'[^0-9.]'),
             '',
@@ -390,9 +377,9 @@ class _AdminPanelState extends State<AdminPanel> {
 
           isActive =
               normalized == 'true' ||
-                  normalized == 'yes' ||
-                  normalized == '1' ||
-                  normalized == 'active';
+              normalized == 'yes' ||
+              normalized == '1' ||
+              normalized == 'active';
         }
 
         final productDoc = productsRef.doc();
@@ -412,7 +399,6 @@ class _AdminPanelState extends State<AdminPanel> {
         batchCount++;
         successCount++;
 
-        // Firestore batch limit safety
         if (batchCount >= 450) {
           await batch.commit();
 
@@ -759,13 +745,14 @@ class _AdminPanelState extends State<AdminPanel> {
         padding: const EdgeInsets.all(16),
         children: [
           // ======================================================
-          // EXCEL BULK UPLOAD SECTION
+          // EXCEL BULK UPLOAD
           // ======================================================
 
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
+              borderRadius:
+                  BorderRadius.circular(18),
               gradient: const LinearGradient(
                 colors: [
                   Color(0xff00695C),
@@ -798,27 +785,27 @@ class _AdminPanelState extends State<AdminPanel> {
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 8),
-
                 const Text(
                   'Add multiple products at once using Excel',
                   style: TextStyle(
                     color: Colors.white70,
                   ),
                 ),
-
                 const SizedBox(height: 18),
-
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(
-                    onPressed: downloadingTemplate
-                        ? null
-                        : downloadExcelTemplate,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: const BorderSide(
+                    onPressed:
+                        downloadingTemplate
+                            ? null
+                            : downloadExcelTemplate,
+                    style:
+                        OutlinedButton.styleFrom(
+                      foregroundColor:
+                          Colors.white,
+                      side:
+                          const BorderSide(
                         color: Colors.white,
                       ),
                     ),
@@ -842,17 +829,18 @@ class _AdminPanelState extends State<AdminPanel> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 10),
-
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
-                    onPressed: uploadingExcel
-                        ? null
-                        : uploadExcelProducts,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: Colors.white,
+                    onPressed:
+                        uploadingExcel
+                            ? null
+                            : uploadExcelProducts,
+                    style:
+                        FilledButton.styleFrom(
+                      backgroundColor:
+                          Colors.white,
                       foregroundColor:
                           Colors.teal.shade800,
                     ),
@@ -888,7 +876,8 @@ class _AdminPanelState extends State<AdminPanel> {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
+              borderRadius:
+                  BorderRadius.circular(18),
               gradient: const LinearGradient(
                 colors: [
                   Color(0xff5E35B1),
@@ -941,29 +930,28 @@ class _AdminPanelState extends State<AdminPanel> {
                         value.trim().isEmpty) {
                       return 'Enter product name';
                     }
-
                     return null;
                   },
                 ),
-
                 inputField(
-                  controller: categoryController,
+                  controller:
+                      categoryController,
                   label: 'Category',
-                  icon: Icons.category_outlined,
+                  icon:
+                      Icons.category_outlined,
                   validator: (value) {
                     if (value == null ||
                         value.trim().isEmpty) {
                       return 'Enter category';
                     }
-
                     return null;
                   },
                 ),
-
                 inputField(
                   controller: priceController,
                   label: 'Price',
-                  icon: Icons.currency_rupee,
+                  icon:
+                      Icons.currency_rupee,
                   keyboardType:
                       TextInputType.number,
                   validator: (value) {
@@ -982,7 +970,6 @@ class _AdminPanelState extends State<AdminPanel> {
                     return null;
                   },
                 ),
-
                 inputField(
                   controller: stockController,
                   label: 'Stock',
@@ -997,7 +984,9 @@ class _AdminPanelState extends State<AdminPanel> {
                     }
 
                     final stock =
-                        int.tryParse(value.trim());
+                        int.tryParse(
+                      value.trim(),
+                    );
 
                     if (stock == null ||
                         stock < 0) {
@@ -1007,11 +996,12 @@ class _AdminPanelState extends State<AdminPanel> {
                     return null;
                   },
                 ),
-
                 inputField(
-                  controller: imageUrlController,
+                  controller:
+                      imageUrlController,
                   label: 'Image URL',
-                  icon: Icons.image_outlined,
+                  icon:
+                      Icons.image_outlined,
                   keyboardType:
                       TextInputType.url,
                   validator: (value) {
@@ -1029,7 +1019,6 @@ class _AdminPanelState extends State<AdminPanel> {
                     return null;
                   },
                 ),
-
                 inputField(
                   controller:
                       descriptionController,
@@ -1038,15 +1027,15 @@ class _AdminPanelState extends State<AdminPanel> {
                       Icons.description_outlined,
                   maxLines: 4,
                 ),
-
                 inputField(
-                  controller: remarkController,
+                  controller:
+                      remarkController,
                   label:
                       'Remark (Optional - shown in app)',
-                  icon: Icons.campaign_outlined,
+                  icon:
+                      Icons.campaign_outlined,
                   maxLines: 2,
                 ),
-
                 Card(
                   child: SwitchListTile(
                     title: const Text(
@@ -1063,15 +1052,15 @@ class _AdminPanelState extends State<AdminPanel> {
                     },
                   ),
                 ),
-
                 const SizedBox(height: 18),
-
                 SizedBox(
                   width: double.infinity,
                   height: 52,
                   child: FilledButton.icon(
                     onPressed:
-                        saving ? null : saveProduct,
+                        saving
+                            ? null
+                            : saveProduct,
                     icon: saving
                         ? const SizedBox(
                             width: 20,
@@ -1091,14 +1080,15 @@ class _AdminPanelState extends State<AdminPanel> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 12),
-
                 SizedBox(
                   width: double.infinity,
-                  child: OutlinedButton.icon(
+                  child:
+                      OutlinedButton.icon(
                     onPressed:
-                        saving ? null : clearForm,
+                        saving
+                            ? null
+                            : clearForm,
                     icon: const Icon(
                       Icons.clear_all,
                     ),
@@ -1114,7 +1104,7 @@ class _AdminPanelState extends State<AdminPanel> {
           const SizedBox(height: 30),
 
           // ======================================================
-          // PRODUCTS HEADER
+          // PRODUCTS
           // ======================================================
 
           const Text(
@@ -1127,12 +1117,9 @@ class _AdminPanelState extends State<AdminPanel> {
 
           const SizedBox(height: 12),
 
-          // ======================================================
-          // PRODUCTS LIST
-          // ======================================================
-
           StreamBuilder<
-              QuerySnapshot<Map<String, dynamic>>>(
+              QuerySnapshot<
+                  Map<String, dynamic>>>(
             stream: productsRef
                 .orderBy(
                   'CreatedAt',
@@ -1143,7 +1130,8 @@ class _AdminPanelState extends State<AdminPanel> {
               if (snapshot.connectionState ==
                   ConnectionState.waiting) {
                 return const Center(
-                  child: CircularProgressIndicator(),
+                  child:
+                      CircularProgressIndicator(),
                 );
               }
 
@@ -1181,14 +1169,17 @@ class _AdminPanelState extends State<AdminPanel> {
                   final data = doc.data();
 
                   final name =
-                      data['Name']?.toString() ?? '';
+                      data['Name']?.toString() ??
+                          '';
 
                   final category =
-                      data['Category']?.toString() ??
+                      data['Category']
+                              ?.toString() ??
                           '';
 
                   final price =
-                      data['Price']?.toString() ?? '0';
+                      data['Price']?.toString() ??
+                          '0';
 
                   final stock =
                       int.tryParse(
@@ -1202,11 +1193,14 @@ class _AdminPanelState extends State<AdminPanel> {
                       data['Active'] == true;
 
                   final imageUrl =
-                      data['Imageurl']?.toString() ??
+                      data['Imageurl']
+                              ?.toString() ??
                           '';
 
                   final remark =
-                      data['Remark']?.toString() ?? '';
+                      data['Remark']
+                              ?.toString() ??
+                          '';
 
                   return Card(
                     margin:
@@ -1215,7 +1209,9 @@ class _AdminPanelState extends State<AdminPanel> {
                     ),
                     child: Padding(
                       padding:
-                          const EdgeInsets.all(10),
+                          const EdgeInsets.all(
+                        10,
+                      ),
                       child: Row(
                         children: [
                           SizedBox(
@@ -1223,14 +1219,17 @@ class _AdminPanelState extends State<AdminPanel> {
                             height: 65,
                             child: ClipRRect(
                               borderRadius:
-                                  BorderRadius.circular(
+                                  BorderRadius
+                                      .circular(
                                 10,
                               ),
                               child:
-                                  imageUrl.isNotEmpty
+                                  imageUrl
+                                          .isNotEmpty
                                       ? Image.network(
                                           imageUrl,
-                                          fit: BoxFit.cover,
+                                          fit: BoxFit
+                                              .cover,
                                           errorBuilder:
                                               (
                                             context,
@@ -1249,9 +1248,9 @@ class _AdminPanelState extends State<AdminPanel> {
                                         ),
                             ),
                           ),
-
-                          const SizedBox(width: 12),
-
+                          const SizedBox(
+                            width: 12,
+                          ),
                           Expanded(
                             child: Column(
                               crossAxisAlignment:
@@ -1265,26 +1264,27 @@ class _AdminPanelState extends State<AdminPanel> {
                                   style:
                                       const TextStyle(
                                     fontWeight:
-                                        FontWeight.bold,
+                                        FontWeight
+                                            .bold,
                                     fontSize: 16,
                                   ),
                                 ),
-
-                                const SizedBox(height: 4),
-
+                                const SizedBox(
+                                  height: 4,
+                                ),
                                 Text(category),
-
-                                const SizedBox(height: 4),
-
+                                const SizedBox(
+                                  height: 4,
+                                ),
                                 Text(
                                   '₹$price',
                                   style:
                                       const TextStyle(
                                     fontWeight:
-                                        FontWeight.bold,
+                                        FontWeight
+                                            .bold,
                                   ),
                                 ),
-
                                 if (remark
                                     .trim()
                                     .isNotEmpty) ...[
@@ -1297,37 +1297,42 @@ class _AdminPanelState extends State<AdminPanel> {
                                     overflow:
                                         TextOverflow
                                             .ellipsis,
-                                    style: const TextStyle(
+                                    style:
+                                        const TextStyle(
                                       color:
-                                          Colors.orange,
+                                          Colors
+                                              .orange,
                                       fontSize: 12,
                                       fontWeight:
-                                          FontWeight.w600,
+                                          FontWeight
+                                              .w600,
                                     ),
                                   ),
                                 ],
-
-                                const SizedBox(height: 5),
-
+                                const SizedBox(
+                                  height: 5,
+                                ),
                                 Row(
                                   children: [
                                     Text(
                                       stock <= 0
                                           ? 'OUT OF STOCK'
                                           : 'Stock: $stock',
-                                      style: TextStyle(
-                                        color: stock <= 0
+                                      style:
+                                          TextStyle(
+                                        color: stock <=
+                                                0
                                             ? Colors.red
-                                            : Colors.green,
+                                            : Colors
+                                                .green,
                                         fontWeight:
-                                            FontWeight.bold,
+                                            FontWeight
+                                                .bold,
                                       ),
                                     ),
-
                                     const SizedBox(
                                       width: 10,
                                     ),
-
                                     Container(
                                       padding:
                                           const EdgeInsets
@@ -1340,12 +1345,10 @@ class _AdminPanelState extends State<AdminPanel> {
                                         color: isActive
                                             ? Colors.green
                                                 .withOpacity(
-                                                  0.1,
-                                                )
+                                                    0.1)
                                             : Colors.grey
                                                 .withOpacity(
-                                                  0.1,
-                                                ),
+                                                    0.1),
                                         borderRadius:
                                             BorderRadius
                                                 .circular(
@@ -1356,13 +1359,17 @@ class _AdminPanelState extends State<AdminPanel> {
                                         isActive
                                             ? 'Active'
                                             : 'Inactive',
-                                        style: TextStyle(
+                                        style:
+                                            TextStyle(
                                           color: isActive
-                                              ? Colors.green
-                                              : Colors.grey,
+                                              ? Colors
+                                                  .green
+                                              : Colors
+                                                  .grey,
                                           fontSize: 11,
                                           fontWeight:
-                                              FontWeight.bold,
+                                              FontWeight
+                                                  .bold,
                                         ),
                                       ),
                                     ),
@@ -1371,12 +1378,12 @@ class _AdminPanelState extends State<AdminPanel> {
                               ],
                             ),
                           ),
-
                           IconButton(
                             tooltip:
                                 'Delete Product',
                             icon: const Icon(
-                              Icons.delete_outline,
+                              Icons
+                                  .delete_outline,
                               color: Colors.red,
                             ),
                             onPressed: () {
@@ -1402,11 +1409,13 @@ class _AdminPanelState extends State<AdminPanel> {
           // ======================================================
 
           Container(
-            padding: const EdgeInsets.all(20),
+            padding:
+                const EdgeInsets.all(20),
             decoration: BoxDecoration(
               borderRadius:
                   BorderRadius.circular(18),
-              gradient: const LinearGradient(
+              gradient:
+                  const LinearGradient(
                 colors: [
                   Color(0xff1565C0),
                   Color(0xff42A5F5),
@@ -1445,7 +1454,8 @@ class _AdminPanelState extends State<AdminPanel> {
           // ======================================================
 
           StreamBuilder<
-              QuerySnapshot<Map<String, dynamic>>>(
+              QuerySnapshot<
+                  Map<String, dynamic>>>(
             stream: ordersRef
                 .orderBy(
                   'createdAt',
@@ -1456,7 +1466,8 @@ class _AdminPanelState extends State<AdminPanel> {
               if (snapshot.connectionState ==
                   ConnectionState.waiting) {
                 return const Center(
-                  child: CircularProgressIndicator(),
+                  child:
+                      CircularProgressIndicator(),
                 );
               }
 
@@ -1490,48 +1501,57 @@ class _AdminPanelState extends State<AdminPanel> {
               }
 
               return Column(
-                children: orders.map((doc) {
+                children:
+                    orders.map((doc) {
                   final data = doc.data();
 
                   final status =
-                      data['status']?.toString() ??
+                      data['status']
+                              ?.toString() ??
                           'Placed';
 
                   final name =
                       data['customerName']
                               ?.toString() ??
-                          data['name']?.toString() ??
+                          data['name']
+                              ?.toString() ??
                           'Customer';
 
                   final mobile =
                       data['customerMobile']
                               ?.toString() ??
-                          data['mobile']?.toString() ??
-                          data['phone']?.toString() ??
+                          data['mobile']
+                              ?.toString() ??
+                          data['phone']
+                              ?.toString() ??
                           '';
 
                   final email =
                       data['customerEmail']
                               ?.toString() ??
-                          data['email']?.toString() ??
+                          data['email']
+                              ?.toString() ??
                           '';
 
                   final address =
                       data['customerAddress']
                               ?.toString() ??
-                          data['address']?.toString() ??
+                          data['address']
+                              ?.toString() ??
                           '';
 
                   final city =
                       data['customerCity']
                               ?.toString() ??
-                          data['city']?.toString() ??
+                          data['city']
+                              ?.toString() ??
                           '';
 
                   final pincode =
                       data['customerPincode']
                               ?.toString() ??
-                          data['pincode']?.toString() ??
+                          data['pincode']
+                              ?.toString() ??
                           '';
 
                   final total =
@@ -1554,14 +1574,18 @@ class _AdminPanelState extends State<AdminPanel> {
                     ),
                     child: Padding(
                       padding:
-                          const EdgeInsets.all(16),
+                          const EdgeInsets.all(
+                        16,
+                      ),
                       child: Column(
                         crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                            CrossAxisAlignment
+                                .start,
                         children: [
                           Row(
                             crossAxisAlignment:
-                                CrossAxisAlignment.start,
+                                CrossAxisAlignment
+                                    .start,
                             children: [
                               Expanded(
                                 child: Column(
@@ -1616,22 +1640,23 @@ class _AdminPanelState extends State<AdminPanel> {
                                 ),
                                 child: Text(
                                   status,
-                                  style: TextStyle(
-                                    color: statusColor(
+                                  style:
+                                      TextStyle(
+                                    color:
+                                        statusColor(
                                       status,
                                     ),
                                     fontWeight:
-                                        FontWeight.bold,
+                                        FontWeight
+                                            .bold,
                                   ),
                                 ),
                               ),
                             ],
                           ),
-
                           const Divider(
                             height: 25,
                           ),
-
                           const Text(
                             'Customer',
                             style: TextStyle(
@@ -1640,42 +1665,44 @@ class _AdminPanelState extends State<AdminPanel> {
                               fontSize: 16,
                             ),
                           ),
-
-                          const SizedBox(height: 8),
-
+                          const SizedBox(
+                            height: 8,
+                          ),
                           Text(
                             name,
-                            style: const TextStyle(
+                            style:
+                                const TextStyle(
                               fontSize: 15,
                               fontWeight:
-                                  FontWeight.w600,
+                                  FontWeight
+                                      .w600,
                             ),
                           ),
-
                           if (mobile.isNotEmpty)
                             Padding(
                               padding:
-                                  const EdgeInsets.only(
+                                  const EdgeInsets
+                                      .only(
                                 top: 3,
                               ),
                               child: Text(
                                 'Mobile: $mobile',
                               ),
                             ),
-
                           if (email.isNotEmpty)
                             Padding(
                               padding:
-                                  const EdgeInsets.only(
+                                  const EdgeInsets
+                                      .only(
                                 top: 3,
                               ),
                               child: Text(
                                 'Email: $email',
                               ),
                             ),
-
-                          const SizedBox(height: 15),
-
+                          const SizedBox(
+                            height: 15,
+                          ),
                           const Text(
                             'Delivery Address',
                             style: TextStyle(
@@ -1684,9 +1711,9 @@ class _AdminPanelState extends State<AdminPanel> {
                               fontSize: 16,
                             ),
                           ),
-
-                          const SizedBox(height: 6),
-
+                          const SizedBox(
+                            height: 6,
+                          ),
                           Text(
                             [
                               address,
@@ -1695,28 +1722,32 @@ class _AdminPanelState extends State<AdminPanel> {
                             ]
                                 .where(
                                   (value) =>
-                                      value.isNotEmpty,
+                                      value
+                                          .isNotEmpty,
                                 )
                                 .join(', '),
                           ),
-
-                          const SizedBox(height: 15),
-
+                          const SizedBox(
+                            height: 15,
+                          ),
                           if (items.isNotEmpty) ...[
                             const Text(
                               'Items',
-                              style: TextStyle(
+                              style:
+                                  TextStyle(
                                 fontWeight:
-                                    FontWeight.bold,
+                                    FontWeight
+                                        .bold,
                                 fontSize: 16,
                               ),
                             ),
-
-                            const SizedBox(height: 7),
-
+                            const SizedBox(
+                              height: 7,
+                            ),
                             ...items.map(
                               (item) {
-                                if (item is! Map) {
+                                if (item
+                                    is! Map) {
                                   return const SizedBox
                                       .shrink();
                                 }
@@ -1748,7 +1779,9 @@ class _AdminPanelState extends State<AdminPanel> {
                                         ),
                                       ),
                                       Text(
-                                        money(itemTotal),
+                                        money(
+                                          itemTotal,
+                                        ),
                                         style:
                                             const TextStyle(
                                           fontWeight:
@@ -1762,11 +1795,9 @@ class _AdminPanelState extends State<AdminPanel> {
                               },
                             ),
                           ],
-
                           const Divider(
                             height: 25,
                           ),
-
                           Row(
                             mainAxisAlignment:
                                 MainAxisAlignment
@@ -1774,29 +1805,34 @@ class _AdminPanelState extends State<AdminPanel> {
                             children: [
                               const Text(
                                 'Order Total',
-                                style: TextStyle(
+                                style:
+                                    TextStyle(
                                   fontSize: 18,
                                   fontWeight:
-                                      FontWeight.bold,
+                                      FontWeight
+                                          .bold,
                                 ),
                               ),
                               Text(
                                 money(total),
-                                style: const TextStyle(
+                                style:
+                                    const TextStyle(
                                   fontSize: 21,
                                   fontWeight:
-                                      FontWeight.bold,
+                                      FontWeight
+                                          .bold,
                                 ),
                               ),
                             ],
                           ),
-
-                          const SizedBox(height: 15),
-
+                          const SizedBox(
+                            height: 15,
+                          ),
                           DropdownButtonFormField<
                               String>(
                             initialValue:
-                                orderStatuses.contains(
+                                orderStatuses
+                                        .contains(
                               status,
                             )
                                     ? status
@@ -1808,15 +1844,21 @@ class _AdminPanelState extends State<AdminPanel> {
                               border:
                                   OutlineInputBorder(),
                             ),
-                            items: orderStatuses.map(
-                              (statusValue) {
+                            items:
+                                orderStatuses
+                                    .map(
+                              (
+                                statusValue,
+                              ) {
                                 return DropdownMenuItem<
                                     String>(
-                                  value: statusValue,
+                                  value:
+                                      statusValue,
                                   child: Row(
                                     children: [
                                       Icon(
-                                        Icons.circle,
+                                        Icons
+                                            .circle,
                                         size: 10,
                                         color:
                                             statusColor(
@@ -1824,7 +1866,8 @@ class _AdminPanelState extends State<AdminPanel> {
                                         ),
                                       ),
                                       const SizedBox(
-                                        width: 8,
+                                        width:
+                                            8,
                                       ),
                                       Text(
                                         statusValue,
@@ -1834,9 +1877,12 @@ class _AdminPanelState extends State<AdminPanel> {
                                 );
                               },
                             ).toList(),
-                            onChanged: (value) {
-                              if (value == null ||
-                                  value == status) {
+                            onChanged:
+                                (value) {
+                              if (value ==
+                                      null ||
+                                  value ==
+                                      status) {
                                 return;
                               }
 
