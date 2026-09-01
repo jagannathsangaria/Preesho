@@ -59,34 +59,28 @@ class _OrdersPageState extends State<OrdersPage> {
           )
           .get();
 
-      final result =
-          snapshot.docs.toList();
+      final result = snapshot.docs.toList();
 
       result.sort((a, b) {
-        final aData = a.data();
-        final bData = b.data();
+        final aTime = _timestampToDate(
+          a.data()['createdAt'],
+        );
 
-        final aTime =
-            _timestampToDate(aData['createdAt']);
-
-        final bTime =
-            _timestampToDate(bData['createdAt']);
+        final bTime = _timestampToDate(
+          b.data()['createdAt'],
+        );
 
         return bTime.compareTo(aTime);
       });
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       setState(() {
         orders = result;
         loading = false;
       });
     } catch (e) {
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       setState(() {
         loading = false;
@@ -102,9 +96,7 @@ class _OrdersPageState extends State<OrdersPage> {
   // DATE HELPER
   // ============================================================
 
-  DateTime _timestampToDate(
-    dynamic value,
-  ) {
+  DateTime _timestampToDate(dynamic value) {
     if (value is Timestamp) {
       return value.toDate();
     }
@@ -113,48 +105,32 @@ class _OrdersPageState extends State<OrdersPage> {
       return value;
     }
 
-    return DateTime.fromMillisecondsSinceEpoch(
-      0,
-    );
+    return DateTime.fromMillisecondsSinceEpoch(0);
   }
 
   // ============================================================
   // FORMAT DATE
   // ============================================================
 
-  String formatDate(
-    dynamic value,
-  ) {
-    final date =
-        _timestampToDate(value);
+  String formatDate(dynamic value) {
+    final date = _timestampToDate(value);
 
-    if (date.millisecondsSinceEpoch ==
-        0) {
+    if (date.millisecondsSinceEpoch == 0) {
       return 'Date unavailable';
     }
 
-    final day =
-        date.day.toString().padLeft(2, '0');
-
-    final month =
-        date.month.toString().padLeft(2, '0');
-
-    final year =
-        date.year.toString();
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final year = date.year.toString();
 
     int hour = date.hour;
 
     final minute =
-        date.minute.toString().padLeft(
-              2,
-              '0',
-            );
+        date.minute.toString().padLeft(2, '0');
 
-    final period =
-        hour >= 12 ? 'PM' : 'AM';
+    final period = hour >= 12 ? 'PM' : 'AM';
 
-    hour =
-        hour % 12;
+    hour = hour % 12;
 
     if (hour == 0) {
       hour = 12;
@@ -168,20 +144,16 @@ class _OrdersPageState extends State<OrdersPage> {
   // ============================================================
 
   Future<void> cancelOrder(
-    QueryDocumentSnapshot<
-        Map<String, dynamic>> order,
+    QueryDocumentSnapshot<Map<String, dynamic>> order,
   ) async {
-    if (cancellingOrder) {
-      return;
-    }
+    if (cancellingOrder) return;
 
     final data = order.data();
 
-    final status =
-        (data['orderStatus'] ?? '')
-            .toString()
-            .trim()
-            .toLowerCase();
+    final status = (data['orderStatus'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
 
     if (!_canCancel(status)) {
       showMessage(
@@ -190,11 +162,9 @@ class _OrdersPageState extends State<OrdersPage> {
       return;
     }
 
-    final reason =
-        await showCancellationDialog();
+    final reason = await showCancellationDialog();
 
-    if (reason == null ||
-        reason.trim().isEmpty) {
+    if (reason == null || reason.trim().isEmpty) {
       return;
     }
 
@@ -216,33 +186,16 @@ class _OrdersPageState extends State<OrdersPage> {
           .collection('orders')
           .doc(order.id)
           .update({
-        'orderStatus':
-            'Cancelled',
-        'cancellationReason':
-            reason.trim(),
-        'cancelledAt':
-            FieldValue.serverTimestamp(),
-        'cancelledBy':
-            user.uid,
-        'updatedAt':
-            FieldValue.serverTimestamp(),
+        'orderStatus': 'Cancelled',
+        'cancellationReason': reason.trim(),
+        'cancelledAt': FieldValue.serverTimestamp(),
+        'cancelledBy': user.uid,
+        'updatedAt': FieldValue.serverTimestamp(),
       });
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
-      // Update local order immediately.
-      final index =
-          orders.indexWhere(
-        (item) =>
-            item.id ==
-            order.id,
-      );
-
-      if (index >= 0) {
-        await loadOrders();
-      }
+      await loadOrders();
 
       showMessage(
         'Order cancelled successfully.',
@@ -266,9 +219,7 @@ class _OrdersPageState extends State<OrdersPage> {
   // CAN CANCEL
   // ============================================================
 
-  bool _canCancel(
-    String status,
-  ) {
+  bool _canCancel(String status) {
     return status == 'confirmed' ||
         status == 'pending' ||
         status == 'placed' ||
@@ -280,8 +231,7 @@ class _OrdersPageState extends State<OrdersPage> {
   // ============================================================
 
   Future<String?> showCancellationDialog() async {
-    String selectedReason =
-        'Changed my mind';
+    String selectedReason = 'Changed my mind';
 
     final reasons = <String>[
       'Changed my mind',
@@ -292,33 +242,26 @@ class _OrdersPageState extends State<OrdersPage> {
       'Other',
     ];
 
-    final controller =
-        TextEditingController();
+    final controller = TextEditingController();
 
-    final result =
-        await showDialog<String>(
+    final result = await showDialog<String>(
       context: context,
       builder: (dialogContext) {
         return StatefulBuilder(
-          builder:
-              (
+          builder: (
             context,
             setDialogState,
           ) {
             return AlertDialog(
-              title:
-                  const Text(
+              title: const Text(
                 'Cancel Order?',
                 style: TextStyle(
-                  fontWeight:
-                      FontWeight.bold,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-              content:
-                  SingleChildScrollView(
+              content: SingleChildScrollView(
                 child: Column(
-                  mainAxisSize:
-                      MainAxisSize.min,
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment:
                       CrossAxisAlignment.start,
                   children: [
@@ -326,53 +269,36 @@ class _OrdersPageState extends State<OrdersPage> {
                       'Please select a reason for cancelling this order.',
                     ),
 
-                    const SizedBox(
-                      height: 16,
-                    ),
+                    const SizedBox(height: 16),
 
                     ...reasons.map(
                       (reason) {
-                        return RadioListTile<
-                            String>(
-                          contentPadding:
-                              EdgeInsets.zero,
+                        return RadioListTile<String>(
+                          contentPadding: EdgeInsets.zero,
                           dense: true,
                           value: reason,
-                          groupValue:
-                              selectedReason,
-                          onChanged:
-                              (value) {
-                            if (value ==
-                                null) {
-                              return;
-                            }
+                          groupValue: selectedReason,
+                          onChanged: (value) {
+                            if (value == null) return;
 
                             setDialogState(() {
-                              selectedReason =
-                                  value;
+                              selectedReason = value;
                             });
                           },
-                          title:
-                              Text(reason),
+                          title: Text(reason),
                         );
                       },
                     ),
 
-                    if (selectedReason ==
-                        'Other') ...[
-                      const SizedBox(
-                        height: 8,
-                      ),
+                    if (selectedReason == 'Other') ...[
+                      const SizedBox(height: 8),
                       TextField(
-                        controller:
-                            controller,
+                        controller: controller,
                         maxLines: 3,
                         decoration:
                             const InputDecoration(
-                          labelText:
-                              'Enter reason',
-                          border:
-                              OutlineInputBorder(),
+                          labelText: 'Enter reason',
+                          border: OutlineInputBorder(),
                         ),
                       ),
                     ],
@@ -381,35 +307,24 @@ class _OrdersPageState extends State<OrdersPage> {
               ),
               actions: [
                 TextButton(
-                  onPressed:
-                      () {
-                    Navigator.pop(
-                      dialogContext,
-                    );
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
                   },
-                  child:
-                      const Text(
+                  child: const Text(
                     'Keep Order',
                   ),
                 ),
                 FilledButton(
-                  onPressed:
-                      () {
-                    if (selectedReason ==
-                        'Other') {
+                  onPressed: () {
+                    if (selectedReason == 'Other') {
                       final other =
-                          controller
-                              .text
-                              .trim();
+                          controller.text.trim();
 
                       if (other.isEmpty) {
-                        ScaffoldMessenger
-                            .of(
-                          context,
-                        ).showSnackBar(
+                        ScaffoldMessenger.of(context)
+                            .showSnackBar(
                           const SnackBar(
-                            content:
-                                Text(
+                            content: Text(
                               'Please enter a cancellation reason.',
                             ),
                           ),
@@ -428,8 +343,7 @@ class _OrdersPageState extends State<OrdersPage> {
                       );
                     }
                   },
-                  child:
-                      const Text(
+                  child: const Text(
                     'Cancel Order',
                   ),
                 ),
@@ -449,9 +363,7 @@ class _OrdersPageState extends State<OrdersPage> {
   // STATUS COLOR
   // ============================================================
 
-  Color statusColor(
-    String status,
-  ) {
+  Color statusColor(String status) {
     switch (status.toLowerCase()) {
       case 'confirmed':
       case 'placed':
@@ -483,9 +395,7 @@ class _OrdersPageState extends State<OrdersPage> {
   // STATUS ICON
   // ============================================================
 
-  IconData statusIcon(
-    String status,
-  ) {
+  IconData statusIcon(String status) {
     switch (status.toLowerCase()) {
       case 'confirmed':
       case 'placed':
@@ -521,9 +431,7 @@ class _OrdersPageState extends State<OrdersPage> {
   // ITEM NAME
   // ============================================================
 
-  String itemName(
-    dynamic item,
-  ) {
+  String itemName(dynamic item) {
     if (item is! Map) {
       return 'Product';
     }
@@ -540,15 +448,10 @@ class _OrdersPageState extends State<OrdersPage> {
   // ITEM PRICE
   // ============================================================
 
-  double itemPrice(
-    dynamic item,
-  ) {
-    if (item is! Map) {
-      return 0;
-    }
+  double itemPrice(dynamic item) {
+    if (item is! Map) return 0;
 
-    final value =
-        item['price'];
+    final value = item['price'];
 
     if (value is num) {
       return value.toDouble();
@@ -564,15 +467,10 @@ class _OrdersPageState extends State<OrdersPage> {
   // ITEM QUANTITY
   // ============================================================
 
-  int itemQuantity(
-    dynamic item,
-  ) {
-    if (item is! Map) {
-      return 1;
-    }
+  int itemQuantity(dynamic item) {
+    if (item is! Map) return 1;
 
-    final value =
-        item['quantity'];
+    final value = item['quantity'];
 
     if (value is num) {
       return value.toInt();
@@ -588,40 +486,27 @@ class _OrdersPageState extends State<OrdersPage> {
   // IMAGE URL
   // ============================================================
 
-  String? itemImage(
-    dynamic item,
-  ) {
-    if (item is! Map) {
-      return null;
-    }
+  String? itemImage(dynamic item) {
+    if (item is! Map) return null;
 
     final image =
         item['imageUrl'] ??
         item['image'] ??
         item['productImage'];
 
-    if (image == null) {
-      return null;
-    }
+    if (image == null) return null;
 
-    final value =
-        image.toString().trim();
+    final value = image.toString().trim();
 
-    return value.isEmpty
-        ? null
-        : value;
+    return value.isEmpty ? null : value;
   }
 
   // ============================================================
   // SHOW MESSAGE
   // ============================================================
 
-  void showMessage(
-    String message,
-  ) {
-    if (!mounted) {
-      return;
-    }
+  void showMessage(String message) {
+    if (!mounted) return;
 
     ScaffoldMessenger.of(context)
         .hideCurrentSnackBar();
@@ -629,8 +514,7 @@ class _OrdersPageState extends State<OrdersPage> {
     ScaffoldMessenger.of(context)
         .showSnackBar(
       SnackBar(
-        content:
-            Text(message),
+        content: Text(message),
       ),
     );
   }
@@ -640,19 +524,15 @@ class _OrdersPageState extends State<OrdersPage> {
   // ============================================================
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     final user = currentUser;
 
     return Scaffold(
       appBar: AppBar(
-        title:
-            const Text(
+        title: const Text(
           'My Orders',
           style: TextStyle(
-            fontWeight:
-                FontWeight.bold,
+            fontWeight: FontWeight.bold,
           ),
         ),
         centerTitle: true,
@@ -660,10 +540,8 @@ class _OrdersPageState extends State<OrdersPage> {
       body: user == null
           ? buildLoginRequired()
           : RefreshIndicator(
-              onRefresh:
-                  loadOrders,
-              child:
-                  buildOrdersBody(),
+              onRefresh: loadOrders,
+              child: buildOrdersBody(),
             ),
     );
   }
@@ -675,41 +553,30 @@ class _OrdersPageState extends State<OrdersPage> {
   Widget buildLoginRequired() {
     return Center(
       child: Padding(
-        padding:
-            const EdgeInsets.all(
-          24,
-        ),
+        padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisAlignment:
               MainAxisAlignment.center,
           children: [
             Icon(
-              Icons
-                  .account_circle_outlined,
+              Icons.account_circle_outlined,
               size: 80,
-              color:
-                  Theme.of(context)
-                      .colorScheme
-                      .primary,
+              color: Theme.of(context)
+                  .colorScheme
+                  .primary,
             ),
-            const SizedBox(
-              height: 16,
-            ),
+            const SizedBox(height: 16),
             const Text(
               'Please login',
               style: TextStyle(
                 fontSize: 22,
-                fontWeight:
-                    FontWeight.bold,
+                fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(
-              height: 8,
-            ),
+            const SizedBox(height: 8),
             const Text(
               'Login to view your orders.',
-              textAlign:
-                  TextAlign.center,
+              textAlign: TextAlign.center,
             ),
           ],
         ),
@@ -724,8 +591,7 @@ class _OrdersPageState extends State<OrdersPage> {
   Widget buildOrdersBody() {
     if (loading) {
       return const Center(
-        child:
-            CircularProgressIndicator(),
+        child: CircularProgressIndicator(),
       );
     }
 
@@ -736,22 +602,16 @@ class _OrdersPageState extends State<OrdersPage> {
     return ListView.builder(
       physics:
           const AlwaysScrollableScrollPhysics(),
-      padding:
-          const EdgeInsets.fromLTRB(
+      padding: const EdgeInsets.fromLTRB(
         12,
         12,
         12,
         30,
       ),
-      itemCount:
-          orders.length,
-      itemBuilder:
-          (context, index) {
-        final order =
-            orders[index];
-
+      itemCount: orders.length,
+      itemBuilder: (context, index) {
         return buildOrderCard(
-          order,
+          orders[index],
         );
       },
     );
@@ -768,47 +628,34 @@ class _OrdersPageState extends State<OrdersPage> {
       children: [
         SizedBox(
           height:
-              MediaQuery.of(context)
-                      .size
-                      .height *
+              MediaQuery.of(context).size.height *
                   .28,
         ),
         Icon(
-          Icons
-              .shopping_bag_outlined,
+          Icons.shopping_bag_outlined,
           size: 90,
-          color:
-              Colors.grey.shade400,
+          color: Colors.grey.shade400,
         ),
-        const SizedBox(
-          height: 18,
-        ),
+        const SizedBox(height: 18),
         const Center(
           child: Text(
             'No orders yet',
             style: TextStyle(
               fontSize: 22,
-              fontWeight:
-                  FontWeight.bold,
+              fontWeight: FontWeight.bold,
             ),
           ),
         ),
-        const SizedBox(
-          height: 8,
-        ),
+        const SizedBox(height: 8),
         const Center(
           child: Padding(
             padding:
-                EdgeInsets.symmetric(
-              horizontal: 30,
-            ),
+                EdgeInsets.symmetric(horizontal: 30),
             child: Text(
               'Your placed orders will appear here.',
-              textAlign:
-                  TextAlign.center,
+              textAlign: TextAlign.center,
               style: TextStyle(
-                color:
-                    Colors.grey,
+                color: Colors.grey,
               ),
             ),
           ),
@@ -822,69 +669,42 @@ class _OrdersPageState extends State<OrdersPage> {
   // ============================================================
 
   Widget buildOrderCard(
-    QueryDocumentSnapshot<
-        Map<String, dynamic>> order,
+    QueryDocumentSnapshot<Map<String, dynamic>> order,
   ) {
-    final data =
-        order.data();
+    final data = order.data();
 
     final orderId =
-        (data['orderId'] ??
-                order.id)
-            .toString();
+        (data['orderId'] ?? order.id).toString();
 
     final status =
-        (data['orderStatus'] ??
-                'Pending')
-            .toString();
+        (data['orderStatus'] ?? 'Pending').toString();
 
     final paymentMethod =
-        (data['paymentMethod'] ??
-                'COD')
-            .toString();
+        (data['paymentMethod'] ?? 'COD').toString();
 
     final paymentStatus =
-        (data['paymentStatus'] ??
-                'Pending')
-            .toString();
+        (data['paymentStatus'] ?? 'Pending').toString();
 
     final total =
-        (data['totalAmount']
-                as num?)
-            ?.toDouble() ??
-        0;
+        (data['totalAmount'] as num?)?.toDouble() ?? 0;
 
-    final items =
-        data['items'] is List
-            ? List<dynamic>.from(
-                data['items'],
-              )
-            : <dynamic>[];
+    final items = data['items'] is List
+        ? List<dynamic>.from(data['items'])
+        : <dynamic>[];
 
-    final canCancel =
-        _canCancel(
+    final canCancel = _canCancel(
       status.toLowerCase(),
     );
 
     return Card(
-      margin:
-          const EdgeInsets.only(
-        bottom: 14,
-      ),
+      margin: const EdgeInsets.only(bottom: 14),
       elevation: 2,
-      clipBehavior:
-          Clip.antiAlias,
-      shape:
-          RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.circular(
-          16,
-        ),
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
       ),
-      child:
-          ExpansionTile(
-        tilePadding:
-            const EdgeInsets.fromLTRB(
+      child: ExpansionTile(
+        tilePadding: const EdgeInsets.fromLTRB(
           16,
           8,
           12,
@@ -897,150 +717,98 @@ class _OrdersPageState extends State<OrdersPage> {
           16,
           16,
         ),
-        title:
-            Row(
+        title: Row(
           children: [
             Expanded(
-              child:
-                  Text(
+              child: Text(
                 'Order #${shortOrderId(orderId)}',
-                style:
-                    const TextStyle(
-                  fontWeight:
-                      FontWeight.bold,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
                   fontSize: 16,
                 ),
               ),
             ),
-            statusBadge(
-              status,
-            ),
+            statusBadge(status),
           ],
         ),
-        subtitle:
-            Padding(
-          padding:
-              const EdgeInsets.only(
-            top: 7,
-          ),
-          child:
-              Column(
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 7),
+          child: Column(
             crossAxisAlignment:
                 CrossAxisAlignment.start,
             children: [
               Text(
-                formatDate(
-                  data['createdAt'],
-                ),
-                style:
-                    const TextStyle(
-                  color:
-                      Colors.grey,
+                formatDate(data['createdAt']),
+                style: const TextStyle(
+                  color: Colors.grey,
                   fontSize: 12,
                 ),
               ),
-              const SizedBox(
-                height: 5,
-              ),
+              const SizedBox(height: 5),
               Text(
                 '₹${total.toStringAsFixed(2)} • ${items.length} item${items.length == 1 ? '' : 's'}',
-                style:
-                    const TextStyle(
-                  fontWeight:
-                      FontWeight.w600,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
           ),
         ),
         children: [
-          const Divider(
-            height: 1,
-          ),
+          const Divider(height: 1),
 
-          const SizedBox(
-            height: 14,
-          ),
+          const SizedBox(height: 14),
 
-          // ------------------------------------------------------
-          // ORDER ITEMS
-          // ------------------------------------------------------
-
-          Align(
-            alignment:
-                Alignment.centerLeft,
-            child:
-                Text(
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
               'Order Items',
-              style:
-                  const TextStyle(
+              style: TextStyle(
                 fontSize: 17,
-                fontWeight:
-                    FontWeight.bold,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ),
 
-          const SizedBox(
-            height: 10,
-          ),
+          const SizedBox(height: 10),
 
           if (items.isEmpty)
             const Align(
-              alignment:
-                  Alignment.centerLeft,
-              child:
-                  Text(
+              alignment: Alignment.centerLeft,
+              child: Text(
                 'No item details available.',
               ),
             ),
 
-          ...items.map(
-            buildOrderItem,
-          ),
+          ...items.map(buildOrderItem),
 
-          const SizedBox(
-            height: 12,
-          ),
+          const SizedBox(height: 12),
 
           // ------------------------------------------------------
-          // TOTAL
+          // PAYMENT SUMMARY
           // ------------------------------------------------------
 
           Container(
-            padding:
-                const EdgeInsets.all(
-              14,
-            ),
-            decoration:
-                BoxDecoration(
-              color: Theme.of(
-                context,
-              )
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Theme.of(context)
                   .colorScheme
                   .surfaceContainerHighest,
               borderRadius:
-                  BorderRadius.circular(
-                12,
-              ),
+                  BorderRadius.circular(12),
             ),
-            child:
-                Column(
+            child: Column(
               children: [
                 summaryRow(
                   'Payment Method',
                   paymentMethod,
                 ),
-                const SizedBox(
-                  height: 8,
-                ),
+                const SizedBox(height: 8),
                 summaryRow(
                   'Payment Status',
                   paymentStatus,
                 ),
-                const Divider(
-                  height: 20,
-                ),
+                const Divider(height: 20),
                 summaryRow(
                   'Order Total',
                   '₹${total.toStringAsFixed(2)}',
@@ -1050,43 +818,33 @@ class _OrdersPageState extends State<OrdersPage> {
             ),
           ),
 
-          const SizedBox(
-            height: 14,
-          ),
+          const SizedBox(height: 14),
 
           // ------------------------------------------------------
           // DELIVERY ADDRESS
           // ------------------------------------------------------
 
-          buildDeliveryAddress(
-            data,
-          ),
+          buildDeliveryAddress(data),
 
-          const SizedBox(
-            height: 14,
-          ),
+          const SizedBox(height: 14),
 
           // ------------------------------------------------------
           // ORDER STATUS
           // ------------------------------------------------------
 
-          buildStatusSection(
-            status,
-          ),
+          buildStatusSection(status),
 
-          const SizedBox(
-            height: 14,
-          ),
+          const SizedBox(height: 14),
 
           // ------------------------------------------------------
           // CANCELLATION INFO
           // ------------------------------------------------------
 
-          if (status.toLowerCase() ==
-              'cancelled')
-            buildCancellationInfo(
-              data,
-            ),
+          if (status.toLowerCase() == 'cancelled')
+            buildCancellationInfo(data),
+
+          if (status.toLowerCase() == 'cancelled')
+            const SizedBox(height: 10),
 
           // ------------------------------------------------------
           // CANCEL BUTTON
@@ -1094,50 +852,35 @@ class _OrdersPageState extends State<OrdersPage> {
 
           if (canCancel)
             SizedBox(
-              width:
-                  double.infinity,
-              child:
-                  OutlinedButton.icon(
-                onPressed:
-                    cancellingOrder
-                        ? null
-                        : () =>
-                            cancelOrder(
-                          order,
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: cancellingOrder
+                    ? null
+                    : () => cancelOrder(order),
+                icon: cancellingOrder
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child:
+                            CircularProgressIndicator(
+                          strokeWidth: 2,
                         ),
-                icon:
-                    cancellingOrder
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child:
-                                CircularProgressIndicator(
-                              strokeWidth:
-                                  2,
-                            ),
-                          )
-                        : const Icon(
-                            Icons
-                                .cancel_outlined,
-                          ),
-                label:
-                    Text(
+                      )
+                    : const Icon(
+                        Icons.cancel_outlined,
+                      ),
+                label: Text(
                   cancellingOrder
                       ? 'Cancelling...'
                       : 'Cancel Order',
                 ),
-                style:
-                    OutlinedButton.styleFrom(
-                  foregroundColor:
-                      Colors.red,
-                  side:
-                      const BorderSide(
-                    color:
-                        Colors.red,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red,
+                  side: const BorderSide(
+                    color: Colors.red,
                   ),
                   padding:
-                      const EdgeInsets
-                          .symmetric(
+                      const EdgeInsets.symmetric(
                     vertical: 13,
                   ),
                 ),
@@ -1145,22 +888,14 @@ class _OrdersPageState extends State<OrdersPage> {
             ),
 
           if (!canCancel &&
-              status.toLowerCase() !=
-                  'cancelled' &&
-              status.toLowerCase() !=
-                  'delivered')
+              status.toLowerCase() != 'cancelled' &&
+              status.toLowerCase() != 'delivered')
             const Padding(
-              padding:
-                  EdgeInsets.only(
-                top: 2,
-              ),
-              child:
-                  Text(
+              padding: EdgeInsets.only(top: 2),
+              child: Text(
                 'This order cannot be cancelled at its current stage.',
-                style:
-                    TextStyle(
-                  color:
-                      Colors.grey,
+                style: TextStyle(
+                  color: Colors.grey,
                   fontSize: 12,
                 ),
               ),
@@ -1174,65 +909,46 @@ class _OrdersPageState extends State<OrdersPage> {
   // SHORT ORDER ID
   // ============================================================
 
-  String shortOrderId(
-    String orderId,
-  ) {
+  String shortOrderId(String orderId) {
     if (orderId.length <= 10) {
       return orderId;
     }
 
-    return orderId.substring(
-      0,
-      10,
-    );
+    return orderId.substring(0, 10);
   }
 
   // ============================================================
   // STATUS BADGE
   // ============================================================
 
-  Widget statusBadge(
-    String status,
-  ) {
-    final color =
-        statusColor(status);
+  Widget statusBadge(String status) {
+    final color = statusColor(status);
 
     return Container(
-      padding:
-          const EdgeInsets.symmetric(
+      padding: const EdgeInsets.symmetric(
         horizontal: 9,
         vertical: 5,
       ),
-      decoration:
-          BoxDecoration(
-        color: color.withValues(
-          alpha: .10,
-        ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .10),
         borderRadius:
-            BorderRadius.circular(
-          20,
-        ),
+            BorderRadius.circular(20),
       ),
-      child:
-          Row(
-        mainAxisSize:
-            MainAxisSize.min,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
             statusIcon(status),
             size: 14,
             color: color,
           ),
-          const SizedBox(
-            width: 4,
-          ),
+          const SizedBox(width: 4),
           Text(
             status,
             style: TextStyle(
               color: color,
               fontSize: 11,
-              fontWeight:
-                  FontWeight.bold,
+              fontWeight: FontWeight.bold,
             ),
           ),
         ],
@@ -1244,118 +960,72 @@ class _OrdersPageState extends State<OrdersPage> {
   // ORDER ITEM
   // ============================================================
 
-  Widget buildOrderItem(
-    dynamic item,
-  ) {
-    final name =
-        itemName(item);
-
-    final price =
-        itemPrice(item);
-
-    final quantity =
-        itemQuantity(item);
-
-    final image =
-        itemImage(item);
+  Widget buildOrderItem(dynamic item) {
+    final name = itemName(item);
+    final price = itemPrice(item);
+    final quantity = itemQuantity(item);
+    final image = itemImage(item);
 
     return Container(
-      margin:
-          const EdgeInsets.only(
-        bottom: 10,
-      ),
-      padding:
-          const EdgeInsets.all(
-        10,
-      ),
-      decoration:
-          BoxDecoration(
-        border:
-            Border.all(
-          color:
-              Colors.grey.shade300,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: Colors.grey.shade300,
         ),
         borderRadius:
-            BorderRadius.circular(
-          12,
-        ),
+            BorderRadius.circular(12),
       ),
-      child:
-          Row(
+      child: Row(
         children: [
           Container(
             width: 58,
             height: 58,
-            decoration:
-                BoxDecoration(
+            decoration: BoxDecoration(
               borderRadius:
-                  BorderRadius.circular(
-                10,
-              ),
-              color:
-                  Colors.grey.shade100,
+                  BorderRadius.circular(10),
+              color: Colors.grey.shade100,
             ),
-            clipBehavior:
-                Clip.antiAlias,
-            child:
-                image == null
-                    ? const Icon(
-                        Icons
-                            .image_outlined,
-                        color:
-                            Colors.grey,
-                      )
-                    : Image.network(
-                        image,
-                        fit:
-                            BoxFit.cover,
-                        errorBuilder:
-                            (
-                          context,
-                          error,
-                          stackTrace,
-                        ) {
-                          return const Icon(
-                            Icons
-                                .image_outlined,
-                            color:
-                                Colors.grey,
-                          );
-                        },
-                      ),
+            clipBehavior: Clip.antiAlias,
+            child: image == null
+                ? const Icon(
+                    Icons.image_outlined,
+                    color: Colors.grey,
+                  )
+                : Image.network(
+                    image,
+                    fit: BoxFit.cover,
+                    errorBuilder:
+                        (context, error, stackTrace) {
+                      return const Icon(
+                        Icons.image_outlined,
+                        color: Colors.grey,
+                      );
+                    },
+                  ),
           ),
 
-          const SizedBox(
-            width: 12,
-          ),
+          const SizedBox(width: 12),
 
           Expanded(
-            child:
-                Column(
+            child: Column(
               crossAxisAlignment:
-                  CrossAxisAlignment
-                      .start,
+                  CrossAxisAlignment.start,
               children: [
                 Text(
                   name,
                   maxLines: 2,
                   overflow:
                       TextOverflow.ellipsis,
-                  style:
-                      const TextStyle(
-                    fontWeight:
-                        FontWeight.bold,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(
-                  height: 5,
-                ),
+                const SizedBox(height: 5),
                 Text(
                   'Qty: $quantity',
-                  style:
-                      const TextStyle(
-                    color:
-                        Colors.grey,
+                  style: const TextStyle(
+                    color: Colors.grey,
                     fontSize: 13,
                   ),
                 ),
@@ -1363,16 +1033,12 @@ class _OrdersPageState extends State<OrdersPage> {
             ),
           ),
 
-          const SizedBox(
-            width: 8,
-          ),
+          const SizedBox(width: 8),
 
           Text(
             '₹${(price * quantity).toStringAsFixed(2)}',
-            style:
-                const TextStyle(
-              fontWeight:
-                  FontWeight.bold,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
             ),
           ),
         ],
@@ -1391,31 +1057,24 @@ class _OrdersPageState extends State<OrdersPage> {
   }) {
     return Row(
       mainAxisAlignment:
-          MainAxisAlignment
-              .spaceBetween,
+          MainAxisAlignment.spaceBetween,
       children: [
         Text(
           title,
-          style:
-              TextStyle(
-            fontWeight:
-                bold
-                    ? FontWeight.bold
-                    : FontWeight.normal,
+          style: TextStyle(
+            fontWeight: bold
+                ? FontWeight.bold
+                : FontWeight.normal,
           ),
         ),
         Flexible(
-          child:
-              Text(
+          child: Text(
             value,
-            textAlign:
-                TextAlign.end,
-            style:
-                TextStyle(
-              fontWeight:
-                  bold
-                      ? FontWeight.bold
-                      : FontWeight.w600,
+            textAlign: TextAlign.end,
+            style: TextStyle(
+              fontWeight: bold
+                  ? FontWeight.bold
+                  : FontWeight.w600,
             ),
           ),
         ),
@@ -1430,70 +1089,48 @@ class _OrdersPageState extends State<OrdersPage> {
   Widget buildDeliveryAddress(
     Map<String, dynamic> data,
   ) {
-    final raw =
-        data['deliveryAddress'];
+    final raw = data['deliveryAddress'];
 
     String name =
-        (data['customerName'] ?? '')
-            .toString();
+        (data['customerName'] ?? '').toString();
 
     String phone =
-        (data['customerMobile'] ?? '')
-            .toString();
+        (data['customerMobile'] ?? '').toString();
 
     String address =
-        (data['address'] ?? '')
-            .toString();
+        (data['address'] ?? '').toString();
 
     String city =
-        (data['city'] ?? '')
-            .toString();
+        (data['city'] ?? '').toString();
 
     String pincode =
-        (data['pincode'] ?? '')
-            .toString();
+        (data['pincode'] ?? '').toString();
 
     if (raw is Map) {
-      name =
-          (raw['name'] ??
-                  name)
-              .toString();
+      name = (raw['name'] ?? name).toString();
 
-      phone =
-          (raw['phone'] ??
-                  phone)
-              .toString();
+      phone = (raw['phone'] ?? phone).toString();
 
-      address =
-          (raw['fullAddress'] ??
-                  raw['street'] ??
-                  address)
-              .toString();
+      address = (
+        raw['fullAddress'] ??
+        raw['street'] ??
+        address
+      ).toString();
 
-      city =
-          (raw['city'] ??
-                  city)
-              .toString();
+      city = (raw['city'] ?? city).toString();
 
       pincode =
-          (raw['pincode'] ??
-                  pincode)
-              .toString();
+          (raw['pincode'] ?? pincode).toString();
 
       final house =
-          (raw['house'] ?? '')
-              .toString()
-              .trim();
+          (raw['house'] ?? '').toString().trim();
 
       final landmark =
-          (raw['landmark'] ?? '')
-              .toString()
-              .trim();
+          (raw['landmark'] ?? '').toString().trim();
 
       if (house.isNotEmpty &&
           !address.contains(house)) {
-        address =
-            '$house, $address';
+        address = '$house, $address';
       }
 
       if (landmark.isNotEmpty) {
@@ -1503,78 +1140,54 @@ class _OrdersPageState extends State<OrdersPage> {
     }
 
     return Container(
-      width:
-          double.infinity,
-      padding:
-          const EdgeInsets.all(
-        14,
-      ),
-      decoration:
-          BoxDecoration(
-        border:
-            Border.all(
-          color:
-              Colors.grey.shade300,
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: Colors.grey.shade300,
         ),
         borderRadius:
-            BorderRadius.circular(
-          12,
-        ),
+            BorderRadius.circular(12),
       ),
-      child:
-          Column(
+      child: Column(
         crossAxisAlignment:
             CrossAxisAlignment.start,
         children: [
           const Row(
             children: [
               Icon(
-                Icons
-                    .location_on_outlined,
+                Icons.location_on_outlined,
                 size: 20,
               ),
-              SizedBox(
-                width: 6,
-              ),
+              SizedBox(width: 6),
               Text(
                 'Delivery Address',
-                style:
-                    TextStyle(
+                style: TextStyle(
                   fontSize: 16,
-                  fontWeight:
-                      FontWeight.bold,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ],
           ),
 
-          const SizedBox(
-            height: 10,
-          ),
+          const SizedBox(height: 10),
 
           if (name.isNotEmpty)
             Text(
               name,
-              style:
-                  const TextStyle(
-                fontWeight:
-                    FontWeight.bold,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
               ),
             ),
 
           if (phone.isNotEmpty)
             Padding(
               padding:
-                  const EdgeInsets.only(
-                top: 4,
-              ),
-              child:
-                  Text(
+                  const EdgeInsets.only(top: 4),
+              child: Text(
                 '📞 $phone',
-                style:
-                    const TextStyle(
-                  color:
-                      Colors.grey,
+                style: const TextStyle(
+                  color: Colors.grey,
                 ),
               ),
             ),
@@ -1582,14 +1195,10 @@ class _OrdersPageState extends State<OrdersPage> {
           if (address.isNotEmpty)
             Padding(
               padding:
-                  const EdgeInsets.only(
-                top: 6,
-              ),
-              child:
-                  Text(
+                  const EdgeInsets.only(top: 6),
+              child: Text(
                 address,
-                style:
-                    const TextStyle(
+                style: const TextStyle(
                   height: 1.4,
                 ),
               ),
@@ -1599,16 +1208,11 @@ class _OrdersPageState extends State<OrdersPage> {
               pincode.isNotEmpty)
             Padding(
               padding:
-                  const EdgeInsets.only(
-                top: 4,
-              ),
-              child:
-                  Text(
+                  const EdgeInsets.only(top: 4),
+              child: Text(
                 '$city${city.isNotEmpty && pincode.isNotEmpty ? ' - ' : ''}$pincode',
-                style:
-                    const TextStyle(
-                  color:
-                      Colors.grey,
+                style: const TextStyle(
+                  color: Colors.grey,
                 ),
               ),
             ),
@@ -1621,11 +1225,8 @@ class _OrdersPageState extends State<OrdersPage> {
   // STATUS SECTION
   // ============================================================
 
-  Widget buildStatusSection(
-    String status,
-  ) {
-    final normalized =
-        status.toLowerCase();
+  Widget buildStatusSection(String status) {
+    final normalized = status.toLowerCase();
 
     final steps = <String>[
       'Confirmed',
@@ -1635,48 +1236,28 @@ class _OrdersPageState extends State<OrdersPage> {
       'Delivered',
     ];
 
-    if (normalized ==
-        'cancelled') {
+    if (normalized == 'cancelled') {
       return Container(
-        width:
-            double.infinity,
-        padding:
-            const EdgeInsets.all(
-          14,
-        ),
-        decoration:
-            BoxDecoration(
-          color:
-              Colors.red.withValues(
-            alpha: .08,
-          ),
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.red.withValues(alpha: .08),
           borderRadius:
-              BorderRadius.circular(
-            12,
-          ),
+              BorderRadius.circular(12),
         ),
-        child:
-            const Row(
+        child: const Row(
           children: [
             Icon(
-              Icons
-                  .cancel_outlined,
-              color:
-                  Colors.red,
+              Icons.cancel_outlined,
+              color: Colors.red,
             ),
-            SizedBox(
-              width: 10,
-            ),
+            SizedBox(width: 10),
             Expanded(
-              child:
-                  Text(
+              child: Text(
                 'This order has been cancelled.',
-                style:
-                    TextStyle(
-                  fontWeight:
-                      FontWeight.bold,
-                  color:
-                      Colors.red,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red,
                 ),
               ),
             ),
@@ -1685,65 +1266,45 @@ class _OrdersPageState extends State<OrdersPage> {
       );
     }
 
-    int currentIndex =
-        _statusIndex(
-      normalized,
-    );
+    final currentIndex =
+        _statusIndex(normalized);
 
     return Container(
-      width:
-          double.infinity,
-      padding:
-          const EdgeInsets.all(
-        14,
-      ),
-      decoration:
-          BoxDecoration(
-        border:
-            Border.all(
-          color:
-              Colors.grey.shade300,
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: Colors.grey.shade300,
         ),
         borderRadius:
-            BorderRadius.circular(
-          12,
-        ),
+            BorderRadius.circular(12),
       ),
-      child:
-          Column(
+      child: Column(
         crossAxisAlignment:
             CrossAxisAlignment.start,
         children: [
           const Text(
             'Order Status',
-            style:
-                TextStyle(
+            style: TextStyle(
               fontSize: 16,
-              fontWeight:
-                  FontWeight.bold,
+              fontWeight: FontWeight.bold,
             ),
           ),
 
-          const SizedBox(
-            height: 14,
-          ),
+          const SizedBox(height: 14),
 
           ...List.generate(
             steps.length,
             (index) {
               final completed =
-                  index <=
-                      currentIndex;
+                  index <= currentIndex;
 
               final isLast =
-                  index ==
-                      steps.length -
-                          1;
+                  index == steps.length - 1;
 
               return Row(
                 crossAxisAlignment:
-                    CrossAxisAlignment
-                        .start,
+                    CrossAxisAlignment.start,
                 children: [
                   Column(
                     children: [
@@ -1752,37 +1313,27 @@ class _OrdersPageState extends State<OrdersPage> {
                         height: 24,
                         decoration:
                             BoxDecoration(
-                          shape:
-                              BoxShape
-                                  .circle,
+                          shape: BoxShape.circle,
                           color: completed
-                              ? Theme.of(
-                                  context,
-                                )
-                                    .colorScheme
-                                    .primary
+                              ? Theme.of(context)
+                                  .colorScheme
+                                  .primary
                               : Colors
                                   .grey
                                   .shade300,
                         ),
-                        child:
-                            Icon(
+                        child: Icon(
                           completed
-                              ? Icons
-                                  .check
-                              : Icons
-                                  .circle,
-                          size:
-                              completed
-                                  ? 15
-                                  : 8,
-                          color:
-                              completed
-                                  ? Colors
-                                      .white
-                                  : Colors
-                                      .grey
-                                      .shade600,
+                              ? Icons.check
+                              : Icons.circle,
+                          size: completed
+                              ? 15
+                              : 8,
+                          color: completed
+                              ? Colors.white
+                              : Colors
+                                  .grey
+                                  .shade600,
                         ),
                       ),
                       if (!isLast)
@@ -1791,42 +1342,32 @@ class _OrdersPageState extends State<OrdersPage> {
                           height: 30,
                           color: index <
                                   currentIndex
-                              ? Theme.of(
-                                  context,
-                                )
-                                    .colorScheme
-                                    .primary
+                              ? Theme.of(context)
+                                  .colorScheme
+                                  .primary
                               : Colors
                                   .grey
                                   .shade300,
                         ),
                     ],
                   ),
-                  const SizedBox(
-                    width: 12,
-                  ),
+
+                  const SizedBox(width: 12),
+
                   Padding(
                     padding:
-                        const EdgeInsets
-                            .only(
+                        const EdgeInsets.only(
                       top: 2,
                     ),
-                    child:
-                        Text(
+                    child: Text(
                       steps[index],
-                      style:
-                          TextStyle(
-                        fontWeight:
-                            completed
-                                ? FontWeight
-                                    .bold
-                                : FontWeight
-                                    .normal,
-                        color:
-                            completed
-                                ? null
-                                : Colors
-                                    .grey,
+                      style: TextStyle(
+                        fontWeight: completed
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                        color: completed
+                            ? null
+                            : Colors.grey,
                       ),
                     ),
                   ),
@@ -1843,9 +1384,7 @@ class _OrdersPageState extends State<OrdersPage> {
   // STATUS INDEX
   // ============================================================
 
-  int _statusIndex(
-    String status,
-  ) {
+  int _statusIndex(String status) {
     switch (status) {
       case 'confirmed':
       case 'pending':
@@ -1886,82 +1425,51 @@ class _OrdersPageState extends State<OrdersPage> {
         data['cancelledAt'];
 
     return Container(
-      width:
-          double.infinity,
-      padding:
-          const EdgeInsets.all(
-        14,
-      ),
-      decoration:
-          BoxDecoration(
-        color:
-            Colors.red.withValues(
-          alpha: .06,
-        ),
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.red.withValues(alpha: .06),
         borderRadius:
-            BorderRadius.circular(
-          12,
-        ),
-        border:
-            Border.all(
-          color:
-              Colors.red.withValues(
-            alpha: .25,
-          ),
+            BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.red.withValues(alpha: .25),
         ),
       ),
-      child:
-          Column(
+      child: Column(
         crossAxisAlignment:
             CrossAxisAlignment.start,
         children: [
           const Row(
             children: [
               Icon(
-                Icons
-                    .cancel_outlined,
-                color:
-                    Colors.red,
+                Icons.cancel_outlined,
+                color: Colors.red,
               ),
-              SizedBox(
-                width: 8,
-              ),
+              SizedBox(width: 8),
               Text(
                 'Cancellation Details',
-                style:
-                    TextStyle(
-                  fontWeight:
-                      FontWeight.bold,
-                  color:
-                      Colors.red,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red,
                 ),
               ),
             ],
           ),
 
-          const SizedBox(
-            height: 10,
-          ),
+          const SizedBox(height: 10),
 
           Text(
             'Reason: $reason',
           ),
 
-          if (cancelledAt !=
-              null)
+          if (cancelledAt != null)
             Padding(
               padding:
-                  const EdgeInsets
-                      .only(
-                top: 5,
-              ),
-              child:
-                  Text(
+                  const EdgeInsets.only(top: 5),
+              child: Text(
                 'Cancelled on: ${formatDate(cancelledAt)}',
-                style:
-                    const TextStyle(
-                  color:
-                      Colors.grey,
+                style: const TextStyle(
+                  color: Colors.grey,
                   fontSize: 12,
                 ),
               ),
