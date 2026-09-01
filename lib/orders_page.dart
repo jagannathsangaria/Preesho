@@ -27,10 +27,6 @@ class _OrdersPageState extends State<OrdersPage> {
     loadOrders();
   }
 
-  // ============================================================
-  // LOAD ORDERS
-  // ============================================================
-
   Future<void> loadOrders() async {
     final user = currentUser;
 
@@ -92,10 +88,6 @@ class _OrdersPageState extends State<OrdersPage> {
     }
   }
 
-  // ============================================================
-  // DATE HELPER
-  // ============================================================
-
   DateTime _timestampToDate(dynamic value) {
     if (value is Timestamp) {
       return value.toDate();
@@ -107,10 +99,6 @@ class _OrdersPageState extends State<OrdersPage> {
 
     return DateTime.fromMillisecondsSinceEpoch(0);
   }
-
-  // ============================================================
-  // FORMAT DATE
-  // ============================================================
 
   String formatDate(dynamic value) {
     final date = _timestampToDate(value);
@@ -138,10 +126,6 @@ class _OrdersPageState extends State<OrdersPage> {
 
     return '$day/$month/$year • $hour:$minute $period';
   }
-
-  // ============================================================
-  // CANCEL ORDER
-  // ============================================================
 
   Future<void> cancelOrder(
     QueryDocumentSnapshot<Map<String, dynamic>> order,
@@ -215,20 +199,12 @@ class _OrdersPageState extends State<OrdersPage> {
     }
   }
 
-  // ============================================================
-  // CAN CANCEL
-  // ============================================================
-
   bool _canCancel(String status) {
     return status == 'confirmed' ||
         status == 'pending' ||
         status == 'placed' ||
         status == 'processing';
   }
-
-  // ============================================================
-  // CANCELLATION DIALOG
-  // ============================================================
 
   Future<String?> showCancellationDialog() async {
     String selectedReason = 'Changed my mind';
@@ -268,9 +244,7 @@ class _OrdersPageState extends State<OrdersPage> {
                     const Text(
                       'Please select a reason for cancelling this order.',
                     ),
-
                     const SizedBox(height: 16),
-
                     ...reasons.map(
                       (reason) {
                         return RadioListTile<String>(
@@ -289,7 +263,6 @@ class _OrdersPageState extends State<OrdersPage> {
                         );
                       },
                     ),
-
                     if (selectedReason == 'Other') ...[
                       const SizedBox(height: 8),
                       TextField(
@@ -359,10 +332,6 @@ class _OrdersPageState extends State<OrdersPage> {
     return result;
   }
 
-  // ============================================================
-  // STATUS COLOR
-  // ============================================================
-
   Color statusColor(String status) {
     switch (status.toLowerCase()) {
       case 'confirmed':
@@ -390,10 +359,6 @@ class _OrdersPageState extends State<OrdersPage> {
         return Colors.grey;
     }
   }
-
-  // ============================================================
-  // STATUS ICON
-  // ============================================================
 
   IconData statusIcon(String status) {
     switch (status.toLowerCase()) {
@@ -427,10 +392,6 @@ class _OrdersPageState extends State<OrdersPage> {
     }
   }
 
-  // ============================================================
-  // ITEM NAME
-  // ============================================================
-
   String itemName(dynamic item) {
     if (item is! Map) {
       return 'Product';
@@ -443,10 +404,6 @@ class _OrdersPageState extends State<OrdersPage> {
       'Product'
     ).toString();
   }
-
-  // ============================================================
-  // ITEM PRICE
-  // ============================================================
 
   double itemPrice(dynamic item) {
     if (item is! Map) return 0;
@@ -463,10 +420,6 @@ class _OrdersPageState extends State<OrdersPage> {
         0;
   }
 
-  // ============================================================
-  // ITEM QUANTITY
-  // ============================================================
-
   int itemQuantity(dynamic item) {
     if (item is! Map) return 1;
 
@@ -481,10 +434,6 @@ class _OrdersPageState extends State<OrdersPage> {
         ) ??
         1;
   }
-
-  // ============================================================
-  // IMAGE URL
-  // ============================================================
 
   String? itemImage(dynamic item) {
     if (item is! Map) return null;
@@ -501,10 +450,6 @@ class _OrdersPageState extends State<OrdersPage> {
     return value.isEmpty ? null : value;
   }
 
-  // ============================================================
-  // SHOW MESSAGE
-  // ============================================================
-
   void showMessage(String message) {
     if (!mounted) return;
 
@@ -518,10 +463,6 @@ class _OrdersPageState extends State<OrdersPage> {
       ),
     );
   }
-
-  // ============================================================
-  // BUILD
-  // ============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -545,10 +486,6 @@ class _OrdersPageState extends State<OrdersPage> {
             ),
     );
   }
-
-  // ============================================================
-  // LOGIN REQUIRED
-  // ============================================================
 
   Widget buildLoginRequired() {
     return Center(
@@ -584,10 +521,6 @@ class _OrdersPageState extends State<OrdersPage> {
     );
   }
 
-  // ============================================================
-  // ORDERS BODY
-  // ============================================================
-
   Widget buildOrdersBody() {
     if (loading) {
       return const Center(
@@ -616,10 +549,6 @@ class _OrdersPageState extends State<OrdersPage> {
       },
     );
   }
-
-  // ============================================================
-  // EMPTY ORDERS
-  // ============================================================
 
   Widget buildEmptyOrders() {
     return ListView(
@@ -663,10 +592,6 @@ class _OrdersPageState extends State<OrdersPage> {
       ],
     );
   }
-
-  // ============================================================
-  // ORDER CARD
-  // ============================================================
 
   Widget buildOrderCard(
     QueryDocumentSnapshot<Map<String, dynamic>> order,
@@ -756,9 +681,7 @@ class _OrdersPageState extends State<OrdersPage> {
         ),
         children: [
           const Divider(height: 1),
-
           const SizedBox(height: 14),
-
           const Align(
             alignment: Alignment.centerLeft,
             child: Text(
@@ -769,9 +692,7 @@ class _OrdersPageState extends State<OrdersPage> {
               ),
             ),
           ),
-
           const SizedBox(height: 10),
-
           if (items.isEmpty)
             const Align(
               alignment: Alignment.centerLeft,
@@ -779,15 +700,8 @@ class _OrdersPageState extends State<OrdersPage> {
                 'No item details available.',
               ),
             ),
-
           ...items.map(buildOrderItem),
-
           const SizedBox(height: 12),
-
-          // ------------------------------------------------------
-          // PAYMENT SUMMARY
-          // ------------------------------------------------------
-
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -817,39 +731,15 @@ class _OrdersPageState extends State<OrdersPage> {
               ],
             ),
           ),
-
           const SizedBox(height: 14),
-
-          // ------------------------------------------------------
-          // DELIVERY ADDRESS
-          // ------------------------------------------------------
-
           buildDeliveryAddress(data),
-
           const SizedBox(height: 14),
-
-          // ------------------------------------------------------
-          // ORDER STATUS
-          // ------------------------------------------------------
-
           buildStatusSection(status),
-
           const SizedBox(height: 14),
-
-          // ------------------------------------------------------
-          // CANCELLATION INFO
-          // ------------------------------------------------------
-
           if (status.toLowerCase() == 'cancelled')
             buildCancellationInfo(data),
-
           if (status.toLowerCase() == 'cancelled')
             const SizedBox(height: 10),
-
-          // ------------------------------------------------------
-          // CANCEL BUTTON
-          // ------------------------------------------------------
-
           if (canCancel)
             SizedBox(
               width: double.infinity,
@@ -886,7 +776,6 @@ class _OrdersPageState extends State<OrdersPage> {
                 ),
               ),
             ),
-
           if (!canCancel &&
               status.toLowerCase() != 'cancelled' &&
               status.toLowerCase() != 'delivered')
@@ -905,10 +794,6 @@ class _OrdersPageState extends State<OrdersPage> {
     );
   }
 
-  // ============================================================
-  // SHORT ORDER ID
-  // ============================================================
-
   String shortOrderId(String orderId) {
     if (orderId.length <= 10) {
       return orderId;
@@ -916,10 +801,6 @@ class _OrdersPageState extends State<OrdersPage> {
 
     return orderId.substring(0, 10);
   }
-
-  // ============================================================
-  // STATUS BADGE
-  // ============================================================
 
   Widget statusBadge(String status) {
     final color = statusColor(status);
@@ -955,10 +836,6 @@ class _OrdersPageState extends State<OrdersPage> {
       ),
     );
   }
-
-  // ============================================================
-  // ORDER ITEM
-  // ============================================================
 
   Widget buildOrderItem(dynamic item) {
     final name = itemName(item);
@@ -1004,9 +881,7 @@ class _OrdersPageState extends State<OrdersPage> {
                     },
                   ),
           ),
-
           const SizedBox(width: 12),
-
           Expanded(
             child: Column(
               crossAxisAlignment:
@@ -1032,9 +907,7 @@ class _OrdersPageState extends State<OrdersPage> {
               ],
             ),
           ),
-
           const SizedBox(width: 8),
-
           Text(
             '₹${(price * quantity).toStringAsFixed(2)}',
             style: const TextStyle(
@@ -1045,10 +918,6 @@ class _OrdersPageState extends State<OrdersPage> {
       ),
     );
   }
-
-  // ============================================================
-  // SUMMARY ROW
-  // ============================================================
 
   Widget summaryRow(
     String title,
@@ -1082,10 +951,6 @@ class _OrdersPageState extends State<OrdersPage> {
     );
   }
 
-  // ============================================================
-  // DELIVERY ADDRESS
-  // ============================================================
-
   Widget buildDeliveryAddress(
     Map<String, dynamic> data,
   ) {
@@ -1108,7 +973,6 @@ class _OrdersPageState extends State<OrdersPage> {
 
     if (raw is Map) {
       name = (raw['name'] ?? name).toString();
-
       phone = (raw['phone'] ?? phone).toString();
 
       address = (
@@ -1118,7 +982,6 @@ class _OrdersPageState extends State<OrdersPage> {
       ).toString();
 
       city = (raw['city'] ?? city).toString();
-
       pincode =
           (raw['pincode'] ?? pincode).toString();
 
@@ -1169,9 +1032,7 @@ class _OrdersPageState extends State<OrdersPage> {
               ),
             ],
           ),
-
           const SizedBox(height: 10),
-
           if (name.isNotEmpty)
             Text(
               name,
@@ -1179,7 +1040,6 @@ class _OrdersPageState extends State<OrdersPage> {
                 fontWeight: FontWeight.bold,
               ),
             ),
-
           if (phone.isNotEmpty)
             Padding(
               padding:
@@ -1191,7 +1051,6 @@ class _OrdersPageState extends State<OrdersPage> {
                 ),
               ),
             ),
-
           if (address.isNotEmpty)
             Padding(
               padding:
@@ -1203,7 +1062,6 @@ class _OrdersPageState extends State<OrdersPage> {
                 ),
               ),
             ),
-
           if (city.isNotEmpty ||
               pincode.isNotEmpty)
             Padding(
@@ -1220,10 +1078,6 @@ class _OrdersPageState extends State<OrdersPage> {
       ),
     );
   }
-
-  // ============================================================
-  // STATUS SECTION
-  // ============================================================
 
   Widget buildStatusSection(String status) {
     final normalized = status.toLowerCase();
@@ -1290,9 +1144,7 @@ class _OrdersPageState extends State<OrdersPage> {
               fontWeight: FontWeight.bold,
             ),
           ),
-
           const SizedBox(height: 14),
-
           ...List.generate(
             steps.length,
             (index) {
@@ -1351,9 +1203,7 @@ class _OrdersPageState extends State<OrdersPage> {
                         ),
                     ],
                   ),
-
                   const SizedBox(width: 12),
-
                   Padding(
                     padding:
                         const EdgeInsets.only(
@@ -1380,10 +1230,6 @@ class _OrdersPageState extends State<OrdersPage> {
     );
   }
 
-  // ============================================================
-  // STATUS INDEX
-  // ============================================================
-
   int _statusIndex(String status) {
     switch (status) {
       case 'confirmed':
@@ -1408,10 +1254,6 @@ class _OrdersPageState extends State<OrdersPage> {
         return 0;
     }
   }
-
-  // ============================================================
-  // CANCELLATION INFO
-  // ============================================================
 
   Widget buildCancellationInfo(
     Map<String, dynamic> data,
@@ -1455,13 +1297,10 @@ class _OrdersPageState extends State<OrdersPage> {
               ),
             ],
           ),
-
           const SizedBox(height: 10),
-
           Text(
             'Reason: $reason',
           ),
-
           if (cancelledAt != null)
             Padding(
               padding:
