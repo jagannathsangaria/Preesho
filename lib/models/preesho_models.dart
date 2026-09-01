@@ -65,39 +65,59 @@ class CustomerAddress {
     Map<String, dynamic> map,
   ) {
     return CustomerAddress(
-      addressId:
-          (map['addressId'] ?? '').toString(),
-
-      name:
-          (map['name'] ?? '').toString(),
-
-      phone:
-          (map['phone'] ?? '').toString(),
-
-      house:
-          (map['house'] ?? '').toString(),
-
-      street:
-          (map['street'] ?? '').toString(),
-
-      city:
-          (map['city'] ?? '').toString(),
-
-      state:
-          (map['state'] ?? 'Rajasthan').toString(),
-
-      pincode:
-          (map['pincode'] ??
-                  map['pin'] ??
-                  '')
-              .toString(),
-
-      landmark:
-          (map['landmark'] ?? '').toString(),
-
+      addressId: _stringValue(
+        map['addressId'],
+      ),
+      name: _stringValue(
+        map['name'],
+      ),
+      phone: _stringValue(
+        map['phone'] ??
+            map['mobile'],
+      ),
+      house: _stringValue(
+        map['house'],
+      ),
+      street: _stringValue(
+        map['street'] ??
+            map['address'],
+      ),
+      city: _stringValue(
+        map['city'],
+      ),
+      state: _stringValue(
+        map['state'],
+        fallback: 'Rajasthan',
+      ),
+      pincode: _stringValue(
+        map['pincode'] ??
+            map['pin'],
+      ),
+      landmark: _stringValue(
+        map['landmark'],
+      ),
       isDefault:
           map['isDefault'] == true,
     );
+  }
+
+  // ============================================================
+  // SAFE STRING CONVERSION
+  // ============================================================
+
+  static String _stringValue(
+    dynamic value, {
+    String fallback = '',
+  }) {
+    if (value == null) {
+      return fallback;
+    }
+
+    final result = value.toString().trim();
+
+    return result.isEmpty
+        ? fallback
+        : result;
   }
 
   // ============================================================
@@ -106,15 +126,17 @@ class CustomerAddress {
 
   Map<String, dynamic> toMap() {
     return {
-      'addressId': addressId,
-      'name': name,
-      'phone': phone,
-      'house': house,
-      'street': street,
-      'city': city,
-      'state': state,
-      'pincode': pincode,
-      'landmark': landmark,
+      'addressId': addressId.trim(),
+      'name': name.trim(),
+      'phone': phone.trim(),
+      'house': house.trim(),
+      'street': street.trim(),
+      'city': city.trim(),
+      'state': state.trim().isEmpty
+          ? 'Rajasthan'
+          : state.trim(),
+      'pincode': pincode.trim(),
+      'landmark': landmark.trim(),
       'isDefault': isDefault,
     };
   }
