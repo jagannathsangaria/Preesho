@@ -28,6 +28,8 @@ class _AdminPanelState extends State<AdminPanel>
   final nameController = TextEditingController();
   final categoryController = TextEditingController();
   final priceController = TextEditingController();
+  final mrpController = TextEditingController();
+  final discountController = TextEditingController();
   final stockController = TextEditingController();
   final imageUrlsController = TextEditingController();
   final descriptionController = TextEditingController();
@@ -103,6 +105,8 @@ class _AdminPanelState extends State<AdminPanel>
     nameController.dispose();
     categoryController.dispose();
     priceController.dispose();
+    mrpController.dispose();
+    discountController.dispose();
     stockController.dispose();
     imageUrlsController.dispose();
     descriptionController.dispose();
@@ -287,6 +291,10 @@ class _AdminPanelState extends State<AdminPanel>
         'Category': categoryController.text.trim(),
         'Price':
             double.tryParse(priceController.text.trim()) ?? 0,
+        'MRP':
+            double.tryParse(mrpController.text.trim()) ?? 0,
+        'DiscountPercent':
+            double.tryParse(discountController.text.trim()) ?? 0,
         'Stock':
             int.tryParse(stockController.text.trim()) ?? 0,
         'ImageUrls': imageUrls,
@@ -309,6 +317,8 @@ class _AdminPanelState extends State<AdminPanel>
       nameController.clear();
       categoryController.clear();
       priceController.clear();
+      mrpController.clear();
+      discountController.clear();
       stockController.clear();
       imageUrlsController.clear();
       descriptionController.clear();
@@ -322,6 +332,10 @@ class _AdminPanelState extends State<AdminPanel>
       warrantyController.clear();
       highlightsController.clear();
 
+      setState(() {
+        active = true;
+      });
+
       showMessage('Product successfully save ho gaya.');
     } catch (e) {
       showMessage('Product save nahi hua: $e');
@@ -331,6 +345,530 @@ class _AdminPanelState extends State<AdminPanel>
           saving = false;
         });
       }
+    }
+  }
+
+  // =========================================================
+  // EDIT PRODUCT
+  // =========================================================
+
+  Future<void> editProduct(
+    String productId,
+    Map<String, dynamic> data,
+  ) async {
+    final editFormKey = GlobalKey<FormState>();
+
+    final editNameController = TextEditingController(
+      text: data['Name']?.toString() ?? '',
+    );
+
+    final editCategoryController = TextEditingController(
+      text: data['Category']?.toString() ?? '',
+    );
+
+    final editPriceController = TextEditingController(
+      text: data['Price']?.toString() ?? '',
+    );
+
+    final editMrpController = TextEditingController(
+      text: data['MRP']?.toString() ??
+          data['Mrp']?.toString() ??
+          '',
+    );
+
+    final editDiscountController = TextEditingController(
+      text: data['DiscountPercent']?.toString() ??
+          data['Discount']?.toString() ??
+          '',
+    );
+
+    final editStockController = TextEditingController(
+      text: data['Stock']?.toString() ?? '',
+    );
+
+    final existingImageUrls =
+        (data['ImageUrls'] as List?)
+                ?.map((e) => e.toString())
+                .where((e) => e.isNotEmpty)
+                .toList() ??
+            [];
+
+    final legacyImage =
+        data['Imageurl']?.toString() ?? '';
+
+    if (existingImageUrls.isEmpty &&
+        legacyImage.isNotEmpty) {
+      existingImageUrls.add(legacyImage);
+    }
+
+    final editImageController = TextEditingController(
+      text: existingImageUrls.join('\n'),
+    );
+
+    final editDescriptionController =
+        TextEditingController(
+      text: data['Description']?.toString() ?? '',
+    );
+
+    final editRemarkController =
+        TextEditingController(
+      text: data['Remark']?.toString() ?? '',
+    );
+
+    final editBrandController =
+        TextEditingController(
+      text: data['Brand']?.toString() ?? '',
+    );
+
+    final editMaterialController =
+        TextEditingController(
+      text: data['Material']?.toString() ?? '',
+    );
+
+    final editColorController =
+        TextEditingController(
+      text: data['Color']?.toString() ?? '',
+    );
+
+    final editSizeController =
+        TextEditingController(
+      text: data['Size']?.toString() ?? '',
+    );
+
+    final editWeightController =
+        TextEditingController(
+      text: data['Weight']?.toString() ?? '',
+    );
+
+    final editWarrantyController =
+        TextEditingController(
+      text: data['Warranty']?.toString() ?? '',
+    );
+
+    final editHighlightsController =
+        TextEditingController(
+      text: data['Highlights']?.toString() ?? '',
+    );
+
+    bool editActive = data['Active'] != false;
+
+    try {
+      final result = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              return AlertDialog(
+                title: const Row(
+                  children: [
+                    Icon(Icons.edit),
+                    SizedBox(width: 8),
+                    Text('Edit Product'),
+                  ],
+                ),
+                content: SizedBox(
+                  width: 500,
+                  child: SingleChildScrollView(
+                    child: Form(
+                      key: editFormKey,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TextFormField(
+                            controller: editNameController,
+                            decoration:
+                                const InputDecoration(
+                              labelText: 'Product Name',
+                              prefixIcon:
+                                  Icon(Icons.shopping_bag),
+                            ),
+                            validator: (value) {
+                              if (value == null ||
+                                  value.trim().isEmpty) {
+                                return 'Product name required';
+                              }
+                              return null;
+                            },
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          TextFormField(
+                            controller:
+                                editCategoryController,
+                            decoration:
+                                const InputDecoration(
+                              labelText: 'Category',
+                              prefixIcon:
+                                  Icon(Icons.category),
+                            ),
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          TextFormField(
+                            controller:
+                                editPriceController,
+                            keyboardType:
+                                TextInputType.number,
+                            decoration:
+                                const InputDecoration(
+                              labelText: 'Selling Price',
+                              prefixIcon:
+                                  Icon(Icons.currency_rupee),
+                            ),
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          TextFormField(
+                            controller:
+                                editMrpController,
+                            keyboardType:
+                                TextInputType.number,
+                            decoration:
+                                const InputDecoration(
+                              labelText: 'MRP',
+                              prefixIcon:
+                                  Icon(Icons.sell_outlined),
+                            ),
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          TextFormField(
+                            controller:
+                                editDiscountController,
+                            keyboardType:
+                                TextInputType.number,
+                            decoration:
+                                const InputDecoration(
+                              labelText: 'Discount %',
+                              prefixIcon:
+                                  Icon(Icons.percent),
+                            ),
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          TextFormField(
+                            controller:
+                                editStockController,
+                            keyboardType:
+                                TextInputType.number,
+                            decoration:
+                                const InputDecoration(
+                              labelText: 'Stock',
+                              prefixIcon:
+                                  Icon(Icons.inventory_2),
+                            ),
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          TextFormField(
+                            controller:
+                                editImageController,
+                            maxLines: 3,
+                            decoration:
+                                const InputDecoration(
+                              labelText: 'Image URLs',
+                              hintText:
+                                  'One URL per line',
+                              prefixIcon:
+                                  Icon(Icons.image),
+                            ),
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          TextFormField(
+                            controller:
+                                editDescriptionController,
+                            maxLines: 3,
+                            decoration:
+                                const InputDecoration(
+                              labelText: 'Description',
+                              prefixIcon:
+                                  Icon(Icons.description),
+                            ),
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          TextFormField(
+                            controller:
+                                editRemarkController,
+                            decoration:
+                                const InputDecoration(
+                              labelText: 'Remark',
+                              prefixIcon:
+                                  Icon(Icons.note),
+                            ),
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          TextFormField(
+                            controller:
+                                editBrandController,
+                            decoration:
+                                const InputDecoration(
+                              labelText: 'Brand',
+                              prefixIcon:
+                                  Icon(Icons.branding_watermark),
+                            ),
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          TextFormField(
+                            controller:
+                                editMaterialController,
+                            decoration:
+                                const InputDecoration(
+                              labelText: 'Material',
+                            ),
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          TextFormField(
+                            controller:
+                                editColorController,
+                            decoration:
+                                const InputDecoration(
+                              labelText: 'Color',
+                            ),
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          TextFormField(
+                            controller:
+                                editSizeController,
+                            decoration:
+                                const InputDecoration(
+                              labelText: 'Size',
+                            ),
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          TextFormField(
+                            controller:
+                                editWeightController,
+                            decoration:
+                                const InputDecoration(
+                              labelText: 'Weight',
+                            ),
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          TextFormField(
+                            controller:
+                                editWarrantyController,
+                            decoration:
+                                const InputDecoration(
+                              labelText: 'Warranty',
+                            ),
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          TextFormField(
+                            controller:
+                                editHighlightsController,
+                            maxLines: 3,
+                            decoration:
+                                const InputDecoration(
+                              labelText: 'Highlights',
+                            ),
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          SwitchListTile(
+                            contentPadding:
+                                EdgeInsets.zero,
+                            title: const Text(
+                              'Product Active',
+                            ),
+                            subtitle: Text(
+                              editActive
+                                  ? 'Customer ko product dikhega'
+                                  : 'Customer ko product nahi dikhega',
+                            ),
+                            value: editActive,
+                            onChanged: (value) {
+                              setDialogState(() {
+                                editActive = value;
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(
+                        dialogContext,
+                        false,
+                      );
+                    },
+                    child: const Text('Cancel'),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      if (!editFormKey.currentState!
+                          .validate()) {
+                        return;
+                      }
+
+                      try {
+                        final imageUrls =
+                            parseImageUrls(
+                          editImageController.text,
+                        );
+
+                        await productsRef
+                            .doc(productId)
+                            .update({
+                          'Name':
+                              editNameController.text.trim(),
+
+                          'Category':
+                              editCategoryController.text
+                                  .trim(),
+
+                          'Price':
+                              double.tryParse(
+                                    editPriceController
+                                        .text
+                                        .trim(),
+                                  ) ??
+                                  0,
+
+                          'MRP':
+                              double.tryParse(
+                                    editMrpController.text
+                                        .trim(),
+                                  ) ??
+                                  0,
+
+                          'DiscountPercent':
+                              double.tryParse(
+                                    editDiscountController
+                                        .text
+                                        .trim(),
+                                  ) ??
+                                  0,
+
+                          'Stock':
+                              int.tryParse(
+                                    editStockController.text
+                                        .trim(),
+                                  ) ??
+                                  0,
+
+                          'ImageUrls': imageUrls,
+
+                          'Imageurl':
+                              imageUrls.isNotEmpty
+                                  ? imageUrls.first
+                                  : '',
+
+                          'Description':
+                              editDescriptionController
+                                  .text
+                                  .trim(),
+
+                          'Remark':
+                              editRemarkController.text
+                                  .trim(),
+
+                          'Brand':
+                              editBrandController.text
+                                  .trim(),
+
+                          'Material':
+                              editMaterialController.text
+                                  .trim(),
+
+                          'Color':
+                              editColorController.text.trim(),
+
+                          'Size':
+                              editSizeController.text.trim(),
+
+                          'Weight':
+                              editWeightController.text
+                                  .trim(),
+
+                          'Warranty':
+                              editWarrantyController.text
+                                  .trim(),
+
+                          'Highlights':
+                              editHighlightsController
+                                  .text
+                                  .trim(),
+
+                          'Active': editActive,
+
+                          'UpdatedAt':
+                              FieldValue.serverTimestamp(),
+                        });
+
+                        if (dialogContext.mounted) {
+                          Navigator.pop(
+                            dialogContext,
+                            true,
+                          );
+                        }
+                      } catch (e) {
+                        showMessage(
+                          'Product update nahi hua: $e',
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.save),
+                    label:
+                        const Text('Update Product'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+
+      if (result == true) {
+        showMessage(
+          'Product successfully update ho gaya.',
+        );
+      }
+    } finally {
+      editNameController.dispose();
+      editCategoryController.dispose();
+      editPriceController.dispose();
+      editMrpController.dispose();
+      editDiscountController.dispose();
+      editStockController.dispose();
+      editImageController.dispose();
+      editDescriptionController.dispose();
+      editRemarkController.dispose();
+      editBrandController.dispose();
+      editMaterialController.dispose();
+      editColorController.dispose();
+      editSizeController.dispose();
+      editWeightController.dispose();
+      editWarrantyController.dispose();
+      editHighlightsController.dispose();
     }
   }
 
@@ -376,7 +914,10 @@ class _AdminPanelState extends State<AdminPanel>
       }
 
       final headers = sheet.rows.first
-          .map((cell) => cell?.value.toString().trim() ?? '')
+          .map(
+            (cell) =>
+                cell?.value.toString().trim() ?? '',
+          )
           .toList();
 
       for (int i = 1; i < sheet.rows.length; i++) {
@@ -392,7 +933,8 @@ class _AdminPanelState extends State<AdminPanel>
           return row[index]?.value;
         }
 
-        final name = getValue('Name')?.toString().trim() ?? '';
+        final name =
+            getValue('Name')?.toString().trim() ?? '';
 
         if (name.isEmpty) {
           continue;
@@ -414,13 +956,25 @@ class _AdminPanelState extends State<AdminPanel>
                 getValue('Price')?.toString() ?? '',
               ) ??
               0,
+          'MRP': double.tryParse(
+                getValue('MRP')?.toString() ?? '',
+              ) ??
+              0,
+          'DiscountPercent': double.tryParse(
+                getValue('DiscountPercent')?.toString() ??
+                    getValue('Discount')?.toString() ??
+                    '',
+              ) ??
+              0,
           'Stock': int.tryParse(
                 getValue('Stock')?.toString() ?? '',
               ) ??
               0,
           'ImageUrls': imageUrls,
           'Imageurl':
-              imageUrls.isNotEmpty ? imageUrls.first : '',
+              imageUrls.isNotEmpty
+                  ? imageUrls.first
+                  : '',
           'Description':
               getValue('Description')?.toString() ?? '',
           'Remark':
@@ -445,7 +999,9 @@ class _AdminPanelState extends State<AdminPanel>
         });
       }
 
-      showMessage('Excel products successfully upload ho gaye.');
+      showMessage(
+        'Excel products successfully upload ho gaye.',
+      );
     } catch (e) {
       showMessage('Excel upload error: $e');
     } finally {
@@ -476,6 +1032,8 @@ class _AdminPanelState extends State<AdminPanel>
         'Name',
         'Category',
         'Price',
+        'MRP',
+        'DiscountPercent',
         'Stock',
         'ImageUrls',
         'Imageurl',
@@ -491,13 +1049,17 @@ class _AdminPanelState extends State<AdminPanel>
       ];
 
       sheet.appendRow(
-        headers.map((e) => TextCellValue(e)).toList(),
+        headers
+            .map((e) => TextCellValue(e))
+            .toList(),
       );
 
       sheet.appendRow([
         TextCellValue('Sample Product'),
         TextCellValue('Electronics'),
+        TextCellValue('799'),
         TextCellValue('999'),
+        TextCellValue('20'),
         TextCellValue('10'),
         TextCellValue(
           'https://picsum.photos/seed/preesho1/600/600',
@@ -505,7 +1067,9 @@ class _AdminPanelState extends State<AdminPanel>
         TextCellValue(
           'https://picsum.photos/seed/preesho1/600/600',
         ),
-        TextCellValue('Sample product description'),
+        TextCellValue(
+          'Sample product description',
+        ),
         TextCellValue('New'),
         TextCellValue('Preesho'),
         TextCellValue('Plastic'),
@@ -513,7 +1077,9 @@ class _AdminPanelState extends State<AdminPanel>
         TextCellValue('M'),
         TextCellValue('500g'),
         TextCellValue('1 Year'),
-        TextCellValue('Good quality product'),
+        TextCellValue(
+          'Good quality product',
+        ),
       ]);
 
       final data = excel.encode();
@@ -530,7 +1096,9 @@ class _AdminPanelState extends State<AdminPanel>
         mimeType: MimeType.microsoftExcel,
       );
 
-      showMessage('Excel template download ho gayi.');
+      showMessage(
+        'Excel template download ho gayi.',
+      );
     } catch (e) {
       showMessage('Template error: $e');
     } finally {
@@ -551,17 +1119,20 @@ class _AdminPanelState extends State<AdminPanel>
     String newStatus,
   ) async {
     try {
-      await FirebaseFirestore.instance.runTransaction(
+      await FirebaseFirestore.instance
+          .runTransaction(
         (transaction) async {
           final ref = ordersRef.doc(orderId);
-          final snapshot = await transaction.get(ref);
+          final snapshot =
+              await transaction.get(ref);
 
           if (!snapshot.exists) {
             throw Exception('Order nahi mila.');
           }
 
           final data =
-              snapshot.data() as Map<String, dynamic>;
+              snapshot.data()
+                  as Map<String, dynamic>;
 
           final currentStatus =
               normalizedOrderStatus(data);
@@ -573,7 +1144,9 @@ class _AdminPanelState extends State<AdminPanel>
           }
 
           if (newStatus == 'Cancelled') {
-            if (!canCancelOrder(currentStatus)) {
+            if (!canCancelOrder(
+              currentStatus,
+            )) {
               throw Exception(
                 'Is stage par order cancel nahi kiya ja sakta.',
               );
@@ -606,11 +1179,13 @@ class _AdminPanelState extends State<AdminPanel>
             'updatedBy': 'Admin',
           });
 
-          final updates = <String, dynamic>{
+          final updates =
+              <String, dynamic>{
             'orderStatus': newStatus,
             'status': newStatus,
             'statusHistory': history,
-            'updatedAt': FieldValue.serverTimestamp(),
+            'updatedAt':
+                FieldValue.serverTimestamp(),
           };
 
           if (newStatus == 'Confirmed') {
@@ -638,7 +1213,10 @@ class _AdminPanelState extends State<AdminPanel>
             updates['trackingEnabled'] = false;
           }
 
-          transaction.update(ref, updates);
+          transaction.update(
+            ref,
+            updates,
+          );
         },
       );
 
@@ -647,7 +1225,8 @@ class _AdminPanelState extends State<AdminPanel>
       );
     } catch (e) {
       showMessage(
-        e.toString().replaceFirst('Exception: ', ''),
+        e.toString()
+            .replaceFirst('Exception: ', ''),
       );
     }
   }
@@ -665,9 +1244,11 @@ class _AdminPanelState extends State<AdminPanel>
     courierPersonController.clear();
     courierPhoneController.clear();
 
-    final formKey = GlobalKey<FormState>();
+    final formKey =
+        GlobalKey<FormState>();
 
-    final result = await showDialog<bool>(
+    final result =
+        await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
@@ -678,14 +1259,18 @@ class _AdminPanelState extends State<AdminPanel>
             child: Form(
               key: formKey,
               child: Column(
-                mainAxisSize: MainAxisSize.min,
+                mainAxisSize:
+                    MainAxisSize.min,
                 children: [
                   TextFormField(
                     controller:
                         courierPartnerController,
-                    decoration: const InputDecoration(
-                      labelText: 'Courier Partner *',
-                      hintText: 'Delhivery / BlueDart etc.',
+                    decoration:
+                        const InputDecoration(
+                      labelText:
+                          'Courier Partner *',
+                      hintText:
+                          'Delhivery / BlueDart etc.',
                     ),
                     validator: (value) {
                       if (value == null ||
@@ -699,8 +1284,10 @@ class _AdminPanelState extends State<AdminPanel>
                   TextFormField(
                     controller:
                         trackingNumberController,
-                    decoration: const InputDecoration(
-                      labelText: 'AWB / Tracking Number *',
+                    decoration:
+                        const InputDecoration(
+                      labelText:
+                          'AWB / Tracking Number *',
                     ),
                     validator: (value) {
                       if (value == null ||
@@ -714,25 +1301,32 @@ class _AdminPanelState extends State<AdminPanel>
                   TextFormField(
                     controller:
                         trackingUrlController,
-                    decoration: const InputDecoration(
-                      labelText: 'Tracking URL',
+                    decoration:
+                        const InputDecoration(
+                      labelText:
+                          'Tracking URL',
                     ),
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller:
                         courierPersonController,
-                    decoration: const InputDecoration(
-                      labelText: 'Courier Person Name',
+                    decoration:
+                        const InputDecoration(
+                      labelText:
+                          'Courier Person Name',
                     ),
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller:
                         courierPhoneController,
-                    keyboardType: TextInputType.phone,
-                    decoration: const InputDecoration(
-                      labelText: 'Courier Phone',
+                    keyboardType:
+                        TextInputType.phone,
+                    decoration:
+                        const InputDecoration(
+                      labelText:
+                          'Courier Phone',
                     ),
                   ),
                 ],
@@ -742,19 +1336,28 @@ class _AdminPanelState extends State<AdminPanel>
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(dialogContext, false);
+                Navigator.pop(
+                  dialogContext,
+                  false,
+                );
               },
               child: const Text('Cancel'),
             ),
             ElevatedButton(
               onPressed: () async {
-                if (!formKey.currentState!.validate()) {
+                if (!formKey.currentState!
+                    .validate()) {
                   return;
                 }
 
-                Navigator.pop(dialogContext, true);
+                Navigator.pop(
+                  dialogContext,
+                  true,
+                );
               },
-              child: const Text('Ship Order'),
+              child: const Text(
+                'Ship Order',
+              ),
             ),
           ],
         );
@@ -765,7 +1368,9 @@ class _AdminPanelState extends State<AdminPanel>
       return;
     }
 
-    await shipOrderWithDetails(orderId);
+    await shipOrderWithDetails(
+      orderId,
+    );
   }
 
   // =========================================================
@@ -776,17 +1381,22 @@ class _AdminPanelState extends State<AdminPanel>
     String orderId,
   ) async {
     try {
-      await FirebaseFirestore.instance.runTransaction(
+      await FirebaseFirestore.instance
+          .runTransaction(
         (transaction) async {
           final ref = ordersRef.doc(orderId);
-          final snapshot = await transaction.get(ref);
+          final snapshot =
+              await transaction.get(ref);
 
           if (!snapshot.exists) {
-            throw Exception('Order nahi mila.');
+            throw Exception(
+              'Order nahi mila.',
+            );
           }
 
           final data =
-              snapshot.data() as Map<String, dynamic>;
+              snapshot.data()
+                  as Map<String, dynamic>;
 
           final currentStatus =
               normalizedOrderStatus(data);
@@ -817,35 +1427,30 @@ class _AdminPanelState extends State<AdminPanel>
             'updatedBy': 'Admin',
           });
 
-          transaction.update(ref, {
-            'orderStatus': 'Shipped',
-            'status': 'Shipped',
-            'statusHistory': history,
-
-            'trackingEnabled': true,
-            'trackingStatus': 'Shipped',
-
-            'trackingNumber':
-                trackingNumberController.text.trim(),
-
-            'trackingUrl':
-                trackingUrlController.text.trim(),
-
-            'courierPartner':
-                courierPartnerController.text.trim(),
-
-            'courierPersonName':
-                courierPersonController.text.trim(),
-
-            'courierPhone':
-                courierPhoneController.text.trim(),
-
-            'shippedAt':
-                FieldValue.serverTimestamp(),
-
-            'updatedAt':
-                FieldValue.serverTimestamp(),
-          });
+          transaction.update(
+            ref,
+            {
+              'orderStatus': 'Shipped',
+              'status': 'Shipped',
+              'statusHistory': history,
+              'trackingEnabled': true,
+              'trackingStatus': 'Shipped',
+              'trackingNumber':
+                  trackingNumberController.text.trim(),
+              'trackingUrl':
+                  trackingUrlController.text.trim(),
+              'courierPartner':
+                  courierPartnerController.text.trim(),
+              'courierPersonName':
+                  courierPersonController.text.trim(),
+              'courierPhone':
+                  courierPhoneController.text.trim(),
+              'shippedAt':
+                  FieldValue.serverTimestamp(),
+              'updatedAt':
+                  FieldValue.serverTimestamp(),
+            },
+          );
         },
       );
 
@@ -854,13 +1459,14 @@ class _AdminPanelState extends State<AdminPanel>
       );
     } catch (e) {
       showMessage(
-        e.toString().replaceFirst('Exception: ', ''),
+        e.toString()
+            .replaceFirst('Exception: ', ''),
       );
     }
   }
 
   // =========================================================
-  // COURIER STATUS - FUTURE PANEL SUPPORT
+  // COURIER STATUS
   // =========================================================
 
   Future<void> updateCourierStatus(
@@ -868,17 +1474,22 @@ class _AdminPanelState extends State<AdminPanel>
     String newStatus,
   ) async {
     try {
-      await FirebaseFirestore.instance.runTransaction(
+      await FirebaseFirestore.instance
+          .runTransaction(
         (transaction) async {
           final ref = ordersRef.doc(orderId);
-          final snapshot = await transaction.get(ref);
+          final snapshot =
+              await transaction.get(ref);
 
           if (!snapshot.exists) {
-            throw Exception('Order nahi mila.');
+            throw Exception(
+              'Order nahi mila.',
+            );
           }
 
           final data =
-              snapshot.data() as Map<String, dynamic>;
+              snapshot.data()
+                  as Map<String, dynamic>;
 
           final currentStatus =
               normalizedOrderStatus(data);
@@ -909,21 +1520,25 @@ class _AdminPanelState extends State<AdminPanel>
             'updatedBy': 'Courier',
           });
 
-          final updates = <String, dynamic>{
+          final updates =
+              <String, dynamic>{
             'orderStatus': newStatus,
             'status': newStatus,
             'trackingStatus': newStatus,
             'trackingEnabled': true,
             'statusHistory': history,
-            'updatedAt': FieldValue.serverTimestamp(),
+            'updatedAt':
+                FieldValue.serverTimestamp(),
           };
 
-          if (newStatus == 'Picked by Courier') {
+          if (newStatus ==
+              'Picked by Courier') {
             updates['courierPickedAt'] =
                 FieldValue.serverTimestamp();
           }
 
-          if (newStatus == 'Out for Delivery') {
+          if (newStatus ==
+              'Out for Delivery') {
             updates['outForDeliveryAt'] =
                 FieldValue.serverTimestamp();
           }
@@ -934,7 +1549,10 @@ class _AdminPanelState extends State<AdminPanel>
             updates['trackingEnabled'] = false;
           }
 
-          transaction.update(ref, updates);
+          transaction.update(
+            ref,
+            updates,
+          );
         },
       );
 
@@ -943,7 +1561,8 @@ class _AdminPanelState extends State<AdminPanel>
       );
     } catch (e) {
       showMessage(
-        e.toString().replaceFirst('Exception: ', ''),
+        e.toString()
+            .replaceFirst('Exception: ', ''),
       );
     }
   }
@@ -961,7 +1580,8 @@ class _AdminPanelState extends State<AdminPanel>
           children: [
             TextFormField(
               controller: nameController,
-              decoration: const InputDecoration(
+              decoration:
+                  const InputDecoration(
                 labelText: 'Product Name',
               ),
               validator: (value) {
@@ -976,7 +1596,8 @@ class _AdminPanelState extends State<AdminPanel>
 
             TextFormField(
               controller: categoryController,
-              decoration: const InputDecoration(
+              decoration:
+                  const InputDecoration(
                 labelText: 'Category',
               ),
             ),
@@ -984,17 +1605,43 @@ class _AdminPanelState extends State<AdminPanel>
 
             TextFormField(
               controller: priceController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
+              keyboardType:
+                  TextInputType.number,
+              decoration:
+                  const InputDecoration(
                 labelText: 'Price',
               ),
             ),
             const SizedBox(height: 10),
 
             TextFormField(
+              controller: mrpController,
+              keyboardType:
+                  TextInputType.number,
+              decoration:
+                  const InputDecoration(
+                labelText: 'MRP',
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            TextFormField(
+              controller: discountController,
+              keyboardType:
+                  TextInputType.number,
+              decoration:
+                  const InputDecoration(
+                labelText: 'Discount %',
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            TextFormField(
               controller: stockController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
+              keyboardType:
+                  TextInputType.number,
+              decoration:
+                  const InputDecoration(
                 labelText: 'Stock',
               ),
             ),
@@ -1003,7 +1650,8 @@ class _AdminPanelState extends State<AdminPanel>
             TextFormField(
               controller: imageUrlsController,
               maxLines: 3,
-              decoration: const InputDecoration(
+              decoration:
+                  const InputDecoration(
                 labelText: 'Image URLs',
                 hintText:
                     'One URL per line ya comma separated',
@@ -1012,9 +1660,11 @@ class _AdminPanelState extends State<AdminPanel>
             const SizedBox(height: 10),
 
             TextFormField(
-              controller: descriptionController,
+              controller:
+                  descriptionController,
               maxLines: 3,
-              decoration: const InputDecoration(
+              decoration:
+                  const InputDecoration(
                 labelText: 'Description',
               ),
             ),
@@ -1022,7 +1672,8 @@ class _AdminPanelState extends State<AdminPanel>
 
             TextFormField(
               controller: remarkController,
-              decoration: const InputDecoration(
+              decoration:
+                  const InputDecoration(
                 labelText: 'Remark',
               ),
             ),
@@ -1030,7 +1681,8 @@ class _AdminPanelState extends State<AdminPanel>
 
             TextFormField(
               controller: brandController,
-              decoration: const InputDecoration(
+              decoration:
+                  const InputDecoration(
                 labelText: 'Brand',
               ),
             ),
@@ -1038,7 +1690,8 @@ class _AdminPanelState extends State<AdminPanel>
 
             TextFormField(
               controller: materialController,
-              decoration: const InputDecoration(
+              decoration:
+                  const InputDecoration(
                 labelText: 'Material',
               ),
             ),
@@ -1046,7 +1699,8 @@ class _AdminPanelState extends State<AdminPanel>
 
             TextFormField(
               controller: colorController,
-              decoration: const InputDecoration(
+              decoration:
+                  const InputDecoration(
                 labelText: 'Color',
               ),
             ),
@@ -1054,7 +1708,8 @@ class _AdminPanelState extends State<AdminPanel>
 
             TextFormField(
               controller: sizeController,
-              decoration: const InputDecoration(
+              decoration:
+                  const InputDecoration(
                 labelText: 'Size',
               ),
             ),
@@ -1062,7 +1717,8 @@ class _AdminPanelState extends State<AdminPanel>
 
             TextFormField(
               controller: weightController,
-              decoration: const InputDecoration(
+              decoration:
+                  const InputDecoration(
                 labelText: 'Weight',
               ),
             ),
@@ -1070,7 +1726,8 @@ class _AdminPanelState extends State<AdminPanel>
 
             TextFormField(
               controller: warrantyController,
-              decoration: const InputDecoration(
+              decoration:
+                  const InputDecoration(
                 labelText: 'Warranty',
               ),
             ),
@@ -1079,7 +1736,8 @@ class _AdminPanelState extends State<AdminPanel>
             TextFormField(
               controller: highlightsController,
               maxLines: 3,
-              decoration: const InputDecoration(
+              decoration:
+                  const InputDecoration(
                 labelText: 'Highlights',
               ),
             ),
@@ -1102,7 +1760,8 @@ class _AdminPanelState extends State<AdminPanel>
               child: ElevatedButton.icon(
                 onPressed:
                     saving ? null : saveProduct,
-                icon: const Icon(Icons.save),
+                icon:
+                    const Icon(Icons.save),
                 label: Text(
                   saving
                       ? 'Saving...'
@@ -1115,10 +1774,15 @@ class _AdminPanelState extends State<AdminPanel>
 
             SizedBox(
               width: double.infinity,
-              child: OutlinedButton.icon(
+              child:
+                  OutlinedButton.icon(
                 onPressed:
-                    uploadingExcel ? null : uploadExcel,
-                icon: const Icon(Icons.upload_file),
+                    uploadingExcel
+                        ? null
+                        : uploadExcel,
+                icon: const Icon(
+                  Icons.upload_file,
+                ),
                 label: Text(
                   uploadingExcel
                       ? 'Uploading...'
@@ -1131,11 +1795,15 @@ class _AdminPanelState extends State<AdminPanel>
 
             SizedBox(
               width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: downloadingTemplate
-                    ? null
-                    : downloadTemplate,
-                icon: const Icon(Icons.download),
+              child:
+                  OutlinedButton.icon(
+                onPressed:
+                    downloadingTemplate
+                        ? null
+                        : downloadTemplate,
+                icon: const Icon(
+                  Icons.download,
+                ),
                 label: Text(
                   downloadingTemplate
                       ? 'Preparing...'
@@ -1165,7 +1833,8 @@ class _AdminPanelState extends State<AdminPanel>
         if (snapshot.connectionState ==
             ConnectionState.waiting) {
           return const Center(
-            child: CircularProgressIndicator(),
+            child:
+                CircularProgressIndicator(),
           );
         }
 
@@ -1177,21 +1846,27 @@ class _AdminPanelState extends State<AdminPanel>
           );
         }
 
-        final docs = snapshot.data?.docs ?? [];
+        final docs =
+            snapshot.data?.docs ?? [];
 
         if (docs.isEmpty) {
           return const Center(
-            child: Text('No products found.'),
+            child:
+                Text('No products found.'),
           );
         }
 
         return ListView.builder(
-          padding: const EdgeInsets.all(12),
+          padding:
+              const EdgeInsets.all(12),
           itemCount: docs.length,
-          itemBuilder: (context, index) {
+          itemBuilder:
+              (context, index) {
             final doc = docs[index];
+
             final data =
-                doc.data() as Map<String, dynamic>;
+                doc.data()
+                    as Map<String, dynamic>;
 
             final imageUrls =
                 (data['ImageUrls'] as List?)
@@ -1201,37 +1876,124 @@ class _AdminPanelState extends State<AdminPanel>
                         .toList() ??
                     [];
 
+            if (imageUrls.isEmpty) {
+              final legacy =
+                  data['Imageurl']
+                          ?.toString() ??
+                      '';
+
+              if (legacy.isNotEmpty) {
+                imageUrls.add(legacy);
+              }
+            }
+
+            final isActive =
+                data['Active'] != false;
+
             return Card(
-              margin: const EdgeInsets.only(
+              margin:
+                  const EdgeInsets.only(
                 bottom: 10,
               ),
               child: ListTile(
                 leading: imageUrls.isNotEmpty
-                    ? Image.network(
-                        imageUrls.first,
-                        width: 55,
-                        height: 55,
-                        fit: BoxFit.cover,
-                        errorBuilder:
-                            (_, __, ___) =>
-                                const Icon(
-                          Icons.image_not_supported,
+                    ? ClipRRect(
+                        borderRadius:
+                            BorderRadius
+                                .circular(8),
+                        child:
+                            Image.network(
+                          imageUrls.first,
+                          width: 55,
+                          height: 55,
+                          fit: BoxFit.cover,
+                          errorBuilder:
+                              (_, __, ___) =>
+                                  const Icon(
+                            Icons
+                                .image_not_supported,
+                          ),
                         ),
                       )
                     : const Icon(
                         Icons.image,
                         size: 40,
                       ),
-                title: Text(
-                  data['Name']?.toString() ??
-                      'Unnamed',
+
+                title: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        data['Name']
+                                ?.toString() ??
+                            'Unnamed',
+                        style:
+                            const TextStyle(
+                          fontWeight:
+                              FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding:
+                          const EdgeInsets
+                              .symmetric(
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
+                      decoration:
+                          BoxDecoration(
+                        color: isActive
+                            ? Colors.green
+                                .withOpacity(
+                                    0.1)
+                            : Colors.red
+                                .withOpacity(
+                                    0.1),
+                        borderRadius:
+                            BorderRadius
+                                .circular(10),
+                      ),
+                      child: Text(
+                        isActive
+                            ? 'Active'
+                            : 'Inactive',
+                        style: TextStyle(
+                          color: isActive
+                              ? Colors.green
+                              : Colors.red,
+                          fontSize: 11,
+                          fontWeight:
+                              FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
+
                 subtitle: Text(
                   '${data['Category'] ?? ''}\n'
                   '${money(data['Price'])} | '
+                  'MRP: ${money(data['MRP'])} | '
                   'Stock: ${data['Stock'] ?? 0}',
                 ),
+
                 isThreeLine: true,
+
+                trailing: IconButton(
+                  icon: const Icon(
+                    Icons.edit,
+                    color: Colors.blue,
+                  ),
+                  tooltip:
+                      'Edit Product',
+                  onPressed: () {
+                    editProduct(
+                      doc.id,
+                      data,
+                    );
+                  },
+                ),
               ),
             );
           },
@@ -1256,38 +2018,46 @@ class _AdminPanelState extends State<AdminPanel>
         if (snapshot.connectionState ==
             ConnectionState.waiting) {
           return const Center(
-            child: CircularProgressIndicator(),
+            child:
+                CircularProgressIndicator(),
           );
         }
 
         if (snapshot.hasError) {
           return Center(
             child: Padding(
-              padding: const EdgeInsets.all(20),
+              padding:
+                  const EdgeInsets.all(20),
               child: Text(
-                'Orders load error:\n${snapshot.error}',
+                'Orders load error:\n'
+                '${snapshot.error}',
               ),
             ),
           );
         }
 
-        final docs = snapshot.data?.docs ?? [];
+        final docs =
+            snapshot.data?.docs ?? [];
 
         if (docs.isEmpty) {
           return const Center(
-            child: Text('No orders found.'),
+            child:
+                Text('No orders found.'),
           );
         }
 
         return ListView.builder(
-          padding: const EdgeInsets.all(12),
+          padding:
+              const EdgeInsets.all(12),
           itemCount: docs.length,
-          itemBuilder: (context, index) {
+          itemBuilder:
+              (context, index) {
             final doc = docs[index];
 
             return orderCard(
               doc.id,
-              doc.data() as Map<String, dynamic>,
+              doc.data()
+                  as Map<String, dynamic>,
             );
           },
         );
@@ -1317,11 +2087,13 @@ class _AdminPanelState extends State<AdminPanel>
             );
 
     return Card(
-      margin: const EdgeInsets.only(
+      margin:
+          const EdgeInsets.only(
         bottom: 14,
       ),
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding:
+            const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment:
               CrossAxisAlignment.start,
@@ -1331,8 +2103,10 @@ class _AdminPanelState extends State<AdminPanel>
                 Expanded(
                   child: Text(
                     'Order: $orderId',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
+                    style:
+                        const TextStyle(
+                      fontWeight:
+                          FontWeight.bold,
                     ),
                   ),
                 ),
@@ -1350,7 +2124,8 @@ class _AdminPanelState extends State<AdminPanel>
             const SizedBox(height: 4),
 
             Text(
-              'Total: ${money(data['totalAmount'] ?? data['total'])}',
+              'Total: '
+              '${money(data['totalAmount'] ?? data['total'])}',
             ),
 
             const SizedBox(height: 15),
@@ -1372,47 +2147,60 @@ class _AdminPanelState extends State<AdminPanel>
             if (status == 'Shipped')
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.purple.withOpacity(
-                    0.08,
-                  ),
+                padding:
+                    const EdgeInsets.all(12),
+                decoration:
+                    BoxDecoration(
+                  color: Colors.purple
+                      .withOpacity(0.08),
                   borderRadius:
-                      BorderRadius.circular(10),
+                      BorderRadius.circular(
+                    10,
+                  ),
                 ),
                 child: const Text(
                   'Shipped complete.\n'
                   'Ab next stages Courier handle karega.',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
+                  style:
+                      TextStyle(
+                    fontWeight:
+                        FontWeight.w600,
                   ),
                 ),
               )
-            else if (status == 'Delivered')
+            else if (status ==
+                'Delivered')
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(
-                    0.08,
-                  ),
+                padding:
+                    const EdgeInsets.all(12),
+                decoration:
+                    BoxDecoration(
+                  color: Colors.green
+                      .withOpacity(0.08),
                   borderRadius:
-                      BorderRadius.circular(10),
+                      BorderRadius.circular(
+                    10,
+                  ),
                 ),
                 child: const Text(
                   'Order Delivered successfully.',
                 ),
               )
-            else if (status == 'Cancelled')
+            else if (status ==
+                'Cancelled')
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(
-                    0.08,
-                  ),
+                padding:
+                    const EdgeInsets.all(12),
+                decoration:
+                    BoxDecoration(
+                  color: Colors.red
+                      .withOpacity(0.08),
                   borderRadius:
-                      BorderRadius.circular(10),
+                      BorderRadius.circular(
+                    10,
+                  ),
                 ),
                 child: const Text(
                   'Order Cancelled.',
@@ -1421,9 +2209,11 @@ class _AdminPanelState extends State<AdminPanel>
             else if (canChange)
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton.icon(
+                child:
+                    ElevatedButton.icon(
                   onPressed: () {
-                    if (nextStatus == 'Shipped') {
+                    if (nextStatus ==
+                        'Shipped') {
                       showShipmentDialog(
                         orderId,
                       );
@@ -1435,12 +2225,15 @@ class _AdminPanelState extends State<AdminPanel>
                     }
                   },
                   icon: Icon(
-                    nextStatus == 'Shipped'
-                        ? Icons.local_shipping
+                    nextStatus ==
+                            'Shipped'
+                        ? Icons
+                            .local_shipping
                         : Icons.arrow_forward,
                   ),
                   label: Text(
-                    nextStatus == 'Shipped'
+                    nextStatus ==
+                            'Shipped'
                         ? 'Ship Order'
                         : 'Move to $nextStatus',
                   ),
@@ -1453,7 +2246,8 @@ class _AdminPanelState extends State<AdminPanel>
               const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
-                child: OutlinedButton.icon(
+                child:
+                    OutlinedButton.icon(
                   onPressed: () {
                     confirmCancellation(
                       orderId,
@@ -1497,7 +2291,8 @@ class _AdminPanelState extends State<AdminPanel>
             maxLines: 3,
             decoration:
                 const InputDecoration(
-              labelText: 'Cancellation Reason',
+              labelText:
+                  'Cancellation Reason',
             ),
           ),
           actions: [
@@ -1517,7 +2312,9 @@ class _AdminPanelState extends State<AdminPanel>
                   true,
                 );
               },
-              child: const Text('Cancel Order'),
+              child: const Text(
+                'Cancel Order',
+              ),
             ),
           ],
         );
@@ -1562,13 +2359,10 @@ class _AdminPanelState extends State<AdminPanel>
 
           final history =
               List<Map<String, dynamic>>.from(
-            (data['statusHistory']
-                        as List?)
+            (data['statusHistory'] as List?)
                     ?.map(
                       (e) =>
-                          Map<String, dynamic>.from(
-                        e,
-                      ),
+                          Map<String, dynamic>.from(e),
                     ) ??
                 [],
           );
@@ -1622,18 +2416,21 @@ class _AdminPanelState extends State<AdminPanel>
 
   Widget statusChip(String status) {
     return Container(
-      padding: const EdgeInsets.symmetric(
+      padding:
+          const EdgeInsets.symmetric(
         horizontal: 10,
         vertical: 6,
       ),
-      decoration: BoxDecoration(
+      decoration:
+          BoxDecoration(
         color: statusColor(status)
             .withOpacity(0.12),
         borderRadius:
             BorderRadius.circular(20),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize:
+            MainAxisSize.min,
         children: [
           Icon(
             statusIcon(status),
@@ -1644,8 +2441,10 @@ class _AdminPanelState extends State<AdminPanel>
           Text(
             status,
             style: TextStyle(
-              color: statusColor(status),
-              fontWeight: FontWeight.w600,
+              color:
+                  statusColor(status),
+              fontWeight:
+                  FontWeight.w600,
             ),
           ),
         ],
@@ -1657,8 +2456,11 @@ class _AdminPanelState extends State<AdminPanel>
   // ORDER TIMELINE
   // =========================================================
 
-  Widget orderTimeline(String currentStatus) {
-    if (currentStatus == 'Cancelled') {
+  Widget orderTimeline(
+    String currentStatus,
+  ) {
+    if (currentStatus ==
+        'Cancelled') {
       return _timelineItem(
         'Cancelled',
         true,
@@ -1702,26 +2504,31 @@ class _AdminPanelState extends State<AdminPanel>
             Icon(
               completed
                   ? Icons.check_circle
-                  : Icons.radio_button_unchecked,
+                  : Icons
+                      .radio_button_unchecked,
               color: completed
                   ? color
                   : Colors.grey,
               size: 22,
             ),
-            if (status != 'Delivered')
+            if (status !=
+                'Delivered')
               Container(
                 width: 2,
                 height: 22,
                 color: completed
                     ? color.withOpacity(0.4)
-                    : Colors.grey.withOpacity(0.3),
+                    : Colors.grey
+                        .withOpacity(0.3),
               ),
           ],
         ),
         const SizedBox(width: 10),
         Padding(
           padding:
-              const EdgeInsets.only(top: 2),
+              const EdgeInsets.only(
+            top: 2,
+          ),
           child: Text(
             status,
             style: TextStyle(
@@ -1748,7 +2555,8 @@ class _AdminPanelState extends State<AdminPanel>
     final history =
         (data['statusHistory'] as List?)
                 ?.map(
-                  (e) => Map<String, dynamic>.from(
+                  (e) =>
+                      Map<String, dynamic>.from(
                     e,
                   ),
                 )
@@ -1764,7 +2572,8 @@ class _AdminPanelState extends State<AdminPanel>
       title: const Text(
         'Status History',
         style: TextStyle(
-          fontWeight: FontWeight.bold,
+          fontWeight:
+              FontWeight.bold,
         ),
       ),
       children: history.reversed.map(
@@ -1773,16 +2582,19 @@ class _AdminPanelState extends State<AdminPanel>
             dense: true,
             leading: Icon(
               statusIcon(
-                item['status']?.toString() ??
+                item['status']
+                        ?.toString() ??
                     '',
               ),
               color: statusColor(
-                item['status']?.toString() ??
+                item['status']
+                        ?.toString() ??
                     '',
               ),
             ),
             title: Text(
-              item['status']?.toString() ??
+              item['status']
+                      ?.toString() ??
                   '-',
             ),
             subtitle: Text(
@@ -1803,19 +2615,24 @@ class _AdminPanelState extends State<AdminPanel>
     Map<String, dynamic> data,
   ) {
     final trackingStatus =
-        data['trackingStatus']?.toString();
+        data['trackingStatus']
+            ?.toString();
 
     final trackingNumber =
-        data['trackingNumber']?.toString();
+        data['trackingNumber']
+            ?.toString();
 
     final courierPartner =
-        data['courierPartner']?.toString();
+        data['courierPartner']
+            ?.toString();
 
     final courierPerson =
-        data['courierPersonName']?.toString();
+        data['courierPersonName']
+            ?.toString();
 
     final courierPhone =
-        data['courierPhone']?.toString();
+        data['courierPhone']
+            ?.toString();
 
     if (trackingStatus == null &&
         trackingNumber == null &&
@@ -1825,8 +2642,10 @@ class _AdminPanelState extends State<AdminPanel>
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
+      padding:
+          const EdgeInsets.all(12),
+      decoration:
+          BoxDecoration(
         border: Border.all(
           color: Colors.grey.shade300,
         ),
@@ -1840,14 +2659,16 @@ class _AdminPanelState extends State<AdminPanel>
           const Text(
             'Courier / Tracking',
             style: TextStyle(
-              fontWeight: FontWeight.bold,
+              fontWeight:
+                  FontWeight.bold,
             ),
           ),
           const SizedBox(height: 8),
 
           if (trackingStatus != null)
             Text(
-              'Tracking Status: $trackingStatus',
+              'Tracking Status: '
+              '$trackingStatus',
             ),
 
           if (trackingNumber != null &&
@@ -1859,7 +2680,8 @@ class _AdminPanelState extends State<AdminPanel>
           if (courierPartner != null &&
               courierPartner.isNotEmpty)
             Text(
-              'Courier: $courierPartner',
+              'Courier: '
+              '$courierPartner',
             ),
 
           if (courierPerson != null &&
@@ -1893,15 +2715,21 @@ class _AdminPanelState extends State<AdminPanel>
           controller: tabController,
           tabs: const [
             Tab(
-              icon: Icon(Icons.add_box_outlined),
+              icon: Icon(
+                Icons.add_box_outlined,
+              ),
               text: 'Products',
             ),
             Tab(
-              icon: Icon(Icons.inventory_2_outlined),
+              icon: Icon(
+                Icons.inventory_2_outlined,
+              ),
               text: 'Product List',
             ),
             Tab(
-              icon: Icon(Icons.receipt_long),
+              icon: Icon(
+                Icons.receipt_long,
+              ),
               text: 'Orders',
             ),
           ],
