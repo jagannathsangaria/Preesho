@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class OrdersPage extends StatefulWidget {
   const OrdersPage({super.key});
@@ -13,10 +16,14 @@ class _OrdersPageState extends State<OrdersPage> {
   final FirebaseFirestore _firestore =
       FirebaseFirestore.instance;
 
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _ordersSubscription;
+
   bool loading = true;
   bool cancellingOrder = false;
 
-  List<QueryDocumentSnapshot<Map<String, dynamic>>> orders = [];
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> orders =
+      [];
 
   User? get currentUser =>
       FirebaseAuth.instance.currentUser;
@@ -35,10 +42,20 @@ class _OrdersPageState extends State<OrdersPage> {
   @override
   void initState() {
     super.initState();
-    loadOrders();
+    startOrdersListener();
   }
 
-  Future<void> loadOrders() async {
+  @override
+  void dispose() {
+    _ordersSubscription?.cancel();
+    super.dispose();
+  }
+
+  // =========================================================
+  // REAL-TIME ORDERS LISTENER
+  // =========================================================
+
+  void startOrdersListener() {
     final user = currentUser;
 
     if (user == null) {
@@ -51,10 +68,72 @@ class _OrdersPageState extends State<OrdersPage> {
       return;
     }
 
-    if (mounted) {
-      setState(() {
-        loading = true;
-      });
+    setState(() {
+      loading = true;
+    });
+
+    _ordersSubscription?.cancel();
+
+    _ordersSubscription = _firestore
+        .collection('orders')
+        .where(
+          'userId',
+          isEqualTo: user.uid,
+        )
+        .snapshots()
+        .listen(
+      (snapshot) {
+        final result = snapshot.docs.toList();
+
+        // Local sorting so composite Firestore index is not required.
+        result.sort((a, b) {
+          final aTime = _timestampToDate(
+            a.data()['createdAt'],
+          );
+
+          final bTime = _timestampToDate(
+            b.data()['createdAt'],
+          );
+
+          return bTime.compareTo(aTime);
+        });
+
+        if (!mounted) return;
+
+        setState(() {
+          orders = result;
+          loading = false;
+        });
+      },
+      onError: (error) {
+        if (!mounted) return;
+
+        setState(() {
+          loading = false;
+        });
+
+        showMessage(
+          'Could not load your orders.',
+        );
+      },
+    );
+  }
+
+  // =========================================================
+  // MANUAL REFRESH
+  // =========================================================
+
+  Future<void> loadOrders() async {
+    final user = currentUser;
+
+    if (user == null) {
+      if (mounted) {
+        setState(() {
+          loading = false;
+          orders = [];
+        });
+      }
+      return;
     }
 
     try {
@@ -89,12 +168,8 @@ class _OrdersPageState extends State<OrdersPage> {
     } catch (e) {
       if (!mounted) return;
 
-      setState(() {
-        loading = false;
-      });
-
       showMessage(
-        'Could not load your orders.',
+        'Could not refresh your orders.',
       );
     }
   }
@@ -110,6 +185,10 @@ class _OrdersPageState extends State<OrdersPage> {
 
     return DateTime.fromMillisecondsSinceEpoch(0);
   }
+
+  // =========================================================
+  // DATE FORMAT
+  // =========================================================
 
   String formatDate(dynamic value) {
     final date = _timestampToDate(value);
@@ -138,6 +217,10 @@ class _OrdersPageState extends State<OrdersPage> {
     return '$day/$month/$year • $hour:$minute $period';
   }
 
+  // =========================================================
+  // STATUS
+  // =========================================================
+
   String normalizedStatus(
     Map<String, dynamic> data,
   ) {
@@ -148,6 +231,20 @@ class _OrdersPageState extends State<OrdersPage> {
     ).toString().trim();
   }
 
+  int _statusIndex(String status) {
+    final index = orderStatuses.indexWhere(
+      (item) =>
+          item.toLowerCase() ==
+          status.toLowerCase(),
+    );
+
+    return index;
+  }
+
+  // =========================================================
+  // CANCELLATION
+  // =========================================================
+
   Future<void> cancelOrder(
     QueryDocumentSnapshot<Map<String, dynamic>> order,
   ) async {
@@ -155,8 +252,8 @@ class _OrdersPageState extends State<OrdersPage> {
 
     final data = order.data();
 
-    final status = normalizedStatus(data)
-        .toLowerCase();
+    final status =
+        normalizedStatus(data).toLowerCase();
 
     if (!_canCancel(status)) {
       showMessage(
@@ -165,9 +262,11 @@ class _OrdersPageState extends State<OrdersPage> {
       return;
     }
 
-    final reason = await showCancellationDialog();
+    final reason =
+        await showCancellationDialog();
 
-    if (reason == null || reason.trim().isEmpty) {
+    if (reason == null ||
+        reason.trim().isEmpty) {
       return;
     }
 
@@ -209,6 +308,7 @@ class _OrdersPageState extends State<OrdersPage> {
             'Placed'
           ).toString().trim().toLowerCase();
 
+          // Re-check status from Firebase.
           if (!_canCancel(freshStatus)) {
             throw Exception(
               'ORDER_NOT_CANCELLABLE',
@@ -254,11 +354,12 @@ class _OrdersPageState extends State<OrdersPage> {
 
       if (!mounted) return;
 
-      await loadOrders();
-
       showMessage(
         'Order cancelled successfully.',
       );
+
+      // Real-time listener will automatically
+      // update the order on screen.
     } catch (e) {
       if (mounted) {
         if (e.toString().contains(
@@ -282,16 +383,20 @@ class _OrdersPageState extends State<OrdersPage> {
     }
   }
 
+  // ONLY THESE 3 STAGES CAN BE CANCELLED
   bool _canCancel(String status) {
     return status == 'placed' ||
         status == 'confirmed' ||
-        status == 'pending' ||
-        status == 'processing' ||
-        status == 'packed';
+        status == 'processing';
   }
 
+  // =========================================================
+  // CANCELLATION DIALOG
+  // =========================================================
+
   Future<String?> showCancellationDialog() async {
-    String selectedReason = 'Changed my mind';
+    String selectedReason =
+        'Changed my mind';
 
     final reasons = <String>[
       'Changed my mind',
@@ -302,9 +407,11 @@ class _OrdersPageState extends State<OrdersPage> {
       'Other',
     ];
 
-    final controller = TextEditingController();
+    final controller =
+        TextEditingController();
 
-    final result = await showDialog<String>(
+    final result =
+        await showDialog<String>(
       context: context,
       builder: (dialogContext) {
         return StatefulBuilder(
@@ -316,47 +423,62 @@ class _OrdersPageState extends State<OrdersPage> {
               title: const Text(
                 'Cancel Order?',
                 style: TextStyle(
-                  fontWeight: FontWeight.bold,
+                  fontWeight:
+                      FontWeight.bold,
                 ),
               ),
-              content: SingleChildScrollView(
+              content:
+                  SingleChildScrollView(
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisSize:
+                      MainAxisSize.min,
                   crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                      CrossAxisAlignment
+                          .start,
                   children: [
                     const Text(
                       'Please select a reason for cancelling this order.',
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(
+                      height: 16,
+                    ),
                     ...reasons.map(
                       (reason) {
-                        return RadioListTile<String>(
+                        return RadioListTile<
+                            String>(
                           contentPadding:
                               EdgeInsets.zero,
                           dense: true,
                           value: reason,
                           groupValue:
                               selectedReason,
-                          onChanged: (value) {
-                            if (value == null) {
+                          onChanged:
+                              (value) {
+                            if (value ==
+                                null) {
                               return;
                             }
 
-                            setDialogState(() {
-                              selectedReason =
-                                  value;
-                            });
+                            setDialogState(
+                              () {
+                                selectedReason =
+                                    value;
+                              },
+                            );
                           },
-                          title: Text(reason),
+                          title:
+                              Text(reason),
                         );
                       },
                     ),
                     if (selectedReason ==
                         'Other') ...[
-                      const SizedBox(height: 8),
+                      const SizedBox(
+                        height: 8,
+                      ),
                       TextField(
-                        controller: controller,
+                        controller:
+                            controller,
                         maxLines: 3,
                         decoration:
                             const InputDecoration(
@@ -386,10 +508,12 @@ class _OrdersPageState extends State<OrdersPage> {
                     if (selectedReason ==
                         'Other') {
                       final other =
-                          controller.text.trim();
+                          controller.text
+                              .trim();
 
                       if (other.isEmpty) {
-                        ScaffoldMessenger.of(
+                        ScaffoldMessenger
+                                .of(
                           context,
                         ).showSnackBar(
                           const SnackBar(
@@ -428,6 +552,10 @@ class _OrdersPageState extends State<OrdersPage> {
     return result;
   }
 
+  // =========================================================
+  // STATUS COLOR
+  // =========================================================
+
   Color statusColor(String status) {
     switch (status.toLowerCase()) {
       case 'placed':
@@ -458,6 +586,10 @@ class _OrdersPageState extends State<OrdersPage> {
         return Colors.grey;
     }
   }
+
+  // =========================================================
+  // STATUS ICON
+  // =========================================================
 
   IconData statusIcon(String status) {
     switch (status.toLowerCase()) {
@@ -495,6 +627,10 @@ class _OrdersPageState extends State<OrdersPage> {
         return Icons.info_outline;
     }
   }
+
+  // =========================================================
+  // ITEMS
+  // =========================================================
 
   String itemName(dynamic item) {
     if (item is! Map) {
@@ -549,10 +685,15 @@ class _OrdersPageState extends State<OrdersPage> {
 
     if (image == null) return null;
 
-    final value = image.toString().trim();
+    final value =
+        image.toString().trim();
 
     return value.isEmpty ? null : value;
   }
+
+  // =========================================================
+  // MESSAGE
+  // =========================================================
 
   void showMessage(String message) {
     if (!mounted) return;
@@ -567,6 +708,10 @@ class _OrdersPageState extends State<OrdersPage> {
       ),
     );
   }
+
+  // =========================================================
+  // MAIN BUILD
+  // =========================================================
 
   @override
   Widget build(BuildContext context) {
@@ -591,10 +736,15 @@ class _OrdersPageState extends State<OrdersPage> {
     );
   }
 
+  // =========================================================
+  // LOGIN REQUIRED
+  // =========================================================
+
   Widget buildLoginRequired() {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding:
+            const EdgeInsets.all(24),
         child: Column(
           mainAxisAlignment:
               MainAxisAlignment.center,
@@ -611,13 +761,15 @@ class _OrdersPageState extends State<OrdersPage> {
               'Please login',
               style: TextStyle(
                 fontSize: 22,
-                fontWeight: FontWeight.bold,
+                fontWeight:
+                    FontWeight.bold,
               ),
             ),
             const SizedBox(height: 8),
             const Text(
               'Login to view your orders.',
-              textAlign: TextAlign.center,
+              textAlign:
+                  TextAlign.center,
             ),
           ],
         ),
@@ -625,10 +777,15 @@ class _OrdersPageState extends State<OrdersPage> {
     );
   }
 
+  // =========================================================
+  // ORDERS BODY
+  // =========================================================
+
   Widget buildOrdersBody() {
     if (loading) {
       return const Center(
-        child: CircularProgressIndicator(),
+        child:
+            CircularProgressIndicator(),
       );
     }
 
@@ -639,20 +796,26 @@ class _OrdersPageState extends State<OrdersPage> {
     return ListView.builder(
       physics:
           const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(
+      padding:
+          const EdgeInsets.fromLTRB(
         12,
         12,
         12,
         30,
       ),
       itemCount: orders.length,
-      itemBuilder: (context, index) {
+      itemBuilder:
+          (context, index) {
         return buildOrderCard(
           orders[index],
         );
       },
     );
   }
+
+  // =========================================================
+  // EMPTY ORDERS
+  // =========================================================
 
   Widget buildEmptyOrders() {
     return ListView(
@@ -661,7 +824,9 @@ class _OrdersPageState extends State<OrdersPage> {
       children: [
         SizedBox(
           height:
-              MediaQuery.of(context).size.height *
+              MediaQuery.of(context)
+                      .size
+                      .height *
                   .28,
         ),
         Icon(
@@ -675,7 +840,8 @@ class _OrdersPageState extends State<OrdersPage> {
             'No orders yet',
             style: TextStyle(
               fontSize: 22,
-              fontWeight: FontWeight.bold,
+              fontWeight:
+                  FontWeight.bold,
             ),
           ),
         ),
@@ -683,10 +849,13 @@ class _OrdersPageState extends State<OrdersPage> {
         const Center(
           child: Padding(
             padding:
-                EdgeInsets.symmetric(horizontal: 30),
+                EdgeInsets.symmetric(
+              horizontal: 30,
+            ),
             child: Text(
               'Your placed orders will appear here.',
-              textAlign: TextAlign.center,
+              textAlign:
+                  TextAlign.center,
               style: TextStyle(
                 color: Colors.grey,
               ),
@@ -697,48 +866,71 @@ class _OrdersPageState extends State<OrdersPage> {
     );
   }
 
+  // =========================================================
+  // ORDER CARD
+  // =========================================================
+
   Widget buildOrderCard(
-    QueryDocumentSnapshot<Map<String, dynamic>> order,
+    QueryDocumentSnapshot<
+            Map<String, dynamic>>
+        order,
   ) {
     final data = order.data();
 
     final orderId =
-        (data['orderId'] ?? order.id).toString();
+        (data['orderId'] ??
+                order.id)
+            .toString();
 
-    final status = normalizedStatus(data);
+    final status =
+        normalizedStatus(data);
 
     final paymentMethod =
-        (data['paymentMethod'] ?? 'COD')
+        (data['paymentMethod'] ??
+                'COD')
             .toString();
 
     final paymentStatus =
-        (data['paymentStatus'] ?? 'Pending')
+        (data['paymentStatus'] ??
+                'Pending')
             .toString();
 
     final total =
-        (data['totalAmount'] as num?)
+        (data['totalAmount']
+                    as num?)
                 ?.toDouble() ??
             0;
 
-    final items = data['items'] is List
-        ? List<dynamic>.from(data['items'])
-        : <dynamic>[];
+    final items =
+        data['items'] is List
+            ? List<dynamic>.from(
+                data['items'],
+              )
+            : <dynamic>[];
 
     final canCancel =
-        _canCancel(status.toLowerCase());
+        _canCancel(
+      status.toLowerCase(),
+    );
 
     return Card(
-      margin: const EdgeInsets.only(
+      margin:
+          const EdgeInsets.only(
         bottom: 14,
       ),
       elevation: 2,
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
+      clipBehavior:
+          Clip.antiAlias,
+      shape:
+          RoundedRectangleBorder(
         borderRadius:
-            BorderRadius.circular(16),
+            BorderRadius.circular(
+          16,
+        ),
       ),
       child: ExpansionTile(
-        tilePadding: const EdgeInsets.fromLTRB(
+        tilePadding:
+            const EdgeInsets.fromLTRB(
           16,
           8,
           12,
@@ -756,8 +948,10 @@ class _OrdersPageState extends State<OrdersPage> {
             Expanded(
               child: Text(
                 'Order #${shortOrderId(orderId)}',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
+                style:
+                    const TextStyle(
+                  fontWeight:
+                      FontWeight.bold,
                   fontSize: 16,
                 ),
               ),
@@ -767,25 +961,33 @@ class _OrdersPageState extends State<OrdersPage> {
         ),
         subtitle: Padding(
           padding:
-              const EdgeInsets.only(top: 7),
+              const EdgeInsets.only(
+            top: 7,
+          ),
           child: Column(
             crossAxisAlignment:
-                CrossAxisAlignment.start,
+                CrossAxisAlignment
+                    .start,
             children: [
               Text(
                 formatDate(
                   data['createdAt'],
                 ),
-                style: const TextStyle(
+                style:
+                    const TextStyle(
                   color: Colors.grey,
                   fontSize: 12,
                 ),
               ),
-              const SizedBox(height: 5),
+              const SizedBox(
+                height: 5,
+              ),
               Text(
                 '₹${total.toStringAsFixed(2)} • ${items.length} item${items.length == 1 ? '' : 's'}',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
+                style:
+                    const TextStyle(
+                  fontWeight:
+                      FontWeight.w600,
                 ),
               ),
             ],
@@ -795,6 +997,7 @@ class _OrdersPageState extends State<OrdersPage> {
           const Divider(height: 1),
           const SizedBox(height: 14),
 
+          // CURRENT STATUS
           buildCurrentStatusBanner(
             data,
           ),
@@ -802,12 +1005,15 @@ class _OrdersPageState extends State<OrdersPage> {
           const SizedBox(height: 14),
 
           const Align(
-            alignment: Alignment.centerLeft,
+            alignment:
+                Alignment.centerLeft,
             child: Text(
               'Order Items',
-              style: TextStyle(
+              style:
+                  TextStyle(
                 fontSize: 17,
-                fontWeight: FontWeight.bold,
+                fontWeight:
+                    FontWeight.bold,
               ),
             ),
           ),
@@ -816,25 +1022,34 @@ class _OrdersPageState extends State<OrdersPage> {
 
           if (items.isEmpty)
             const Align(
-              alignment: Alignment.centerLeft,
+              alignment:
+                  Alignment.centerLeft,
               child: Text(
                 'No item details available.',
               ),
             ),
 
-          ...items.map(buildOrderItem),
+          ...items.map(
+            buildOrderItem,
+          ),
 
           const SizedBox(height: 12),
 
+          // PAYMENT SUMMARY
           Container(
             padding:
-                const EdgeInsets.all(14),
-            decoration: BoxDecoration(
+                const EdgeInsets.all(
+              14,
+            ),
+            decoration:
+                BoxDecoration(
               color: Theme.of(context)
                   .colorScheme
                   .surfaceContainerHighest,
               borderRadius:
-                  BorderRadius.circular(12),
+                  BorderRadius.circular(
+                12,
+              ),
             ),
             child: Column(
               children: [
@@ -842,12 +1057,16 @@ class _OrdersPageState extends State<OrdersPage> {
                   'Payment Method',
                   paymentMethod,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(
+                  height: 8,
+                ),
                 summaryRow(
                   'Payment Status',
                   paymentStatus,
                 ),
-                const Divider(height: 20),
+                const Divider(
+                  height: 20,
+                ),
                 summaryRow(
                   'Order Total',
                   '₹${total.toStringAsFixed(2)}',
@@ -859,58 +1078,76 @@ class _OrdersPageState extends State<OrdersPage> {
 
           const SizedBox(height: 14),
 
+          // ADDRESS
           buildDeliveryAddress(data),
 
           const SizedBox(height: 14),
 
-          buildStatusSection(
-            data,
-          ),
+          // TRACKING
+          buildStatusSection(data),
 
           const SizedBox(height: 14),
 
+          // CANCELLATION INFO
           if (status.toLowerCase() ==
               'cancelled')
-            buildCancellationInfo(data),
+            buildCancellationInfo(
+              data,
+            ),
 
           if (status.toLowerCase() ==
               'cancelled')
-            const SizedBox(height: 10),
+            const SizedBox(
+              height: 10,
+            ),
 
+          // CANCEL BUTTON
           if (canCancel)
             SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: cancellingOrder
-                    ? null
-                    : () => cancelOrder(
-                          order,
-                        ),
-                icon: cancellingOrder
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child:
-                            CircularProgressIndicator(
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const Icon(
-                        Icons.cancel_outlined,
-                      ),
+              width:
+                  double.infinity,
+              child:
+                  OutlinedButton.icon(
+                onPressed:
+                    cancellingOrder
+                        ? null
+                        : () =>
+                            cancelOrder(
+                              order,
+                            ),
+                icon:
+                    cancellingOrder
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child:
+                                CircularProgressIndicator(
+                              strokeWidth:
+                                  2,
+                            ),
+                          )
+                        : const Icon(
+                            Icons
+                                .cancel_outlined,
+                          ),
                 label: Text(
                   cancellingOrder
                       ? 'Cancelling...'
                       : 'Cancel Order',
                 ),
-                style: OutlinedButton.styleFrom(
+                style:
+                    OutlinedButton
+                        .styleFrom(
                   foregroundColor:
                       Colors.red,
-                  side: const BorderSide(
-                    color: Colors.red,
+                  side:
+                      const BorderSide(
+                    color:
+                        Colors.red,
                   ),
                   padding:
-                      const EdgeInsets.symmetric(
+                      const EdgeInsets
+                          .symmetric(
                     vertical: 13,
                   ),
                 ),
@@ -924,11 +1161,15 @@ class _OrdersPageState extends State<OrdersPage> {
                   'delivered')
             const Padding(
               padding:
-                  EdgeInsets.only(top: 2),
+                  EdgeInsets.only(
+                top: 2,
+              ),
               child: Text(
                 'This order cannot be cancelled at its current stage.',
-                style: TextStyle(
-                  color: Colors.grey,
+                style:
+                    TextStyle(
+                  color:
+                      Colors.grey,
                   fontSize: 12,
                 ),
               ),
@@ -938,12 +1179,18 @@ class _OrdersPageState extends State<OrdersPage> {
     );
   }
 
+  // =========================================================
+  // CURRENT STATUS BANNER
+  // =========================================================
+
   Widget buildCurrentStatusBanner(
     Map<String, dynamic> data,
   ) {
-    final status = normalizedStatus(data);
+    final status =
+        normalizedStatus(data);
 
-    final color = statusColor(status);
+    final color =
+        statusColor(status);
 
     String message;
 
@@ -999,17 +1246,26 @@ class _OrdersPageState extends State<OrdersPage> {
     }
 
     return Container(
-      width: double.infinity,
+      width:
+          double.infinity,
       padding:
-          const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: color.withValues(
+          const EdgeInsets.all(
+        14,
+      ),
+      decoration:
+          BoxDecoration(
+        color:
+            color.withValues(
           alpha: .08,
         ),
         borderRadius:
-            BorderRadius.circular(12),
-        border: Border.all(
-          color: color.withValues(
+            BorderRadius.circular(
+          12,
+        ),
+        border:
+            Border.all(
+          color:
+              color.withValues(
             alpha: .25,
           ),
         ),
@@ -1021,25 +1277,32 @@ class _OrdersPageState extends State<OrdersPage> {
             color: color,
             size: 28,
           ),
-          const SizedBox(width: 12),
+          const SizedBox(
+            width: 12,
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment:
-                  CrossAxisAlignment.start,
+                  CrossAxisAlignment
+                      .start,
               children: [
                 Text(
                   status,
-                  style: TextStyle(
+                  style:
+                      TextStyle(
                     color: color,
                     fontSize: 16,
                     fontWeight:
                         FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(
+                  height: 4,
+                ),
                 Text(
                   message,
-                  style: const TextStyle(
+                  style:
+                      const TextStyle(
                     fontSize: 13,
                   ),
                 ),
@@ -1051,16 +1314,32 @@ class _OrdersPageState extends State<OrdersPage> {
     );
   }
 
-  String shortOrderId(String orderId) {
+  // =========================================================
+  // ORDER ID
+  // =========================================================
+
+  String shortOrderId(
+    String orderId,
+  ) {
     if (orderId.length <= 10) {
       return orderId;
     }
 
-    return orderId.substring(0, 10);
+    return orderId.substring(
+      0,
+      10,
+    );
   }
 
-  Widget statusBadge(String status) {
-    final color = statusColor(status);
+  // =========================================================
+  // STATUS BADGE
+  // =========================================================
+
+  Widget statusBadge(
+    String status,
+  ) {
+    final color =
+        statusColor(status);
 
     return Container(
       padding:
@@ -1068,12 +1347,16 @@ class _OrdersPageState extends State<OrdersPage> {
         horizontal: 9,
         vertical: 5,
       ),
-      decoration: BoxDecoration(
-        color: color.withValues(
+      decoration:
+          BoxDecoration(
+        color:
+            color.withValues(
           alpha: .10,
         ),
         borderRadius:
-            BorderRadius.circular(20),
+            BorderRadius.circular(
+          20,
+        ),
       ),
       child: Row(
         mainAxisSize:
@@ -1084,10 +1367,13 @@ class _OrdersPageState extends State<OrdersPage> {
             size: 14,
             color: color,
           ),
-          const SizedBox(width: 4),
+          const SizedBox(
+            width: 4,
+          ),
           Text(
             status,
-            style: TextStyle(
+            style:
+                TextStyle(
               color: color,
               fontSize: 11,
               fontWeight:
@@ -1099,11 +1385,22 @@ class _OrdersPageState extends State<OrdersPage> {
     );
   }
 
-  Widget buildOrderItem(dynamic item) {
-    final name = itemName(item);
-    final price = itemPrice(item);
+  // =========================================================
+  // ORDER ITEM
+  // =========================================================
+
+  Widget buildOrderItem(
+    dynamic item,
+  ) {
+    final name =
+        itemName(item);
+
+    final price =
+        itemPrice(item);
+
     final quantity =
         itemQuantity(item);
+
     final image =
         itemImage(item);
 
@@ -1113,14 +1410,20 @@ class _OrdersPageState extends State<OrdersPage> {
         bottom: 10,
       ),
       padding:
-          const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        border: Border.all(
+          const EdgeInsets.all(
+        10,
+      ),
+      decoration:
+          BoxDecoration(
+        border:
+            Border.all(
           color:
               Colors.grey.shade300,
         ),
         borderRadius:
-            BorderRadius.circular(12),
+            BorderRadius.circular(
+          12,
+        ),
       ),
       child: Row(
         children: [
@@ -1140,13 +1443,15 @@ class _OrdersPageState extends State<OrdersPage> {
                 Clip.antiAlias,
             child: image == null
                 ? const Icon(
-                    Icons.image_outlined,
+                    Icons
+                        .image_outlined,
                     color:
                         Colors.grey,
                   )
                 : Image.network(
                     image,
-                    fit: BoxFit.cover,
+                    fit:
+                        BoxFit.cover,
                     errorBuilder:
                         (
                       context,
@@ -1162,24 +1467,31 @@ class _OrdersPageState extends State<OrdersPage> {
                     },
                   ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(
+            width: 12,
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment:
-                  CrossAxisAlignment.start,
+                  CrossAxisAlignment
+                      .start,
               children: [
                 Text(
                   name,
                   maxLines: 2,
                   overflow:
-                      TextOverflow.ellipsis,
+                      TextOverflow
+                          .ellipsis,
                   style:
                       const TextStyle(
                     fontWeight:
-                        FontWeight.bold,
+                        FontWeight
+                            .bold,
                   ),
                 ),
-                const SizedBox(height: 5),
+                const SizedBox(
+                  height: 5,
+                ),
                 Text(
                   'Qty: $quantity',
                   style:
@@ -1192,7 +1504,9 @@ class _OrdersPageState extends State<OrdersPage> {
               ],
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(
+            width: 8,
+          ),
           Text(
             '₹${(price * quantity).toStringAsFixed(2)}',
             style:
@@ -1206,6 +1520,10 @@ class _OrdersPageState extends State<OrdersPage> {
     );
   }
 
+  // =========================================================
+  // SUMMARY ROW
+  // =========================================================
+
   Widget summaryRow(
     String title,
     String value, {
@@ -1213,7 +1531,8 @@ class _OrdersPageState extends State<OrdersPage> {
   }) {
     return Row(
       mainAxisAlignment:
-          MainAxisAlignment.spaceBetween,
+          MainAxisAlignment
+              .spaceBetween,
       children: [
         Text(
           title,
@@ -1238,6 +1557,10 @@ class _OrdersPageState extends State<OrdersPage> {
       ],
     );
   }
+
+  // =========================================================
+  // DELIVERY ADDRESS
+  // =========================================================
 
   Widget buildDeliveryAddress(
     Map<String, dynamic> data,
@@ -1302,7 +1625,9 @@ class _OrdersPageState extends State<OrdersPage> {
               .trim();
 
       if (house.isNotEmpty &&
-          !address.contains(house)) {
+          !address.contains(
+            house,
+          )) {
         address =
             '$house, $address';
       }
@@ -1314,20 +1639,28 @@ class _OrdersPageState extends State<OrdersPage> {
     }
 
     return Container(
-      width: double.infinity,
+      width:
+          double.infinity,
       padding:
-          const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        border: Border.all(
+          const EdgeInsets.all(
+        14,
+      ),
+      decoration:
+          BoxDecoration(
+        border:
+            Border.all(
           color:
               Colors.grey.shade300,
         ),
         borderRadius:
-            BorderRadius.circular(12),
+            BorderRadius.circular(
+          12,
+        ),
       ),
       child: Column(
         crossAxisAlignment:
-            CrossAxisAlignment.start,
+            CrossAxisAlignment
+                .start,
         children: [
           const Row(
             children: [
@@ -1336,7 +1669,9 @@ class _OrdersPageState extends State<OrdersPage> {
                     .location_on_outlined,
                 size: 20,
               ),
-              SizedBox(width: 6),
+              SizedBox(
+                width: 6,
+              ),
               Text(
                 'Delivery Address',
                 style:
@@ -1348,7 +1683,9 @@ class _OrdersPageState extends State<OrdersPage> {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(
+            height: 10,
+          ),
           if (name.isNotEmpty)
             Text(
               name,
@@ -1361,7 +1698,8 @@ class _OrdersPageState extends State<OrdersPage> {
           if (phone.isNotEmpty)
             Padding(
               padding:
-                  const EdgeInsets.only(
+                  const EdgeInsets
+                      .only(
                 top: 4,
               ),
               child: Text(
@@ -1376,7 +1714,8 @@ class _OrdersPageState extends State<OrdersPage> {
           if (address.isNotEmpty)
             Padding(
               padding:
-                  const EdgeInsets.only(
+                  const EdgeInsets
+                      .only(
                 top: 6,
               ),
               child: Text(
@@ -1391,7 +1730,8 @@ class _OrdersPageState extends State<OrdersPage> {
               pincode.isNotEmpty)
             Padding(
               padding:
-                  const EdgeInsets.only(
+                  const EdgeInsets
+                      .only(
                 top: 4,
               ),
               child: Text(
@@ -1407,6 +1747,10 @@ class _OrdersPageState extends State<OrdersPage> {
       ),
     );
   }
+
+  // =========================================================
+  // ORDER TRACKING SECTION
+  // =========================================================
 
   Widget buildStatusSection(
     Map<String, dynamic> data,
@@ -1426,27 +1770,37 @@ class _OrdersPageState extends State<OrdersPage> {
         _statusIndex(normalized);
 
     return Container(
-      width: double.infinity,
+      width:
+          double.infinity,
       padding:
-          const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        border: Border.all(
+          const EdgeInsets.all(
+        14,
+      ),
+      decoration:
+          BoxDecoration(
+        border:
+            Border.all(
           color:
               Colors.grey.shade300,
         ),
         borderRadius:
-            BorderRadius.circular(12),
+            BorderRadius.circular(
+          12,
+        ),
       ),
       child: Column(
         crossAxisAlignment:
-            CrossAxisAlignment.start,
+            CrossAxisAlignment
+                .start,
         children: [
           Row(
             children: [
               const Icon(
                 Icons.timeline,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(
+                width: 8,
+              ),
               const Expanded(
                 child: Text(
                   'Order Tracking',
@@ -1460,9 +1814,12 @@ class _OrdersPageState extends State<OrdersPage> {
               ),
               Text(
                 status,
-                style: TextStyle(
+                style:
+                    TextStyle(
                   color:
-                      statusColor(status),
+                      statusColor(
+                    status,
+                  ),
                   fontWeight:
                       FontWeight.bold,
                   fontSize: 12,
@@ -1470,8 +1827,12 @@ class _OrdersPageState extends State<OrdersPage> {
               ),
             ],
           ),
-          const SizedBox(height: 14),
 
+          const SizedBox(
+            height: 14,
+          ),
+
+          // TIMELINE
           ...List.generate(
             orderStatuses.length,
             (index) {
@@ -1479,7 +1840,9 @@ class _OrdersPageState extends State<OrdersPage> {
                   orderStatuses[index];
 
               final completed =
-                  index <= currentIndex;
+                  currentIndex >= 0 &&
+                      index <=
+                          currentIndex;
 
               final isCurrent =
                   index ==
@@ -1487,14 +1850,15 @@ class _OrdersPageState extends State<OrdersPage> {
 
               final isLast =
                   index ==
-                      orderStatuses.length -
+                      orderStatuses
+                              .length -
                           1;
 
               final stageTime =
                   _stageTimestamp(
-                    data,
-                    stage,
-                  );
+                data,
+                stage,
+              );
 
               return Row(
                 crossAxisAlignment:
@@ -1506,14 +1870,16 @@ class _OrdersPageState extends State<OrdersPage> {
                       AnimatedContainer(
                         duration:
                             const Duration(
-                          milliseconds: 250,
+                          milliseconds:
+                              250,
                         ),
                         width: 28,
                         height: 28,
                         decoration:
                             BoxDecoration(
                           shape:
-                              BoxShape.circle,
+                              BoxShape
+                                  .circle,
                           color: completed
                               ? statusColor(
                                   stage,
@@ -1533,9 +1899,11 @@ class _OrdersPageState extends State<OrdersPage> {
                                     )
                                   : null,
                         ),
-                        child: Icon(
+                        child:
+                            Icon(
                           completed
-                              ? Icons.check
+                              ? Icons
+                                  .check
                               : Icons
                                   .circle,
                           size: completed
@@ -1565,15 +1933,22 @@ class _OrdersPageState extends State<OrdersPage> {
                         ),
                     ],
                   ),
-                  const SizedBox(width: 12),
+
+                  const SizedBox(
+                    width: 12,
+                  ),
+
                   Expanded(
-                    child: Padding(
+                    child:
+                        Padding(
                       padding:
-                          const EdgeInsets.only(
+                          const EdgeInsets
+                              .only(
                         top: 1,
                         bottom: 12,
                       ),
-                      child: Column(
+                      child:
+                          Column(
                         crossAxisAlignment:
                             CrossAxisAlignment
                                 .start,
@@ -1581,29 +1956,26 @@ class _OrdersPageState extends State<OrdersPage> {
                           Row(
                             children: [
                               Expanded(
-                                child: Text(
+                                child:
+                                    Text(
                                   stage,
                                   style:
                                       TextStyle(
                                     fontWeight:
                                         completed
-                                            ? FontWeight
-                                                .bold
-                                            : FontWeight
-                                                .normal,
+                                            ? FontWeight.bold
+                                            : FontWeight.normal,
                                     color:
                                         completed
                                             ? null
-                                            : Colors
-                                                .grey,
+                                            : Colors.grey,
                                   ),
                                 ),
                               ),
                               if (isCurrent)
                                 Container(
                                   padding:
-                                      const EdgeInsets
-                                          .symmetric(
+                                      const EdgeInsets.symmetric(
                                     horizontal:
                                         7,
                                     vertical:
@@ -1619,8 +1991,7 @@ class _OrdersPageState extends State<OrdersPage> {
                                           .10,
                                     ),
                                     borderRadius:
-                                        BorderRadius
-                                            .circular(
+                                        BorderRadius.circular(
                                       10,
                                     ),
                                   ),
@@ -1636,13 +2007,13 @@ class _OrdersPageState extends State<OrdersPage> {
                                       fontSize:
                                           9,
                                       fontWeight:
-                                          FontWeight
-                                              .bold,
+                                          FontWeight.bold,
                                     ),
                                   ),
                                 ),
                             ],
                           ),
+
                           if (stageTime !=
                               null)
                             Padding(
@@ -1651,7 +2022,8 @@ class _OrdersPageState extends State<OrdersPage> {
                                       .only(
                                 top: 3,
                               ),
-                              child: Text(
+                              child:
+                                  Text(
                                 formatDate(
                                   stageTime,
                                 ),
@@ -1673,46 +2045,108 @@ class _OrdersPageState extends State<OrdersPage> {
             },
           ),
 
+          // STATUS HISTORY
           buildHistorySection(
             data,
           ),
 
+          // COURIER DETAILS FROM SHIPPED ONWARD
           if (normalized ==
-              'picked by courier')
-            buildCourierInfo(data),
-
-          if (normalized ==
-              'out for delivery')
-            buildCourierInfo(data),
+                  'shipped' ||
+              normalized ==
+                  'picked by courier' ||
+              normalized ==
+                  'out for delivery' ||
+              normalized ==
+                  'delivered')
+            buildCourierInfo(
+              data,
+            ),
         ],
       ),
     );
   }
 
+  // =========================================================
+  // STAGE TIMESTAMP
+  // =========================================================
+
+  dynamic _stageTimestamp(
+    Map<String, dynamic> data,
+    String stage,
+  ) {
+    switch (stage.toLowerCase()) {
+      case 'placed':
+        return data['placedAt'] ??
+            data['createdAt'];
+
+      case 'confirmed':
+        return data['confirmedAt'];
+
+      case 'processing':
+        return data['processingAt'];
+
+      case 'packed':
+        return data['packedAt'];
+
+      case 'shipped':
+        return data['shippedAt'];
+
+      case 'picked by courier':
+        return data['courierPickedAt'];
+
+      case 'out for delivery':
+        return data['outForDeliveryAt'];
+
+      case 'delivered':
+        return data['deliveredAt'];
+
+      default:
+        return null;
+    }
+  }
+
+  // =========================================================
+  // CANCELLED STATUS
+  // =========================================================
+
   Widget buildCancelledStatus() {
     return Container(
-      width: double.infinity,
+      width:
+          double.infinity,
       padding:
-          const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.red.withValues(
+          const EdgeInsets.all(
+        14,
+      ),
+      decoration:
+          BoxDecoration(
+        color:
+            Colors.red.withValues(
           alpha: .08,
         ),
         borderRadius:
-            BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.red.withValues(
+            BorderRadius.circular(
+          12,
+        ),
+        border:
+            Border.all(
+          color:
+              Colors.red.withValues(
             alpha: .25,
           ),
         ),
       ),
-      child: const Row(
+      child:
+          const Row(
         children: [
           Icon(
-            Icons.cancel_outlined,
+            Icons
+                .cancel_outlined,
             color: Colors.red,
           ),
-          SizedBox(width: 10),
+          SizedBox(
+            width: 10,
+          ),
           Expanded(
             child: Text(
               'This order has been cancelled.',
@@ -1720,7 +2154,8 @@ class _OrdersPageState extends State<OrdersPage> {
                   TextStyle(
                 fontWeight:
                     FontWeight.bold,
-                color: Colors.red,
+                color:
+                    Colors.red,
               ),
             ),
           ),
@@ -1728,6 +2163,10 @@ class _OrdersPageState extends State<OrdersPage> {
       ),
     );
   }
+
+  // =========================================================
+  // STATUS HISTORY
+  // =========================================================
 
   Widget buildHistorySection(
     Map<String, dynamic> data,
@@ -1737,11 +2176,14 @@ class _OrdersPageState extends State<OrdersPage> {
 
     if (raw is! List ||
         raw.isEmpty) {
-      return const SizedBox.shrink();
+      return const SizedBox
+          .shrink();
     }
 
     final history =
-        List<dynamic>.from(raw);
+        List<dynamic>.from(
+      raw,
+    );
 
     history.sort(
       (a, b) {
@@ -1760,13 +2202,16 @@ class _OrdersPageState extends State<OrdersPage> {
           b['timestamp'],
         );
 
-        return aDate.compareTo(bDate);
+        return aDate.compareTo(
+          bDate,
+        );
       },
     );
 
     return Column(
       crossAxisAlignment:
-          CrossAxisAlignment.start,
+          CrossAxisAlignment
+              .start,
       children: [
         const Divider(
           height: 28,
@@ -1780,7 +2225,10 @@ class _OrdersPageState extends State<OrdersPage> {
                 FontWeight.bold,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(
+          height: 8,
+        ),
+
         ...history.reversed
             .take(10)
             .map(
@@ -1810,10 +2258,12 @@ class _OrdersPageState extends State<OrdersPage> {
 
             return Padding(
               padding:
-                  const EdgeInsets.only(
+                  const EdgeInsets
+                      .only(
                 bottom: 8,
               ),
-              child: Row(
+              child:
+                  Row(
                 crossAxisAlignment:
                     CrossAxisAlignment
                         .start,
@@ -1832,7 +2282,8 @@ class _OrdersPageState extends State<OrdersPage> {
                     width: 8,
                   ),
                   Expanded(
-                    child: Column(
+                    child:
+                        Column(
                       crossAxisAlignment:
                           CrossAxisAlignment
                               .start,
@@ -1895,213 +2346,407 @@ class _OrdersPageState extends State<OrdersPage> {
     );
   }
 
+  // =========================================================
+  // COURIER + SHIPMENT INFO
+  // =========================================================
+
   Widget buildCourierInfo(
     Map<String, dynamic> data,
   ) {
+    final courierPartner =
+        (data['courierPartner'] ??
+                '')
+            .toString()
+            .trim();
+
+    final trackingNumber =
+        (data['trackingNumber'] ??
+                '')
+            .toString()
+            .trim();
+
+    final trackingUrl =
+        (data['trackingUrl'] ??
+                '')
+            .toString()
+            .trim();
+
+    final trackingStatus =
+        (data['trackingStatus'] ??
+                data['orderStatus'] ??
+                data['status'] ??
+                '')
+            .toString()
+            .trim();
+
+    // New Admin fields + old fields fallback.
     final courierName =
-        (data['courierName'] ?? '')
+        (data['courierPersonName'] ??
+                data['courierName'] ??
+                '')
             .toString()
             .trim();
 
     final courierMobile =
-        (data['courierMobile'] ?? '')
+        (data['courierPhone'] ??
+                data['courierMobile'] ??
+                '')
             .toString()
             .trim();
 
-    if (courierName.isEmpty &&
-        courierMobile.isEmpty) {
-      return const SizedBox.shrink();
+    final hasAnyInfo =
+        courierPartner.isNotEmpty ||
+            trackingNumber.isNotEmpty ||
+            trackingUrl.isNotEmpty ||
+            courierName.isNotEmpty ||
+            courierMobile.isNotEmpty;
+
+    if (!hasAnyInfo) {
+      return const SizedBox
+          .shrink();
     }
 
     return Container(
       margin:
-          const EdgeInsets.only(top: 12),
-      padding:
-          const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.indigo
-            .withValues(alpha: .06),
-        borderRadius:
-            BorderRadius.circular(10),
+          const EdgeInsets.only(
+        top: 12,
       ),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.delivery_dining,
-            color: Colors.indigo,
+      padding:
+          const EdgeInsets.all(
+        12,
+      ),
+      decoration:
+          BoxDecoration(
+        color:
+            Colors.indigo.withValues(
+          alpha: .06,
+        ),
+        borderRadius:
+            BorderRadius.circular(
+          10,
+        ),
+        border:
+            Border.all(
+          color:
+              Colors.indigo.withValues(
+            alpha: .12,
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment
-                      .start,
-              children: [
-                const Text(
-                  'Courier',
-                  style:
-                      TextStyle(
-                    fontWeight:
-                        FontWeight.bold,
-                  ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment
+                .start,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                Icons
+                    .local_shipping_outlined,
+                color:
+                    Colors.indigo,
+              ),
+              SizedBox(
+                width: 10,
+              ),
+              Text(
+                'Shipment Details',
+                style:
+                    TextStyle(
+                  fontWeight:
+                      FontWeight.bold,
+                  fontSize: 15,
                 ),
-                if (courierName
-                    .isNotEmpty)
-                  Text(
-                    courierName,
+              ),
+            ],
+          ),
+
+          const SizedBox(
+            height: 10,
+          ),
+
+          if (trackingStatus
+              .isNotEmpty)
+            summaryRow(
+              'Tracking Status',
+              trackingStatus,
+            ),
+
+          if (courierPartner
+              .isNotEmpty)
+            Padding(
+              padding:
+                  const EdgeInsets
+                      .only(
+                top: 7,
+              ),
+              child: summaryRow(
+                'Courier Partner',
+                courierPartner,
+              ),
+            ),
+
+          if (trackingNumber
+              .isNotEmpty)
+            Padding(
+              padding:
+                  const EdgeInsets
+                      .only(
+                top: 7,
+              ),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'AWB / Tracking No.',
+                      style:
+                          TextStyle(
+                        fontWeight:
+                            FontWeight
+                                .w500,
+                      ),
+                    ),
                   ),
-                if (courierMobile
-                    .isNotEmpty)
-                  Text(
-                    '📞 $courierMobile',
+                  Flexible(
+                    child: Row(
+                      mainAxisSize:
+                          MainAxisSize
+                              .min,
+                      children: [
+                        Flexible(
+                          child:
+                              SelectableText(
+                            trackingNumber,
+                            textAlign:
+                                TextAlign
+                                    .end,
+                            style:
+                                const TextStyle(
+                              fontWeight:
+                                  FontWeight
+                                      .bold,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          visualDensity:
+                              VisualDensity
+                                  .compact,
+                          tooltip:
+                              'Copy tracking number',
+                          onPressed:
+                              () async {
+                            await Clipboard
+                                .setData(
+                              ClipboardData(
+                                text:
+                                    trackingNumber,
+                              ),
+                            );
+
+                            if (mounted) {
+                              showMessage(
+                                'Tracking number copied.',
+                              );
+                            }
+                          },
+                          icon:
+                              const Icon(
+                            Icons
+                                .content_copy,
+                            size:
+                                17,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          if (courierName
+              .isNotEmpty)
+            Padding(
+              padding:
+                  const EdgeInsets
+                      .only(
+                top: 7,
+              ),
+              child: summaryRow(
+                'Courier Person',
+                courierName,
+              ),
+            ),
+
+          if (courierMobile
+              .isNotEmpty)
+            Padding(
+              padding:
+                  const EdgeInsets
+                      .only(
+                top: 7,
+              ),
+              child: summaryRow(
+                'Courier Phone',
+                courierMobile,
+              ),
+            ),
+
+          if (trackingUrl
+              .isNotEmpty)
+            Padding(
+              padding:
+                  const EdgeInsets
+                      .only(
+                top: 10,
+              ),
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment
+                        .start,
+                children: [
+                  const Text(
+                    'Tracking URL',
+                    style:
+                        TextStyle(
+                      fontWeight:
+                          FontWeight
+                              .w600,
+                    ),
+                  ),
+                  const SizedBox(
+                    height: 4,
+                  ),
+                  SelectableText(
+                    trackingUrl,
                     style:
                         const TextStyle(
                       color:
-                          Colors.grey,
+                          Colors.indigo,
+                      fontSize: 12,
                     ),
                   ),
-              ],
+                  const SizedBox(
+                    height: 5,
+                  ),
+                  OutlinedButton.icon(
+                    onPressed:
+                        () async {
+                      await Clipboard
+                          .setData(
+                        ClipboardData(
+                          text:
+                              trackingUrl,
+                        ),
+                      );
+
+                      if (mounted) {
+                        showMessage(
+                          'Tracking URL copied.',
+                        );
+                      }
+                    },
+                    icon:
+                        const Icon(
+                      Icons
+                          .content_copy,
+                      size: 17,
+                    ),
+                    label:
+                        const Text(
+                      'Copy Tracking URL',
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );
   }
 
-  int _statusIndex(
-    String status,
-  ) {
-    switch (status) {
-      case 'placed':
-      case 'pending':
-        return 0;
-
-      case 'confirmed':
-        return 1;
-
-      case 'processing':
-        return 2;
-
-      case 'packed':
-        return 3;
-
-      case 'shipped':
-        return 4;
-
-      case 'picked by courier':
-        return 5;
-
-      case 'out for delivery':
-        return 6;
-
-      case 'delivered':
-        return 7;
-
-      default:
-        return 0;
-    }
-  }
-
-  dynamic _stageTimestamp(
-    Map<String, dynamic> data,
-    String stage,
-  ) {
-    switch (stage) {
-      case 'Placed':
-        return data['placedAt'] ??
-            data['createdAt'];
-
-      case 'Confirmed':
-        return data['confirmedAt'];
-
-      case 'Processing':
-        return data['processingAt'];
-
-      case 'Packed':
-        return data['packedAt'];
-
-      case 'Shipped':
-        return data['shippedAt'];
-
-      case 'Picked by Courier':
-        return data['courierPickedAt'];
-
-      case 'Out for Delivery':
-        return data['outForDeliveryAt'];
-
-      case 'Delivered':
-        return data['deliveredAt'];
-
-      default:
-        return null;
-    }
-  }
+  // =========================================================
+  // CANCELLATION INFO
+  // =========================================================
 
   Widget buildCancellationInfo(
     Map<String, dynamic> data,
   ) {
     final reason =
         (data['cancellationReason'] ??
-                'No reason provided')
-            .toString();
+                '')
+            .toString()
+            .trim();
 
     final cancelledAt =
         data['cancelledAt'];
 
     return Container(
-      width: double.infinity,
+      width:
+          double.infinity,
       padding:
-          const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.red.withValues(
-          alpha: .06,
+          const EdgeInsets.all(
+        12,
+      ),
+      decoration:
+          BoxDecoration(
+        color:
+            Colors.red.withValues(
+          alpha: .05,
         ),
         borderRadius:
-            BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.red.withValues(
-            alpha: .25,
+            BorderRadius.circular(
+          10,
+        ),
+        border:
+            Border.all(
+          color:
+              Colors.red.withValues(
+            alpha: .18,
           ),
         ),
       ),
       child: Column(
         crossAxisAlignment:
-            CrossAxisAlignment.start,
+            CrossAxisAlignment
+                .start,
         children: [
-          const Row(
-            children: [
-              Icon(
-                Icons.cancel_outlined,
-                color: Colors.red,
-              ),
-              SizedBox(width: 8),
-              Text(
-                'Cancellation Details',
-                style:
-                    TextStyle(
-                  fontWeight:
-                      FontWeight.bold,
-                  color: Colors.red,
-                ),
-              ),
-            ],
+          const Text(
+            'Cancellation Details',
+            style:
+                TextStyle(
+              fontWeight:
+                  FontWeight.bold,
+              color:
+                  Colors.red,
+            ),
           ),
-          const SizedBox(height: 10),
-          Text(
-            'Reason: $reason',
-          ),
+          if (reason.isNotEmpty)
+            Padding(
+              padding:
+                  const EdgeInsets
+                      .only(
+                top: 6,
+              ),
+              child: Text(
+                'Reason: $reason',
+              ),
+            ),
           if (cancelledAt != null)
             Padding(
               padding:
-                  const EdgeInsets.only(
-                top: 5,
+                  const EdgeInsets
+                      .only(
+                top: 4,
               ),
               child: Text(
-                'Cancelled on: ${formatDate(cancelledAt)}',
+                'Cancelled: ${formatDate(cancelledAt)}',
                 style:
                     const TextStyle(
-                  color: Colors.grey,
-                  fontSize: 12,
+                  color:
+                      Colors.grey,
+                  fontSize: 11,
                 ),
               ),
             ),
