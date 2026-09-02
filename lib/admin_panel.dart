@@ -6,6 +6,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:file_saver/file_saver.dart';
 import 'package:flutter/material.dart';
 
+import 'courier_management_page.dart';
+
 class AdminPanel extends StatefulWidget {
   const AdminPanel({super.key});
 
@@ -529,11 +531,7 @@ class _AdminPanelState extends State<AdminPanel>
                               return null;
                             },
                           ),
-
-                          const SizedBox(
-                            height: 10,
-                          ),
-
+                          const SizedBox(height: 10),
                           TextFormField(
                             controller:
                                 editCategoryController,
@@ -547,17 +545,12 @@ class _AdminPanelState extends State<AdminPanel>
                               ),
                             ),
                           ),
-
-                          const SizedBox(
-                            height: 10,
-                          ),
-
+                          const SizedBox(height: 10),
                           TextFormField(
                             controller:
                                 editPriceController,
                             keyboardType:
-                                TextInputType
-                                    .number,
+                                TextInputType.number,
                             decoration:
                                 const InputDecoration(
                               labelText:
@@ -569,17 +562,12 @@ class _AdminPanelState extends State<AdminPanel>
                               ),
                             ),
                           ),
-
-                          const SizedBox(
-                            height: 10,
-                          ),
-
+                          const SizedBox(height: 10),
                           TextFormField(
                             controller:
                                 editMrpController,
                             keyboardType:
-                                TextInputType
-                                    .number,
+                                TextInputType.number,
                             decoration:
                                 const InputDecoration(
                               labelText:
@@ -591,17 +579,12 @@ class _AdminPanelState extends State<AdminPanel>
                               ),
                             ),
                           ),
-
-                          const SizedBox(
-                            height: 10,
-                          ),
-
+                          const SizedBox(height: 10),
                           TextFormField(
                             controller:
                                 editDiscountController,
                             keyboardType:
-                                TextInputType
-                                    .number,
+                                TextInputType.number,
                             decoration:
                                 const InputDecoration(
                               labelText:
@@ -612,17 +595,12 @@ class _AdminPanelState extends State<AdminPanel>
                               ),
                             ),
                           ),
-
-                          const SizedBox(
-                            height: 10,
-                          ),
-
+                          const SizedBox(height: 10),
                           TextFormField(
                             controller:
                                 editStockController,
                             keyboardType:
-                                TextInputType
-                                    .number,
+                                TextInputType.number,
                             decoration:
                                 const InputDecoration(
                               labelText:
@@ -634,11 +612,7 @@ class _AdminPanelState extends State<AdminPanel>
                               ),
                             ),
                           ),
-
-                          const SizedBox(
-                            height: 10,
-                          ),
-
+                          const SizedBox(height: 10),
                           TextFormField(
                             controller:
                                 editImageController,
@@ -655,11 +629,7 @@ class _AdminPanelState extends State<AdminPanel>
                               ),
                             ),
                           ),
-
-                          const SizedBox(
-                            height: 10,
-                          ),
-
+                          const SizedBox(height: 10),
                           TextFormField(
                             controller:
                                 editDescriptionController,
@@ -674,11 +644,7 @@ class _AdminPanelState extends State<AdminPanel>
                               ),
                             ),
                           ),
-
-                          const SizedBox(
-                            height: 10,
-                          ),
-
+                          const SizedBox(height: 10),
                           TextFormField(
                             controller:
                                 editRemarkController,
@@ -692,11 +658,7 @@ class _AdminPanelState extends State<AdminPanel>
                               ),
                             ),
                           ),
-
-                          const SizedBox(
-                            height: 10,
-                          ),
-
+                          const SizedBox(height: 10),
                           TextFormField(
                             controller:
                                 editBrandController,
@@ -711,11 +673,7 @@ class _AdminPanelState extends State<AdminPanel>
                               ),
                             ),
                           ),
-
-                          const SizedBox(
-                            height: 10,
-                          ),
-
+                          const SizedBox(height: 10),
                           TextFormField(
                             controller:
                                 editMaterialController,
@@ -725,11 +683,7 @@ class _AdminPanelState extends State<AdminPanel>
                                   'Material',
                             ),
                           ),
-
-                          const SizedBox(
-                            height: 10,
-                          ),
-
+                          const SizedBox(height: 10),
                           TextFormField(
                             controller:
                                 editColorController,
@@ -739,11 +693,7 @@ class _AdminPanelState extends State<AdminPanel>
                                   'Color',
                             ),
                           ),
-
-                          const SizedBox(
-                            height: 10,
-                          ),
-
+                          const SizedBox(height: 10),
                           TextFormField(
                             controller:
                                 editSizeController,
@@ -753,11 +703,7 @@ class _AdminPanelState extends State<AdminPanel>
                                   'Size',
                             ),
                           ),
-
-                          const SizedBox(
-                            height: 10,
-                          ),
-
+                          const SizedBox(height: 10),
                           TextFormField(
                             controller:
                                 editWeightController,
@@ -767,11 +713,7 @@ class _AdminPanelState extends State<AdminPanel>
                                   'Weight',
                             ),
                           ),
-
-                          const SizedBox(
-                            height: 10,
-                          ),
-
+                          const SizedBox(height: 10),
                           TextFormField(
                             controller:
                                 editWarrantyController,
@@ -781,11 +723,7 @@ class _AdminPanelState extends State<AdminPanel>
                                   'Warranty',
                             ),
                           ),
-
-                          const SizedBox(
-                            height: 10,
-                          ),
-
+                          const SizedBox(height: 10),
                           TextFormField(
                             controller:
                                 editHighlightsController,
@@ -796,11 +734,7 @@ class _AdminPanelState extends State<AdminPanel>
                                   'Highlights',
                             ),
                           ),
-
-                          const SizedBox(
-                            height: 10,
-                          ),
-
+                          const SizedBox(height: 10),
                           SwitchListTile(
                             contentPadding:
                                 EdgeInsets.zero,
@@ -2024,9 +1958,7 @@ class _AdminPanelState extends State<AdminPanel>
                 return null;
               },
             ),
-            const SizedBox(
-              height: 10,
-            ),
+            const SizedBox(height: 10),
 
             TextFormField(
               controller:
@@ -2037,9 +1969,7 @@ class _AdminPanelState extends State<AdminPanel>
                     'Category',
               ),
             ),
-            const SizedBox(
-              height: 10,
-            ),
+            const SizedBox(height: 10),
 
             TextFormField(
               controller:
@@ -2052,9 +1982,7 @@ class _AdminPanelState extends State<AdminPanel>
                     'Price',
               ),
             ),
-            const SizedBox(
-              height: 10,
-            ),
+            const SizedBox(height: 10),
 
             TextFormField(
               controller:
@@ -2067,9 +1995,7 @@ class _AdminPanelState extends State<AdminPanel>
                     'MRP',
               ),
             ),
-            const SizedBox(
-              height: 10,
-            ),
+            const SizedBox(height: 10),
 
             TextFormField(
               controller:
@@ -2082,9 +2008,7 @@ class _AdminPanelState extends State<AdminPanel>
                     'Discount %',
               ),
             ),
-            const SizedBox(
-              height: 10,
-            ),
+            const SizedBox(height: 10),
 
             TextFormField(
               controller:
@@ -2097,9 +2021,7 @@ class _AdminPanelState extends State<AdminPanel>
                     'Stock',
               ),
             ),
-            const SizedBox(
-              height: 10,
-            ),
+            const SizedBox(height: 10),
 
             TextFormField(
               controller:
@@ -2113,9 +2035,7 @@ class _AdminPanelState extends State<AdminPanel>
                     'One URL per line ya comma separated',
               ),
             ),
-            const SizedBox(
-              height: 10,
-            ),
+            const SizedBox(height: 10),
 
             TextFormField(
               controller:
@@ -2127,9 +2047,7 @@ class _AdminPanelState extends State<AdminPanel>
                     'Description',
               ),
             ),
-            const SizedBox(
-              height: 10,
-            ),
+            const SizedBox(height: 10),
 
             TextFormField(
               controller:
@@ -2140,9 +2058,7 @@ class _AdminPanelState extends State<AdminPanel>
                     'Remark',
               ),
             ),
-            const SizedBox(
-              height: 10,
-            ),
+            const SizedBox(height: 10),
 
             TextFormField(
               controller:
@@ -2153,9 +2069,7 @@ class _AdminPanelState extends State<AdminPanel>
                     'Brand',
               ),
             ),
-            const SizedBox(
-              height: 10,
-            ),
+            const SizedBox(height: 10),
 
             TextFormField(
               controller:
@@ -2166,9 +2080,7 @@ class _AdminPanelState extends State<AdminPanel>
                     'Material',
               ),
             ),
-            const SizedBox(
-              height: 10,
-            ),
+            const SizedBox(height: 10),
 
             TextFormField(
               controller:
@@ -2179,9 +2091,7 @@ class _AdminPanelState extends State<AdminPanel>
                     'Color',
               ),
             ),
-            const SizedBox(
-              height: 10,
-            ),
+            const SizedBox(height: 10),
 
             TextFormField(
               controller:
@@ -2192,9 +2102,7 @@ class _AdminPanelState extends State<AdminPanel>
                     'Size',
               ),
             ),
-            const SizedBox(
-              height: 10,
-            ),
+            const SizedBox(height: 10),
 
             TextFormField(
               controller:
@@ -2205,9 +2113,7 @@ class _AdminPanelState extends State<AdminPanel>
                     'Weight',
               ),
             ),
-            const SizedBox(
-              height: 10,
-            ),
+            const SizedBox(height: 10),
 
             TextFormField(
               controller:
@@ -2218,9 +2124,7 @@ class _AdminPanelState extends State<AdminPanel>
                     'Warranty',
               ),
             ),
-            const SizedBox(
-              height: 10,
-            ),
+            const SizedBox(height: 10),
 
             TextFormField(
               controller:
@@ -2232,9 +2136,7 @@ class _AdminPanelState extends State<AdminPanel>
                     'Highlights',
               ),
             ),
-            const SizedBox(
-              height: 10,
-            ),
+            const SizedBox(height: 10),
 
             SwitchListTile(
               title:
@@ -2250,16 +2152,13 @@ class _AdminPanelState extends State<AdminPanel>
               },
             ),
 
-            const SizedBox(
-              height: 15,
-            ),
+            const SizedBox(height: 15),
 
             SizedBox(
               width:
                   double.infinity,
               child:
-                  ElevatedButton
-                      .icon(
+                  ElevatedButton.icon(
                 onPressed:
                     saving
                         ? null
@@ -2276,16 +2175,13 @@ class _AdminPanelState extends State<AdminPanel>
               ),
             ),
 
-            const SizedBox(
-              height: 10,
-            ),
+            const SizedBox(height: 10),
 
             SizedBox(
               width:
                   double.infinity,
               child:
-                  OutlinedButton
-                      .icon(
+                  OutlinedButton.icon(
                 onPressed:
                     uploadingExcel
                         ? null
@@ -2302,16 +2198,13 @@ class _AdminPanelState extends State<AdminPanel>
               ),
             ),
 
-            const SizedBox(
-              height: 10,
-            ),
+            const SizedBox(height: 10),
 
             SizedBox(
               width:
                   double.infinity,
               child:
-                  OutlinedButton
-                      .icon(
+                  OutlinedButton.icon(
                 onPressed:
                     downloadingTemplate
                         ? null
@@ -2347,8 +2240,7 @@ class _AdminPanelState extends State<AdminPanel>
           .snapshots(),
       builder:
           (context, snapshot) {
-        if (snapshot
-                .connectionState ==
+        if (snapshot.connectionState ==
             ConnectionState.waiting) {
           return const Center(
             child:
@@ -2372,8 +2264,7 @@ class _AdminPanelState extends State<AdminPanel>
         }
 
         final docs =
-            snapshot.data?.docs ??
-                [];
+            snapshot.data?.docs ?? [];
 
         if (docs.isEmpty) {
           return const Center(
@@ -2430,8 +2321,7 @@ class _AdminPanelState extends State<AdminPanel>
                           .trim() ??
                       '';
 
-              if (legacy
-                  .isNotEmpty) {
+              if (legacy.isNotEmpty) {
                 imageUrls.add(
                   legacy,
                 );
@@ -2439,8 +2329,7 @@ class _AdminPanelState extends State<AdminPanel>
             }
 
             final isActive =
-                data['Active'] !=
-                    false;
+                data['Active'] != false;
 
             final productName =
                 data['Name']
@@ -2460,7 +2349,6 @@ class _AdminPanelState extends State<AdminPanel>
                   horizontal: 10,
                   vertical: 5,
                 ),
-
                 leading:
                     imageUrls.isNotEmpty
                         ? ClipRRect(
@@ -2492,7 +2380,6 @@ class _AdminPanelState extends State<AdminPanel>
                             Icons.image,
                             size: 40,
                           ),
-
                 title:
                     Row(
                   children: [
@@ -2555,7 +2442,6 @@ class _AdminPanelState extends State<AdminPanel>
                     ),
                   ],
                 ),
-
                 subtitle:
                     Text(
                   '${data['Category'] ?? ''}\n'
@@ -2563,10 +2449,8 @@ class _AdminPanelState extends State<AdminPanel>
                   'MRP: ${money(data['MRP'])} | '
                   'Stock: ${data['Stock'] ?? 0}',
                 ),
-
                 isThreeLine:
                     true,
-
                 trailing:
                     Row(
                   mainAxisSize:
@@ -2630,8 +2514,7 @@ class _AdminPanelState extends State<AdminPanel>
           .snapshots(),
       builder:
           (context, snapshot) {
-        if (snapshot
-                .connectionState ==
+        if (snapshot.connectionState ==
             ConnectionState.waiting) {
           return const Center(
             child:
@@ -2743,53 +2626,39 @@ class _AdminPanelState extends State<AdminPanel>
               ],
             ),
 
-            const SizedBox(
-              height: 10,
-            ),
+            const SizedBox(height: 10),
 
             Text(
               'Customer: '
               '${data['customerName'] ?? data['name'] ?? '-'}',
             ),
 
-            const SizedBox(
-              height: 4,
-            ),
+            const SizedBox(height: 4),
 
             Text(
               'Total: '
               '${money(data['totalAmount'] ?? data['total'])}',
             ),
 
-            const SizedBox(
-              height: 15,
-            ),
+            const SizedBox(height: 15),
 
             orderTimeline(
               status,
             ),
 
-            const SizedBox(
-              height: 15,
-            ),
+            const SizedBox(height: 15),
 
             statusHistorySection(
               data,
             ),
 
-            const SizedBox(
-              height: 10,
-            ),
+            const SizedBox(height: 10),
 
             courierInfoSection(
               data,
             ),
 
-            const SizedBox(
-              height: 12,
-            ),
-
-            // ================= ADMIN ACTION =================
+            const SizedBox(height: 12),
 
             if (status ==
                 'Shipped')
@@ -2922,14 +2791,10 @@ class _AdminPanelState extends State<AdminPanel>
                 ),
               ),
 
-            // ================= CANCEL =================
-
             if (canCancelOrder(
               status,
             )) ...[
-              const SizedBox(
-                height: 8,
-              ),
+              const SizedBox(height: 8),
               SizedBox(
                 width:
                     double.infinity,
@@ -3413,12 +3278,9 @@ class _AdminPanelState extends State<AdminPanel>
         data['courierPhone']
             ?.toString();
 
-    if (trackingStatus ==
-            null &&
-        trackingNumber ==
-            null &&
-        courierPartner ==
-            null) {
+    if (trackingStatus == null &&
+        trackingNumber == null &&
+        courierPartner == null) {
       return const SizedBox
           .shrink();
     }
@@ -3455,48 +3317,37 @@ class _AdminPanelState extends State<AdminPanel>
                       .bold,
             ),
           ),
-          const SizedBox(
-            height: 8,
-          ),
+          const SizedBox(height: 8),
 
-          if (trackingStatus !=
-              null)
+          if (trackingStatus != null)
             Text(
               'Tracking Status: '
               '$trackingStatus',
             ),
 
-          if (trackingNumber !=
-                  null &&
-              trackingNumber
-                  .isNotEmpty)
+          if (trackingNumber != null &&
+              trackingNumber.isNotEmpty)
             Text(
               'AWB: '
               '$trackingNumber',
             ),
 
-          if (courierPartner !=
-                  null &&
-              courierPartner
-                  .isNotEmpty)
+          if (courierPartner != null &&
+              courierPartner.isNotEmpty)
             Text(
               'Courier: '
               '$courierPartner',
             ),
 
-          if (courierPerson !=
-                  null &&
-              courierPerson
-                  .isNotEmpty)
+          if (courierPerson != null &&
+              courierPerson.isNotEmpty)
             Text(
               'Person: '
               '$courierPerson',
             ),
 
-          if (courierPhone !=
-                  null &&
-              courierPhone
-                  .isNotEmpty)
+          if (courierPhone != null &&
+              courierPhone.isNotEmpty)
             Text(
               'Phone: '
               '$courierPhone',
@@ -3521,6 +3372,28 @@ class _AdminPanelState extends State<AdminPanel>
             const Text(
           'Preesho Admin Panel',
         ),
+
+        // ================= COURIER MANAGEMENT =================
+        actions: [
+          IconButton(
+            tooltip:
+                'Courier Management',
+            icon:
+                const Icon(
+              Icons.delivery_dining,
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      const CourierManagementPage(),
+                ),
+              );
+            },
+          ),
+        ],
+
         bottom:
             TabBar(
           controller:
