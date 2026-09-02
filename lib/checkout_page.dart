@@ -96,7 +96,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
         return;
       }
 
-      // Firebase Authentication details.
       final authName =
           user.displayName?.trim() ?? '';
 
@@ -119,10 +118,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
             cleanPhoneNumber(authPhone);
       }
 
-      // Firestore details.
       await loadUserDetails(user.uid);
-
-      // Saved address book.
       await loadAddressBook(user.uid);
     } catch (e) {
       if (mounted) {
@@ -178,8 +174,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
         return;
       }
 
-      final data =
-          doc.data();
+      final data = doc.data();
 
       if (data == null) {
         return;
@@ -219,8 +214,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
           data['city']?.toString().trim() ?? '';
 
       if (savedCity.isNotEmpty) {
-        cityController.text =
-            savedCity;
+        cityController.text = savedCity;
       }
 
       final savedPincode =
@@ -309,10 +303,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
       final parsed =
           <CustomerAddress>[];
 
-      // ----------------------------------------------------------
-      // READ NEW ADDRESS LIST
-      // ----------------------------------------------------------
-
       final rawAddresses =
           data['addresses'];
 
@@ -325,7 +315,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
             CustomerAddress address =
                 CustomerAddress.fromMap(map);
 
-            // Fix old/empty address ID.
             if (address.addressId
                 .trim()
                 .isEmpty) {
@@ -353,9 +342,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
         }
       }
 
-      // ----------------------------------------------------------
+      // ==========================================================
       // OLD ADDRESS FORMAT MIGRATION
-      // ----------------------------------------------------------
+      // ==========================================================
 
       if (parsed.isEmpty) {
         final oldAddress =
@@ -438,9 +427,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
         return;
       }
 
-      // ----------------------------------------------------------
+      // ==========================================================
       // FIND DEFAULT
-      // ----------------------------------------------------------
+      // ==========================================================
 
       final storedDefaultId =
           (data['defaultAddressId'] ?? '')
@@ -471,9 +460,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
         }
       }
 
-      // ----------------------------------------------------------
-      // NORMALIZE ALL ADDRESSES
-      // ----------------------------------------------------------
+      // ==========================================================
+      // NORMALIZE
+      // ==========================================================
 
       final normalized =
           parsed.map((address) {
@@ -498,19 +487,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
         });
       }
 
-      // ----------------------------------------------------------
-      // AUTOMATICALLY REPAIR FIRESTORE
-      // ----------------------------------------------------------
-
       await _saveAddressBook(
         uid,
         normalized,
         actualDefaultId,
       );
-
-      // ----------------------------------------------------------
-      // APPLY DEFAULT ADDRESS TO FORM
-      // ----------------------------------------------------------
 
       final defaultAddress =
           normalized.firstWhere(
@@ -610,8 +591,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
             address.addressId.trim().isEmpty
                 ? createAddressId()
                 : address.addressId.trim(),
-        name:
-            address.name.trim(),
+        name: address.name.trim(),
         phone:
             cleanPhoneNumber(
           address.phone,
@@ -636,7 +616,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
       );
     }).toList();
 
-    // Make sure exactly one address is default.
     String finalDefaultId =
         defaultId.trim();
 
@@ -710,8 +689,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       final normalized =
           savedAddresses.map((a) {
         return CustomerAddress(
-          addressId:
-              a.addressId,
+          addressId: a.addressId,
           name: a.name,
           phone: a.phone,
           house: a.house,
@@ -737,8 +715,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       }
 
       setState(() {
-        savedAddresses =
-            normalized;
+        savedAddresses = normalized;
         selectedAddressId =
             address.addressId;
       });
@@ -844,15 +821,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
         );
       }
 
-      // ----------------------------------------------------------
-      // DEFAULT ADDRESS DECISION
-      // ----------------------------------------------------------
-
       String defaultId;
 
       if (cleanedResult.isDefault) {
-        defaultId =
-            resultId;
+        defaultId = resultId;
       } else if (selectedAddressId !=
               null &&
           list.any(
@@ -873,15 +845,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
         defaultId,
       );
 
-      // ----------------------------------------------------------
-      // NORMALIZE LOCAL LIST
-      // ----------------------------------------------------------
-
       final normalized =
           list.map((a) {
         return CustomerAddress(
-          addressId:
-              a.addressId,
+          addressId: a.addressId,
           name: a.name,
           phone: a.phone,
           house: a.house,
@@ -901,8 +868,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       }
 
       setState(() {
-        savedAddresses =
-            normalized;
+        savedAddresses = normalized;
         selectedAddressId =
             defaultId;
       });
@@ -1027,8 +993,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
         defaultId =
             list
                 .firstWhere(
-                  (a) =>
-                      a.isDefault,
+                  (a) => a.isDefault,
                   orElse: () =>
                       list.first,
                 )
@@ -1044,8 +1009,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       final normalized =
           list.map((a) {
         return CustomerAddress(
-          addressId:
-              a.addressId,
+          addressId: a.addressId,
           name: a.name,
           phone: a.phone,
           house: a.house,
@@ -1065,8 +1029,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       }
 
       setState(() {
-        savedAddresses =
-            normalized;
+        savedAddresses = normalized;
         selectedAddressId =
             defaultId;
       });
@@ -1136,14 +1099,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
       }
 
       LocationPermission permission =
-          await Geolocator
-              .checkPermission();
+          await Geolocator.checkPermission();
 
       if (permission ==
           LocationPermission.denied) {
         permission =
-            await Geolocator
-                .requestPermission();
+            await Geolocator.requestPermission();
       }
 
       if (permission ==
@@ -1240,10 +1201,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
       SetOptions(merge: true),
     );
 
-    // ----------------------------------------------------------
-    // SAVE CURRENT ADDRESS
-    // ----------------------------------------------------------
-
     final addressId =
         selectedAddressId != null &&
                 selectedAddressId!
@@ -1294,8 +1251,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
     final normalized =
         list.map((a) {
       return CustomerAddress(
-        addressId:
-            a.addressId,
+        addressId: a.addressId,
         name: a.name,
         phone: a.phone,
         house: a.house,
@@ -1312,8 +1268,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
     if (mounted) {
       setState(() {
-        savedAddresses =
-            normalized;
+        savedAddresses = normalized;
         selectedAddressId =
             defaultId;
       });
@@ -1379,9 +1334,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
       return false;
     }
 
-    // ----------------------------------------------------------
+    // ==========================================================
     // GIFT VALIDATION
-    // ----------------------------------------------------------
+    // ==========================================================
 
     if (isGift) {
       if (giftNameController
@@ -1481,9 +1436,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
     });
 
     try {
-      // --------------------------------------------------------
+      // ========================================================
       // SAVE CUSTOMER + ADDRESS
-      // --------------------------------------------------------
+      // ========================================================
 
       await saveCustomerDetails(
         user.uid,
@@ -1513,9 +1468,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
         );
       }
 
-      // --------------------------------------------------------
+      // ========================================================
       // CREATE ORDER ITEMS
-      // --------------------------------------------------------
+      // ========================================================
 
       double total = 0;
 
@@ -1550,14 +1505,26 @@ class _CheckoutPageState extends State<CheckoutPage> {
         };
       }).toList();
 
-      // --------------------------------------------------------
+      // ========================================================
       // CREATE ORDER
-      // --------------------------------------------------------
+      // ========================================================
 
       final orderRef =
           FirebaseFirestore.instance
               .collection('orders')
               .doc();
+
+      // --------------------------------------------------------
+      // IMPORTANT:
+      //
+      // Customer placing an order MUST start at "Placed".
+      //
+      // Admin will later move it to:
+      // Confirmed → Processing → Packed → Shipped
+      //
+      // Courier flow after Shipped:
+      // Picked by Courier → Out for Delivery → Delivered
+      // --------------------------------------------------------
 
       final orderData =
           <String, dynamic>{
@@ -1581,7 +1548,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
             emailController.text
                 .trim(),
 
-        // Complete address snapshot.
+        // ======================================================
+        // COMPLETE ADDRESS SNAPSHOT
+        // ======================================================
+
         'deliveryAddress':
             selectedAddress.toMap(),
 
@@ -1598,11 +1568,19 @@ class _CheckoutPageState extends State<CheckoutPage> {
         'pincode':
             selectedAddress.pincode,
 
+        // ======================================================
+        // ORDER ITEMS
+        // ======================================================
+
         'items':
             items,
 
         'totalAmount':
             total,
+
+        // ======================================================
+        // PAYMENT
+        // ======================================================
 
         'paymentMethod':
             'COD',
@@ -1610,8 +1588,67 @@ class _CheckoutPageState extends State<CheckoutPage> {
         'paymentStatus':
             'Pending',
 
+        // ======================================================
+        // ORDER STATUS
+        // ======================================================
+        //
+        // DO NOT CHANGE THIS TO "Confirmed".
+        //
         'orderStatus':
-            'Confirmed',
+            'Placed',
+
+        // ======================================================
+        // STATUS HISTORY
+        // ======================================================
+        //
+        // First tracking event is created at order placement.
+        // Admin/courier updates will append future stages.
+        //
+        'statusHistory': [
+          {
+            'status':
+                'Placed',
+            'timestamp':
+                Timestamp.now(),
+            'updatedBy':
+                'Customer',
+          },
+        ],
+
+        // ======================================================
+        // STATUS TIMESTAMPS
+        // ======================================================
+
+        'placedAt':
+            FieldValue.serverTimestamp(),
+
+        'confirmedAt':
+            null,
+
+        'processingAt':
+            null,
+
+        'packedAt':
+            null,
+
+        'shippedAt':
+            null,
+
+        'courierPickedAt':
+            null,
+
+        'outForDeliveryAt':
+            null,
+
+        'deliveredAt':
+            null,
+
+        'cancelledAt':
+            null,
+
+        // ======================================================
+        // CANCELLATION
+        // ======================================================
 
         'cancelled':
             false,
@@ -1619,14 +1656,19 @@ class _CheckoutPageState extends State<CheckoutPage> {
         'cancellationReason':
             null,
 
-        'cancelledAt':
-            null,
+        // ======================================================
+        // LOCATION
+        // ======================================================
 
         'latitude':
             latitude,
 
         'longitude':
             longitude,
+
+        // ======================================================
+        // GIFT
+        // ======================================================
 
         'isGift':
             isGift,
@@ -1659,24 +1701,71 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   }
                 : null,
 
+        // ======================================================
+        // COURIER
+        // ======================================================
+        //
+        // These remain empty until courier is assigned/picks up.
+        //
+
+        'courierId':
+            null,
+
+        'courierName':
+            null,
+
+        'courierMobile':
+            null,
+
+        'courierAssignedAt':
+            null,
+
+        'courierPickedAt':
+            null,
+
+        // ======================================================
+        // LIVE TRACKING
+        // ======================================================
+
+        'trackingEnabled':
+            false,
+
+        'trackingStatus':
+            'Not Started',
+
+        'courierLatitude':
+            null,
+
+        'courierLongitude':
+            null,
+
+        'lastLocationUpdate':
+            null,
+
+        // ======================================================
+        // CREATED / UPDATED
+        // ======================================================
+
         'createdAt':
-            FieldValue
-                .serverTimestamp(),
+            FieldValue.serverTimestamp(),
 
         'updatedAt':
-            FieldValue
-                .serverTimestamp(),
+            FieldValue.serverTimestamp(),
       };
 
       await orderRef.set(
         orderData,
       );
 
-      // --------------------------------------------------------
-      // CLEAR CART
-      // --------------------------------------------------------
-
-      CartController.clear();
+      // ========================================================
+      // CLEAR SHOPPING CART
+      // ========================================================
+      //
+      // The purchased products are removed from the active cart.
+      // The order itself remains permanently available in My Orders
+      // with complete tracking history.
+      //
+      await CartController.clear();
 
       if (!mounted) {
         return;
@@ -1686,9 +1775,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
         'Order placed successfully.',
       );
 
-      // --------------------------------------------------------
-      // ORDERS PAGE
-      // --------------------------------------------------------
+      // ========================================================
+      // OPEN MY ORDERS
+      // ========================================================
 
       Navigator.pushReplacement(
         context,
