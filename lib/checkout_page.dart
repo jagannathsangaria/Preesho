@@ -7,6 +7,7 @@ import 'main.dart';
 import 'login_page.dart';
 import 'models/preesho_models.dart';
 import 'orders_page.dart';
+import 'cart/cart_controller.dart';
 
 class CheckoutPage extends StatefulWidget {
   const CheckoutPage({super.key});
@@ -65,8 +66,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   // CURRENT USER
   // ============================================================
 
-  User? get currentUser =>
-      FirebaseAuth.instance.currentUser;
+  User? get currentUser => FirebaseAuth.instance.currentUser;
 
   // ============================================================
   // INIT
@@ -96,14 +96,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
         return;
       }
 
-      final authName =
-          user.displayName?.trim() ?? '';
-
-      final authEmail =
-          user.email?.trim() ?? '';
-
-      final authPhone =
-          user.phoneNumber?.trim() ?? '';
+      final authName = user.displayName?.trim() ?? '';
+      final authEmail = user.email?.trim() ?? '';
+      final authPhone = user.phoneNumber?.trim() ?? '';
 
       if (authName.isNotEmpty) {
         nameController.text = authName;
@@ -114,17 +109,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
       }
 
       if (authPhone.isNotEmpty) {
-        mobileController.text =
-            cleanPhoneNumber(authPhone);
+        mobileController.text = cleanPhoneNumber(authPhone);
       }
 
       await loadUserDetails(user.uid);
       await loadAddressBook(user.uid);
     } catch (e) {
       if (mounted) {
-        showMessage(
-          'Could not load saved customer details.',
-        );
+        showMessage('Could not load saved customer details.');
       }
     } finally {
       if (mounted) {
@@ -140,17 +132,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
   // ============================================================
 
   String cleanPhoneNumber(String phone) {
-    String cleaned = phone
-        .replaceAll('+91', '')
-        .replaceAll(
+    String cleaned = phone.replaceAll('+91', '').replaceAll(
           RegExp(r'[^0-9]'),
           '',
         );
 
     if (cleaned.length > 10) {
-      cleaned = cleaned.substring(
-        cleaned.length - 10,
-      );
+      cleaned = cleaned.substring(cleaned.length - 10);
     }
 
     return cleaned;
@@ -160,15 +148,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
   // LOAD USER DETAILS
   // ============================================================
 
-  Future<void> loadUserDetails(
-    String uid,
-  ) async {
+  Future<void> loadUserDetails(String uid) async {
     try {
-      final doc =
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(uid)
-              .get();
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get();
 
       if (!doc.exists) {
         return;
@@ -180,55 +165,44 @@ class _CheckoutPageState extends State<CheckoutPage> {
         return;
       }
 
-      final savedName =
-          data['name']?.toString().trim() ?? '';
+      final savedName = data['name']?.toString().trim() ?? '';
 
       if (savedName.isNotEmpty) {
         nameController.text = savedName;
       }
 
-      final savedMobile =
-          data['mobile']?.toString().trim() ?? '';
+      final savedMobile = data['mobile']?.toString().trim() ?? '';
 
       if (savedMobile.isNotEmpty) {
-        mobileController.text =
-            cleanPhoneNumber(savedMobile);
+        mobileController.text = cleanPhoneNumber(savedMobile);
       }
 
-      final savedEmail =
-          data['email']?.toString().trim() ?? '';
+      final savedEmail = data['email']?.toString().trim() ?? '';
 
       if (savedEmail.isNotEmpty) {
         emailController.text = savedEmail;
       }
 
-      final savedAddress =
-          data['address']?.toString().trim() ?? '';
+      final savedAddress = data['address']?.toString().trim() ?? '';
 
       if (savedAddress.isNotEmpty) {
-        addressController.text =
-            savedAddress;
+        addressController.text = savedAddress;
       }
 
-      final savedCity =
-          data['city']?.toString().trim() ?? '';
+      final savedCity = data['city']?.toString().trim() ?? '';
 
       if (savedCity.isNotEmpty) {
         cityController.text = savedCity;
       }
 
-      final savedPincode =
-          data['pincode']?.toString().trim() ?? '';
+      final savedPincode = data['pincode']?.toString().trim() ?? '';
 
       if (savedPincode.isNotEmpty) {
-        pincodeController.text =
-            savedPincode;
+        pincodeController.text = savedPincode;
       }
     } catch (e) {
       if (mounted) {
-        showMessage(
-          'Could not read saved customer details.',
-        );
+        showMessage('Could not read saved customer details.');
       }
     }
   }
@@ -249,24 +223,20 @@ class _CheckoutPageState extends State<CheckoutPage> {
     CustomerAddress address, {
     required String defaultId,
   }) {
-    final id =
-        address.addressId.trim().isEmpty
-            ? createAddressId()
-            : address.addressId.trim();
+    final id = address.addressId.trim().isEmpty
+        ? createAddressId()
+        : address.addressId.trim();
 
     return CustomerAddress(
       addressId: id,
       name: address.name.trim(),
-      phone: cleanPhoneNumber(
-        address.phone,
-      ),
+      phone: cleanPhoneNumber(address.phone),
       house: address.house.trim(),
       street: address.street.trim(),
       city: address.city.trim(),
-      state:
-          address.state.trim().isEmpty
-              ? 'Rajasthan'
-              : address.state.trim(),
+      state: address.state.trim().isEmpty
+          ? 'Rajasthan'
+          : address.state.trim(),
       pincode: address.pincode.trim(),
       landmark: address.landmark.trim(),
       isDefault: id == defaultId,
@@ -277,9 +247,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   // LOAD ADDRESS BOOK
   // ============================================================
 
-  Future<void> loadAddressBook(
-    String uid,
-  ) async {
+  Future<void> loadAddressBook(String uid) async {
     if (mounted) {
       setState(() {
         loadingAddresses = true;
@@ -287,53 +255,41 @@ class _CheckoutPageState extends State<CheckoutPage> {
     }
 
     try {
-      final doc =
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(uid)
-              .get();
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get();
 
       if (!doc.exists) {
         return;
       }
 
-      final data =
-          doc.data() ?? <String, dynamic>{};
+      final data = doc.data() ?? <String, dynamic>{};
 
-      final parsed =
-          <CustomerAddress>[];
+      final parsed = <CustomerAddress>[];
 
-      final rawAddresses =
-          data['addresses'];
+      final rawAddresses = data['addresses'];
 
       if (rawAddresses is List) {
         for (final item in rawAddresses) {
           if (item is Map) {
-            final map =
-                Map<String, dynamic>.from(item);
+            final map = Map<String, dynamic>.from(item);
 
             CustomerAddress address =
                 CustomerAddress.fromMap(map);
 
-            if (address.addressId
-                .trim()
-                .isEmpty) {
+            if (address.addressId.trim().isEmpty) {
               address = CustomerAddress(
-                addressId:
-                    createAddressId(),
+                addressId: createAddressId(),
                 name: address.name,
-                phone:
-                    cleanPhoneNumber(
-                  address.phone,
-                ),
+                phone: cleanPhoneNumber(address.phone),
                 house: address.house,
                 street: address.street,
                 city: address.city,
                 state: address.state,
                 pincode: address.pincode,
                 landmark: address.landmark,
-                isDefault:
-                    address.isDefault,
+                isDefault: address.isDefault,
               );
             }
 
@@ -348,39 +304,28 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
       if (parsed.isEmpty) {
         final oldAddress =
-            (data['address'] ?? '')
-                .toString()
-                .trim();
+            (data['address'] ?? '').toString().trim();
 
         final oldCity =
-            (data['city'] ?? '')
-                .toString()
-                .trim();
+            (data['city'] ?? '').toString().trim();
 
         final oldPin =
-            (data['pincode'] ??
-                    data['pin'] ??
-                    '')
+            (data['pincode'] ?? data['pin'] ?? '')
                 .toString()
                 .trim();
 
         final oldName =
-            (data['name'] ??
-                    data['fullName'] ??
-                    '')
+            (data['name'] ?? data['fullName'] ?? '')
                 .toString()
                 .trim();
 
         final oldPhone =
-            (data['mobile'] ??
-                    data['phone'] ??
-                    '')
+            (data['mobile'] ?? data['phone'] ?? '')
                 .toString()
                 .trim();
 
         final oldState =
-            (data['state'] ??
-                    'Rajasthan')
+            (data['state'] ?? 'Rajasthan')
                 .toString()
                 .trim();
 
@@ -389,27 +334,18 @@ class _CheckoutPageState extends State<CheckoutPage> {
             oldPin.isNotEmpty) {
           parsed.add(
             CustomerAddress(
-              addressId:
-                  createAddressId(),
-              name:
-                  oldName.isNotEmpty
-                      ? oldName
-                      : nameController.text
-                          .trim(),
-              phone:
-                  oldPhone.isNotEmpty
-                      ? cleanPhoneNumber(
-                          oldPhone,
-                        )
-                      : mobileController
-                          .text
-                          .trim(),
+              addressId: createAddressId(),
+              name: oldName.isNotEmpty
+                  ? oldName
+                  : nameController.text.trim(),
+              phone: oldPhone.isNotEmpty
+                  ? cleanPhoneNumber(oldPhone)
+                  : mobileController.text.trim(),
               street: oldAddress,
               city: oldCity,
-              state:
-                  oldState.isNotEmpty
-                      ? oldState
-                      : 'Rajasthan',
+              state: oldState.isNotEmpty
+                  ? oldState
+                  : 'Rajasthan',
               pincode: oldPin,
               isDefault: true,
             ),
@@ -440,23 +376,18 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
       if (storedDefaultId.isNotEmpty &&
           parsed.any(
-            (a) =>
-                a.addressId ==
-                storedDefaultId,
+            (a) => a.addressId == storedDefaultId,
           )) {
         defaultId = storedDefaultId;
       } else {
-        final marked =
-            parsed.where(
-              (a) => a.isDefault,
-            );
+        final marked = parsed.where(
+          (a) => a.isDefault,
+        );
 
         if (marked.isNotEmpty) {
-          defaultId =
-              marked.first.addressId;
+          defaultId = marked.first.addressId;
         } else {
-          defaultId =
-              parsed.first.addressId;
+          defaultId = parsed.first.addressId;
         }
       }
 
@@ -464,26 +395,22 @@ class _CheckoutPageState extends State<CheckoutPage> {
       // NORMALIZE
       // ==========================================================
 
-      final normalized =
-          parsed.map((address) {
+      final normalized = parsed.map((address) {
         return normalizeAddress(
           address,
           defaultId: defaultId,
         );
       }).toList();
 
-      final actualDefaultId =
-          normalized.firstWhere(
+      final actualDefaultId = normalized.firstWhere(
         (a) => a.isDefault,
-        orElse: () =>
-            normalized.first,
+        orElse: () => normalized.first,
       ).addressId;
 
       if (mounted) {
         setState(() {
           savedAddresses = normalized;
-          selectedAddressId =
-              actualDefaultId;
+          selectedAddressId = actualDefaultId;
         });
       }
 
@@ -493,23 +420,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
         actualDefaultId,
       );
 
-      final defaultAddress =
-          normalized.firstWhere(
-        (a) =>
-            a.addressId ==
-            actualDefaultId,
-        orElse: () =>
-            normalized.first,
+      final defaultAddress = normalized.firstWhere(
+        (a) => a.addressId == actualDefaultId,
+        orElse: () => normalized.first,
       );
 
-      _applyAddressToForm(
-        defaultAddress,
-      );
+      _applyAddressToForm(defaultAddress);
     } catch (e) {
       if (mounted) {
-        showMessage(
-          'Could not load saved addresses.',
-        );
+        showMessage('Could not load saved addresses.');
       }
     } finally {
       if (mounted) {
@@ -524,16 +443,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
   // APPLY ADDRESS TO FORM
   // ============================================================
 
-  void _applyAddressToForm(
-    CustomerAddress address,
-  ) {
-    nameController.text =
-        address.name;
+  void _applyAddressToForm(CustomerAddress address) {
+    nameController.text = address.name;
 
     mobileController.text =
-        cleanPhoneNumber(
-      address.phone,
-    );
+        cleanPhoneNumber(address.phone);
 
     addressController.text =
         address.fullAddress;
@@ -554,23 +468,17 @@ class _CheckoutPageState extends State<CheckoutPage> {
     required bool isDefault,
   }) {
     return CustomerAddress(
-      addressId:
-          addressId.trim().isEmpty
-              ? createAddressId()
-              : addressId.trim(),
-      name:
-          nameController.text.trim(),
-      phone:
-          cleanPhoneNumber(
+      addressId: addressId.trim().isEmpty
+          ? createAddressId()
+          : addressId.trim(),
+      name: nameController.text.trim(),
+      phone: cleanPhoneNumber(
         mobileController.text.trim(),
       ),
-      street:
-          addressController.text.trim(),
-      city:
-          cityController.text.trim(),
+      street: addressController.text.trim(),
+      city: cityController.text.trim(),
       state: 'Rajasthan',
-      pincode:
-          pincodeController.text.trim(),
+      pincode: pincodeController.text.trim(),
       isDefault: isDefault,
     );
   }
@@ -584,58 +492,39 @@ class _CheckoutPageState extends State<CheckoutPage> {
     List<CustomerAddress> addresses,
     String defaultId,
   ) async {
-    final normalized =
-        addresses.map((address) {
+    final normalized = addresses.map((address) {
       return CustomerAddress(
-        addressId:
-            address.addressId.trim().isEmpty
-                ? createAddressId()
-                : address.addressId.trim(),
+        addressId: address.addressId.trim().isEmpty
+            ? createAddressId()
+            : address.addressId.trim(),
         name: address.name.trim(),
-        phone:
-            cleanPhoneNumber(
-          address.phone,
-        ),
-        house:
-            address.house.trim(),
-        street:
-            address.street.trim(),
-        city:
-            address.city.trim(),
-        state:
-            address.state.trim().isEmpty
-                ? 'Rajasthan'
-                : address.state.trim(),
-        pincode:
-            address.pincode.trim(),
-        landmark:
-            address.landmark.trim(),
-        isDefault:
-            address.addressId ==
-                defaultId,
+        phone: cleanPhoneNumber(address.phone),
+        house: address.house.trim(),
+        street: address.street.trim(),
+        city: address.city.trim(),
+        state: address.state.trim().isEmpty
+            ? 'Rajasthan'
+            : address.state.trim(),
+        pincode: address.pincode.trim(),
+        landmark: address.landmark.trim(),
+        isDefault: address.addressId == defaultId,
       );
     }).toList();
 
-    String finalDefaultId =
-        defaultId.trim();
+    String finalDefaultId = defaultId.trim();
 
     if (finalDefaultId.isEmpty ||
         !normalized.any(
-          (a) =>
-              a.addressId ==
-              finalDefaultId,
+          (a) => a.addressId == finalDefaultId,
         )) {
-      finalDefaultId =
-          normalized.isNotEmpty
-              ? normalized.first.addressId
-              : '';
+      finalDefaultId = normalized.isNotEmpty
+          ? normalized.first.addressId
+          : '';
     }
 
-    final finalAddresses =
-        normalized.map((address) {
+    final finalAddresses = normalized.map((address) {
       return CustomerAddress(
-        addressId:
-            address.addressId,
+        addressId: address.addressId,
         name: address.name,
         phone: address.phone,
         house: address.house,
@@ -645,8 +534,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
         pincode: address.pincode,
         landmark: address.landmark,
         isDefault:
-            address.addressId ==
-                finalDefaultId,
+            address.addressId == finalDefaultId,
       );
     }).toList();
 
@@ -655,15 +543,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
         .doc(uid)
         .set(
       {
-        'addresses':
-            finalAddresses
-                .map(
-                  (address) =>
-                      address.toMap(),
-                )
-                .toList(),
-        'defaultAddressId':
-            finalDefaultId,
+        'addresses': finalAddresses
+            .map(
+              (address) => address.toMap(),
+            )
+            .toList(),
+        'defaultAddressId': finalDefaultId,
         'updatedAt':
             FieldValue.serverTimestamp(),
       },
@@ -686,8 +571,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
     }
 
     try {
-      final normalized =
-          savedAddresses.map((a) {
+      final normalized = savedAddresses.map((a) {
         return CustomerAddress(
           addressId: a.addressId,
           name: a.name,
@@ -699,8 +583,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
           pincode: a.pincode,
           landmark: a.landmark,
           isDefault:
-              a.addressId ==
-                  address.addressId,
+              a.addressId == address.addressId,
         );
       }).toList();
 
@@ -729,9 +612,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       );
     } catch (e) {
       if (mounted) {
-        showMessage(
-          'Could not select address.',
-        );
+        showMessage('Could not select address.');
       }
     }
   }
@@ -746,8 +627,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
     final result =
         await showDialog<CustomerAddress>(
       context: context,
-      builder: (_) =>
-          _AddressEditorDialog(
+      builder: (_) => _AddressEditorDialog(
         existing: existing,
         defaultName:
             nameController.text.trim(),
@@ -756,8 +636,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       ),
     );
 
-    if (result == null ||
-        !mounted) {
+    if (result == null || !mounted) {
       return;
     }
 
@@ -782,61 +661,45 @@ class _CheckoutPageState extends State<CheckoutPage> {
           CustomerAddress(
         addressId: resultId,
         name: result.name.trim(),
-        phone:
-            cleanPhoneNumber(
+        phone: cleanPhoneNumber(
           result.phone,
         ),
         house: result.house.trim(),
-        street:
-            result.street.trim(),
+        street: result.street.trim(),
         city: result.city.trim(),
-        state:
-            result.state.trim().isEmpty
-                ? 'Rajasthan'
-                : result.state.trim(),
-        pincode:
-            result.pincode.trim(),
-        landmark:
-            result.landmark.trim(),
-        isDefault:
-            result.isDefault,
+        state: result.state.trim().isEmpty
+            ? 'Rajasthan'
+            : result.state.trim(),
+        pincode: result.pincode.trim(),
+        landmark: result.landmark.trim(),
+        isDefault: result.isDefault,
       );
 
-      final list =
-          [...savedAddresses];
+      final list = [...savedAddresses];
 
-      final index =
-          list.indexWhere(
-        (a) =>
-            a.addressId ==
-            resultId,
+      final index = list.indexWhere(
+        (a) => a.addressId == resultId,
       );
 
       if (index >= 0) {
-        list[index] =
-            cleanedResult;
+        list[index] = cleanedResult;
       } else {
-        list.add(
-          cleanedResult,
-        );
+        list.add(cleanedResult);
       }
 
       String defaultId;
 
       if (cleanedResult.isDefault) {
         defaultId = resultId;
-      } else if (selectedAddressId !=
-              null &&
+      } else if (selectedAddressId != null &&
           list.any(
             (a) =>
                 a.addressId ==
                 selectedAddressId,
           )) {
-        defaultId =
-            selectedAddressId!;
+        defaultId = selectedAddressId!;
       } else {
-        defaultId =
-            list.first.addressId;
+        defaultId = list.first.addressId;
       }
 
       await _saveAddressBook(
@@ -845,8 +708,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
         defaultId,
       );
 
-      final normalized =
-          list.map((a) {
+      final normalized = list.map((a) {
         return CustomerAddress(
           addressId: a.addressId,
           name: a.name,
@@ -858,8 +720,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
           pincode: a.pincode,
           landmark: a.landmark,
           isDefault:
-              a.addressId ==
-                  defaultId,
+              a.addressId == defaultId,
         );
       }).toList();
 
@@ -869,15 +730,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
       setState(() {
         savedAddresses = normalized;
-        selectedAddressId =
-            defaultId;
+        selectedAddressId = defaultId;
       });
 
       _applyAddressToForm(
         normalized.firstWhere(
-          (a) =>
-              a.addressId ==
-              defaultId,
+          (a) => a.addressId == defaultId,
         ),
       );
 
@@ -888,9 +746,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       );
     } catch (e) {
       if (mounted) {
-        showMessage(
-          'Could not save address.',
-        );
+        showMessage('Could not save address.');
       }
     } finally {
       if (mounted) {
@@ -915,17 +771,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
       return;
     }
 
-    final confirm =
-        await showDialog<bool>(
+    final confirm = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title:
-              const Text(
+          title: const Text(
             'Delete address?',
           ),
-          content:
-              const Text(
+          content: const Text(
             'This saved address will be removed from your account.',
           ),
           actions: [
@@ -935,8 +788,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 dialogContext,
                 false,
               ),
-              child:
-                  const Text(
+              child: const Text(
                 'Cancel',
               ),
             ),
@@ -946,8 +798,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 dialogContext,
                 true,
               ),
-              child:
-                  const Text(
+              child: const Text(
                 'Delete',
               ),
             ),
@@ -967,14 +818,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
     }
 
     try {
-      final list =
-          savedAddresses
-              .where(
-                (a) =>
-                    a.addressId !=
-                    address.addressId,
-              )
-              .toList();
+      final list = savedAddresses
+          .where(
+            (a) =>
+                a.addressId !=
+                address.addressId,
+          )
+          .toList();
 
       if (list.isEmpty) {
         showMessage(
@@ -987,17 +837,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
       if (address.addressId ==
           selectedAddressId) {
-        defaultId =
-            list.first.addressId;
+        defaultId = list.first.addressId;
       } else {
-        defaultId =
-            list
-                .firstWhere(
-                  (a) => a.isDefault,
-                  orElse: () =>
-                      list.first,
-                )
-                .addressId;
+        defaultId = list
+            .firstWhere(
+              (a) => a.isDefault,
+              orElse: () => list.first,
+            )
+            .addressId;
       }
 
       await _saveAddressBook(
@@ -1006,8 +853,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
         defaultId,
       );
 
-      final normalized =
-          list.map((a) {
+      final normalized = list.map((a) {
         return CustomerAddress(
           addressId: a.addressId,
           name: a.name,
@@ -1019,8 +865,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
           pincode: a.pincode,
           landmark: a.landmark,
           isDefault:
-              a.addressId ==
-                  defaultId,
+              a.addressId == defaultId,
         );
       }).toList();
 
@@ -1030,26 +875,19 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
       setState(() {
         savedAddresses = normalized;
-        selectedAddressId =
-            defaultId;
+        selectedAddressId = defaultId;
       });
 
       _applyAddressToForm(
         normalized.firstWhere(
-          (a) =>
-              a.addressId ==
-              defaultId,
+          (a) => a.addressId == defaultId,
         ),
       );
 
-      showMessage(
-        'Address deleted.',
-      );
+      showMessage('Address deleted.');
     } catch (e) {
       if (mounted) {
-        showMessage(
-          'Could not delete address.',
-        );
+        showMessage('Could not delete address.');
       }
     }
   }
@@ -1059,12 +897,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
   // ============================================================
 
   Future<void> goToLogin() async {
-    final result =
-        await Navigator.push(
+    final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            const LoginPage(),
+        builder: (_) => const LoginPage(),
       ),
     );
 
@@ -1088,8 +924,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
     try {
       final serviceEnabled =
-          await Geolocator
-              .isLocationServiceEnabled();
+          await Geolocator.isLocationServiceEnabled();
 
       if (!serviceEnabled) {
         showMessage(
@@ -1124,8 +959,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       }
 
       final position =
-          await Geolocator
-              .getCurrentPosition(
+          await Geolocator.getCurrentPosition(
         locationSettings:
             const LocationSettings(
           accuracy:
@@ -1138,10 +972,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
       }
 
       setState(() {
-        latitude =
-            position.latitude;
-        longitude =
-            position.longitude;
+        latitude = position.latitude;
+        longitude = position.longitude;
       });
 
       showMessage(
@@ -1216,11 +1048,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
           savedAddresses.isEmpty,
     );
 
-    final list =
-        [...savedAddresses];
+    final list = [...savedAddresses];
 
-    final index =
-        list.indexWhere(
+    final index = list.indexWhere(
       (a) =>
           a.addressId ==
           current.addressId,
@@ -1248,8 +1078,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       defaultId,
     );
 
-    final normalized =
-        list.map((a) {
+    final normalized = list.map((a) {
       return CustomerAddress(
         addressId: a.addressId,
         name: a.name,
@@ -1261,16 +1090,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
         pincode: a.pincode,
         landmark: a.landmark,
         isDefault:
-            a.addressId ==
-                defaultId,
+            a.addressId == defaultId,
       );
     }).toList();
 
     if (mounted) {
       setState(() {
         savedAddresses = normalized;
-        selectedAddressId =
-            defaultId;
+        selectedAddressId = defaultId;
       });
     }
   }
@@ -1446,8 +1273,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
       CustomerAddress selectedAddress;
 
-      if (selectedAddressId !=
-              null &&
+      if (selectedAddressId != null &&
           savedAddresses.any(
             (a) =>
                 a.addressId ==
@@ -1514,17 +1340,20 @@ class _CheckoutPageState extends State<CheckoutPage> {
               .collection('orders')
               .doc();
 
-      // --------------------------------------------------------
-      // IMPORTANT:
+      // ========================================================
+      // CUSTOMER ORDER FLOW
       //
-      // Customer placing an order MUST start at "Placed".
+      // Placed
+      // Confirmed
+      // Processing
+      // Packed
+      // Shipped
       //
-      // Admin will later move it to:
-      // Confirmed → Processing → Packed → Shipped
-      //
-      // Courier flow after Shipped:
-      // Picked by Courier → Out for Delivery → Delivered
-      // --------------------------------------------------------
+      // COURIER:
+      // Picked by Courier
+      // Out for Delivery
+      // Delivered
+      // ========================================================
 
       final orderData =
           <String, dynamic>{
@@ -1535,18 +1364,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
             user.uid,
 
         'customerName':
-            nameController.text
-                .trim(),
+            nameController.text.trim(),
 
         'customerMobile':
             cleanPhoneNumber(
-          mobileController.text
-              .trim(),
+          mobileController.text.trim(),
         ),
 
         'customerEmail':
-            emailController.text
-                .trim(),
+            emailController.text.trim(),
 
         // ======================================================
         // COMPLETE ADDRESS SNAPSHOT
@@ -1555,7 +1381,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
         'deliveryAddress':
             selectedAddress.toMap(),
 
-        // Compatibility fields.
         'address':
             selectedAddress.fullAddress,
 
@@ -1591,19 +1416,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
         // ======================================================
         // ORDER STATUS
         // ======================================================
-        //
-        // DO NOT CHANGE THIS TO "Confirmed".
-        //
+
         'orderStatus':
             'Placed',
 
         // ======================================================
         // STATUS HISTORY
         // ======================================================
-        //
-        // First tracking event is created at order placement.
-        // Admin/courier updates will append future stages.
-        //
+
         'statusHistory': [
           {
             'status':
@@ -1704,9 +1524,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
         // ======================================================
         // COURIER
         // ======================================================
-        //
-        // These remain empty until courier is assigned/picks up.
-        //
 
         'courierId':
             null,
@@ -1760,11 +1577,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       // ========================================================
       // CLEAR SHOPPING CART
       // ========================================================
-      //
-      // The purchased products are removed from the active cart.
-      // The order itself remains permanently available in My Orders
-      // with complete tracking history.
-      //
+
       await CartController.clear();
 
       if (!mounted) {
@@ -1805,9 +1618,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   // SNACKBAR
   // ============================================================
 
-  void showMessage(
-    String message,
-  ) {
+  void showMessage(String message) {
     if (!mounted) {
       return;
     }
@@ -2560,8 +2371,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
                         Card(
                           child:
-                              RadioListTile<
-                                  String>(
+                              RadioListTile<String>(
                             value:
                                 'COD',
                             groupValue:
@@ -2713,8 +2523,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                               double.infinity,
                           height: 55,
                           child:
-                              FilledButton
-                                  .icon(
+                              FilledButton.icon(
                             onPressed:
                                 placingOrder ||
                                         loadingUserDetails
@@ -2752,8 +2561,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                 fontSize:
                                     17,
                                 fontWeight:
-                                    FontWeight
-                                        .bold,
+                                    FontWeight.bold,
                               ),
                             ),
                           ),
@@ -2833,37 +2641,31 @@ class _AddressEditorDialogState
 
     final a = widget.existing;
 
-    name =
-        TextEditingController(
+    name = TextEditingController(
       text:
           a?.name ??
-              widget.defaultName,
+          widget.defaultName,
     );
 
-    phone =
-        TextEditingController(
+    phone = TextEditingController(
       text:
           a?.phone ??
-              widget.defaultPhone,
+          widget.defaultPhone,
     );
 
-    house =
-        TextEditingController(
+    house = TextEditingController(
       text: a?.house ?? '',
     );
 
-    street =
-        TextEditingController(
+    street = TextEditingController(
       text: a?.street ?? '',
     );
 
-    city =
-        TextEditingController(
+    city = TextEditingController(
       text: a?.city ?? '',
     );
 
-    state =
-        TextEditingController(
+    state = TextEditingController(
       text:
           a != null &&
                   a.state.isNotEmpty
@@ -2871,14 +2673,12 @@ class _AddressEditorDialogState
               : 'Rajasthan',
     );
 
-    pin =
-        TextEditingController(
+    pin = TextEditingController(
       text:
           a?.pincode ?? '',
     );
 
-    landmark =
-        TextEditingController(
+    landmark = TextEditingController(
       text:
           a?.landmark ?? '',
     );
@@ -3186,13 +2986,13 @@ class _AddressEditorDialogState
                 CustomerAddress(
               addressId:
                   widget.existing
-                          ?.addressId
-                          .trim()
-                          .isNotEmpty ==
-                      true
-                  ? widget.existing!
-                      .addressId
-                  : 'addr_${DateTime.now().microsecondsSinceEpoch}',
+                              ?.addressId
+                              .trim()
+                              .isNotEmpty ==
+                          true
+                      ? widget.existing!
+                          .addressId
+                      : 'addr_${DateTime.now().microsecondsSinceEpoch}',
               name:
                   name.text.trim(),
               phone:
