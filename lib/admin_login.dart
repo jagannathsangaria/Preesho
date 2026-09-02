@@ -32,82 +32,106 @@ class _AdminLoginState extends State<AdminLogin> {
       loading = true;
     });
 
-    User? user;
-
     try {
-      // Firebase Authentication login
-      final credential = await FirebaseAuth.instance
-          .signInWithEmailAndPassword(
+      final credential =
+          await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      user = credential.user;
+      final user = credential.user;
 
       if (user == null) {
         throw Exception('User account not found.');
       }
 
-      /*
-       * Role document:
-       *
-       * Firestore
-       *   users
-       *     UID
-       *       role: admin / courier
-       */
+      final firestore = FirebaseFirestore.instance;
 
-      final userDoc = await FirebaseFirestore.instance
+      // ------------------------------------------------------------
+      // 1. CHECK ADMIN
+      // Existing Preesho structure:
+      //
+      // Admins
+      //   └── USER_UID
+      //        Email: admin@preesho.com
+      //        Role: Admin
+      // ------------------------------------------------------------
+
+      final adminDoc = await firestore
+          .collection('Admins')
+          .doc(user.uid)
+          .get();
+
+      if (adminDoc.exists) {
+        final data = adminDoc.data() ?? {};
+
+        final role = data['Role']
+            ?.toString()
+            .trim()
+            .toLowerCase();
+
+        if (role == 'admin') {
+          if (!mounted) return;
+
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const AdminPanel(),
+            ),
+          );
+
+          return;
+        }
+      }
+
+      // ------------------------------------------------------------
+      // 2. CHECK COURIER
+      //
+      // users
+      //   └── USER_UID
+      //        role: courier
+      //
+      // We also support Role: Courier for flexibility.
+      // ------------------------------------------------------------
+
+      final userDoc = await firestore
           .collection('users')
           .doc(user.uid)
           .get();
 
-      if (!userDoc.exists) {
-        await FirebaseAuth.instance.signOut();
+      if (userDoc.exists) {
+        final data = userDoc.data() ?? {};
 
-        showMessage(
-          'User role is not configured. Contact administrator.',
-        );
-        return;
+        final roleValue =
+            data['role'] ?? data['Role'];
+
+        final role = roleValue
+            ?.toString()
+            .trim()
+            .toLowerCase();
+
+        if (role == 'courier') {
+          if (!mounted) return;
+
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const CourierPanel(),
+            ),
+          );
+
+          return;
+        }
       }
 
-      final data = userDoc.data() ?? {};
-
-      final role = data['role']
-          ?.toString()
-          .trim()
-          .toLowerCase();
-
-      if (role == 'admin') {
-        if (!mounted) return;
-
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const AdminPanel(),
-          ),
-        );
-
-        return;
-      }
-
-      if (role == 'courier') {
-        if (!mounted) return;
-
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const CourierPanel(),
-          ),
-        );
-
-        return;
-      }
+      // ------------------------------------------------------------
+      // 3. USER IS NOT ADMIN OR COURIER
+      // ------------------------------------------------------------
 
       await FirebaseAuth.instance.signOut();
 
       showMessage(
-        'Access denied. Invalid user role.',
+        'Access denied. This account is not authorized for staff login.',
       );
     } on FirebaseAuthException catch (e) {
       String message = 'Login failed';
@@ -216,9 +240,8 @@ class _AdminLoginState extends State<AdminLogin> {
                     decoration: InputDecoration(
                       labelText: 'Email',
                       hintText: 'Enter email',
-                      prefixIcon: const Icon(
-                        Icons.email_outlined,
-                      ),
+                      prefixIcon:
+                          const Icon(Icons.email_outlined),
                       border: OutlineInputBorder(
                         borderRadius:
                             BorderRadius.circular(12),
@@ -233,9 +256,8 @@ class _AdminLoginState extends State<AdminLogin> {
                     obscureText: hidePassword,
                     decoration: InputDecoration(
                       labelText: 'Password',
-                      prefixIcon: const Icon(
-                        Icons.lock_outline,
-                      ),
+                      prefixIcon:
+                          const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
                         onPressed: () {
                           setState(() {
@@ -246,8 +268,7 @@ class _AdminLoginState extends State<AdminLogin> {
                         icon: Icon(
                           hidePassword
                               ? Icons.visibility_outlined
-                              : Icons
-                                  .visibility_off_outlined,
+                              : Icons.visibility_off_outlined,
                         ),
                       ),
                       border: OutlineInputBorder(
