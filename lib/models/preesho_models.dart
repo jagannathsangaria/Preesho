@@ -72,15 +72,13 @@ class CustomerAddress {
         map['name'],
       ),
       phone: _stringValue(
-        map['phone'] ??
-            map['mobile'],
+        map['phone'] ?? map['mobile'],
       ),
       house: _stringValue(
         map['house'],
       ),
       street: _stringValue(
-        map['street'] ??
-            map['address'],
+        map['street'] ?? map['address'],
       ),
       city: _stringValue(
         map['city'],
@@ -90,14 +88,12 @@ class CustomerAddress {
         fallback: 'Rajasthan',
       ),
       pincode: _stringValue(
-        map['pincode'] ??
-            map['pin'],
+        map['pincode'] ?? map['pin'],
       ),
       landmark: _stringValue(
         map['landmark'],
       ),
-      isDefault:
-          map['isDefault'] == true,
+      isDefault: map['isDefault'] == true,
     );
   }
 
@@ -115,9 +111,7 @@ class CustomerAddress {
 
     final result = value.toString().trim();
 
-    return result.isEmpty
-        ? fallback
-        : result;
+    return result.isEmpty ? fallback : result;
   }
 
   // ============================================================
@@ -158,26 +152,92 @@ class CustomerAddress {
     bool? isDefault,
   }) {
     return CustomerAddress(
-      addressId:
-          addressId ?? this.addressId,
-      name:
-          name ?? this.name,
-      phone:
-          phone ?? this.phone,
-      house:
-          house ?? this.house,
-      street:
-          street ?? this.street,
-      city:
-          city ?? this.city,
-      state:
-          state ?? this.state,
-      pincode:
-          pincode ?? this.pincode,
-      landmark:
-          landmark ?? this.landmark,
-      isDefault:
-          isDefault ?? this.isDefault,
+      addressId: addressId ?? this.addressId,
+      name: name ?? this.name,
+      phone: phone ?? this.phone,
+      house: house ?? this.house,
+      street: street ?? this.street,
+      city: city ?? this.city,
+      state: state ?? this.state,
+      pincode: pincode ?? this.pincode,
+      landmark: landmark ?? this.landmark,
+      isDefault: isDefault ?? this.isDefault,
     );
+  }
+}
+
+// ============================================================
+// PRODUCT MODEL
+// ============================================================
+
+class Product {
+  final String id;
+  final String name;
+  final String category;
+  final dynamic price;
+  final int stock;
+  final String imageUrl;
+  final String description;
+  final bool active;
+  final dynamic mrp;
+  final dynamic discountPercent;
+
+  const Product({
+    required this.id,
+    required this.name,
+    required this.category,
+    required this.price,
+    required this.stock,
+    required this.imageUrl,
+    required this.description,
+    required this.active,
+    this.mrp,
+    this.discountPercent,
+  });
+
+  // ============================================================
+  // NUMERIC PRICE
+  // ============================================================
+
+  double get numericPrice {
+    if (price is num) {
+      return (price as num).toDouble();
+    }
+
+    return double.tryParse(
+          price.toString().replaceAll(',', '').trim(),
+        ) ??
+        0.0;
+  }
+
+  // ============================================================
+  // SELLING PRICE
+  // ============================================================
+
+  double get sellingPrice {
+    return numericPrice;
+  }
+
+  // ============================================================
+  // ORIGINAL / MRP PRICE
+  // ============================================================
+
+  double get originalPrice {
+    if (mrp is num) {
+      return (mrp as num).toDouble();
+    }
+
+    return double.tryParse(
+          mrp.toString().replaceAll(',', '').trim(),
+        ) ??
+        numericPrice;
+  }
+
+  // ============================================================
+  // DISCOUNT CHECK
+  // ============================================================
+
+  bool get hasDiscount {
+    return originalPrice > sellingPrice;
   }
 }
