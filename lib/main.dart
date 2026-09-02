@@ -1,15 +1,15 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'checkout_page.dart';
 import 'login_page.dart';
 import 'admin_login.dart';
 import 'orders_page.dart';
+
+import 'models/preesho_models.dart';
+import 'cart/cart_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -36,366 +36,6 @@ Future<void> main() async {
           ),
         ),
       ),
-    );
-  }
-}
-
-// ============================================================
-// PRODUCT MODEL
-// ============================================================
-
-class Product {
-  final String id;
-  final String name;
-  final String category;
-  final String price;
-  final int stock;
-  final String imageUrl;
-  final String description;
-  final bool active;
-  final double mrp;
-  final double discountPercent;
-
-  Product({
-    required this.id,
-    required this.name,
-    required this.category,
-    required this.price,
-    required this.stock,
-    required this.imageUrl,
-    required this.description,
-    required this.active,
-    this.mrp = 0,
-    this.discountPercent = 0,
-  });
-
-  double get numericPrice {
-    return double.tryParse(
-          price.replaceAll(RegExp(r'[^0-9.]'), ''),
-        ) ??
-        0;
-  }
-
-  double get sellingPrice {
-    if (discountPercent > 0 && mrp > 0) {
-      final calculated =
-          mrp - (mrp * discountPercent / 100);
-
-      return calculated > 0 ? calculated : 0;
-    }
-
-    return numericPrice;
-  }
-
-  double get originalPrice {
-    if (mrp > 0) {
-      return mrp;
-    }
-
-    return numericPrice;
-  }
-
-  bool get hasDiscount {
-    return discountPercent > 0 &&
-        originalPrice > sellingPrice;
-  }
-}
-
-// ============================================================
-// CART ITEM
-// ============================================================
-
-class CartItem {
-  final Product product;
-  int quantity;
-
-  CartItem({
-    required this.product,
-    this.quantity = 1,
-  });
-
-  String get id => product.id;
-
-  String get name => product.name;
-
-  String get category => product.category;
-
-  String get imageUrl => product.imageUrl;
-
-  double get numericPrice => product.sellingPrice;
-
-  double get originalPrice => product.originalPrice;
-
-  double get discountPercent => product.discountPercent;
-
-  double get totalPrice => numericPrice * quantity;
-
-  int get availableStock => product.stock;
-}
-
-// ============================================================
-// CART CONTROLLER
-// ============================================================
-
-class CartController {
-  static const String _storageKey = 'preesho_cart_v2';
-
-  static final List<CartItem> items = [];
-
-  static SharedPreferences? _preferences;
-
-  static bool _initialized = false;
-
-  static Future<void> initialize() async {
-    if (_initialized) return;
-
-    _preferences =
-        await SharedPreferences.getInstance();
-
-    await _loadCart();
-
-    _initialized = true;
-  }
-
-  static Future<void> _loadCart() async {
-    try {
-      final saved =
-          _preferences?.getString(_storageKey);
-
-      if (saved == null || saved.isEmpty) {
-        return;
-      }
-
-      final decoded = jsonDecode(saved);
-
-      if (decoded is! List) {
-        return;
-      }
-
-      items.clear();
-
-      for (final item in decoded) {
-        if (item is! Map) continue;
-
-        final productData = item['product'];
-
-        if (productData is! Map) {
-          continue;
-        }
-
-        final product = Product(
-          id: productData['id']?.toString() ?? '',
-          name: productData['name']?.toString() ?? '',
-          category:
-              productData['category']?.toString() ?? '',
-          price: productData['price']?.toString() ?? '0',
-          stock:
-              int.tryParse(
-                    productData['stock']?.toString() ?? '0',
-                  ) ??
-                  0,
-          imageUrl:
-              productData['imageUrl']?.toString() ?? '',
-          description:
-              productData['description']?.toString() ?? '',
-          active: productData['active'] == true,
-          mrp:
-              double.tryParse(
-                    productData['mrp']?.toString() ?? '0',
-                  ) ??
-                  0,
-          discountPercent:
-              double.tryParse(
-                    productData['discountPercent']
-                            ?.toString() ??
-                        '0',
-                  ) ??
-                  0,
-        );
-
-        final quantity =
-            int.tryParse(
-                  item['quantity']?.toString() ?? '1',
-                ) ??
-                1;
-
-        if (product.id.isEmpty ||
-            quantity <= 0 ||
-            product.stock <= 0) {
-          continue;
-        }
-
-        final safeQuantity =
-            quantity > product.stock
-                ? product.stock
-                : quantity;
-
-        items.add(
-          CartItem(
-            product: product,
-            quantity: safeQuantity,
-          ),
-        );
-      }
-    } catch (_) {
-      items.clear();
-    }
-  }
-
-  static Future<void> _saveCart() async {
-    try {
-      final data = items.map((item) {
-        return {
-          'quantity': item.quantity,
-          'product': {
-            'id': item.product.id,
-            'name': item.product.name,
-            'category': item.product.category,
-            'price': item.product.price,
-            'stock': item.product.stock,
-            'imageUrl': item.product.imageUrl,
-            'description': item.product.description,
-            'active': item.product.active,
-            'mrp': item.product.mrp,
-            'discountPercent':
-                item.product.discountPercent,
-          },
-        };
-      }).toList();
-
-      await _preferences?.setString(
-        _storageKey,
-        jsonEncode(data),
-      );
-    } catch (_) {}
-  }
-
-  static int get itemCount {
-    return items.fold(
-      0,
-      (sum, item) => sum + item.quantity,
-    );
-  }
-
-  static double get total {
-    return items.fold(
-      0,
-      (sum, item) => sum + item.totalPrice,
-    );
-  }
-
-  static double get originalTotal {
-    return items.fold(
-      0,
-      (sum, item) =>
-          sum + (item.originalPrice * item.quantity),
-    );
-  }
-
-  static double get productSavings {
-    final saving = originalTotal - total;
-
-    return saving > 0 ? saving : 0;
-  }
-
-  static CartItem? findItem(String productId) {
-    try {
-      return items.firstWhere(
-        (item) => item.id == productId,
-      );
-    } catch (_) {
-      return null;
-    }
-  }
-
-  static Future<bool> addProduct(
-    Product product,
-  ) async {
-    if (product.stock <= 0) {
-      return false;
-    }
-
-    final existing = findItem(product.id);
-
-    if (existing != null) {
-      if (existing.quantity >= product.stock) {
-        return false;
-      }
-
-      existing.quantity++;
-
-      await _saveCart();
-
-      return true;
-    }
-
-    items.add(
-      CartItem(
-        product: product,
-        quantity: 1,
-      ),
-    );
-
-    await _saveCart();
-
-    return true;
-  }
-
-  static Future<bool> increaseQuantity(
-    String productId,
-  ) async {
-    final item = findItem(productId);
-
-    if (item == null) {
-      return false;
-    }
-
-    if (item.quantity >= item.availableStock) {
-      return false;
-    }
-
-    item.quantity++;
-
-    await _saveCart();
-
-    return true;
-  }
-
-  static Future<bool> decreaseQuantity(
-    String productId,
-  ) async {
-    final item = findItem(productId);
-
-    if (item == null) {
-      return false;
-    }
-
-    if (item.quantity > 1) {
-      item.quantity--;
-    } else {
-      items.remove(item);
-    }
-
-    await _saveCart();
-
-    return true;
-  }
-
-  static Future<void> removeProduct(
-    String productId,
-  ) async {
-    items.removeWhere(
-      (item) => item.id == productId,
-    );
-
-    await _saveCart();
-  }
-
-  static Future<void> clear() async {
-    items.clear();
-
-    await _preferences?.remove(
-      _storageKey,
     );
   }
 }
@@ -450,14 +90,12 @@ class CartIconButton extends StatelessWidget {
                   minWidth: 19,
                   minHeight: 19,
                 ),
-                padding:
-                    const EdgeInsets.symmetric(
+                padding: const EdgeInsets.symmetric(
                   horizontal: 4,
                 ),
                 decoration: BoxDecoration(
                   color: Colors.red,
-                  borderRadius:
-                      BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: Theme.of(context)
                         .scaffoldBackgroundColor,
@@ -510,8 +148,7 @@ class MainShell extends StatefulWidget {
   const MainShell({super.key});
 
   @override
-  State<MainShell> createState() =>
-      _MainShellState();
+  State<MainShell> createState() => _MainShellState();
 }
 
 class _MainShellState extends State<MainShell> {
@@ -605,10 +242,8 @@ class ProductStream extends StatelessWidget {
     return Product(
       id: doc.id,
       name: data['Name']?.toString() ?? '',
-      category:
-          data['Category']?.toString() ?? '',
-      price:
-          data['Price']?.toString() ?? '0',
+      category: data['Category']?.toString() ?? '',
+      price: data['Price']?.toString() ?? '0',
       stock:
           int.tryParse(
                 data['Stock']?.toString() ?? '0',
@@ -725,10 +360,8 @@ class HomePage extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(22),
                 decoration: BoxDecoration(
-                  borderRadius:
-                      BorderRadius.circular(22),
-                  gradient:
-                      const LinearGradient(
+                  borderRadius: BorderRadius.circular(22),
+                  gradient: const LinearGradient(
                     colors: [
                       Color(0xff5E35B1),
                       Color(0xff8E24AA),
@@ -744,8 +377,7 @@ class HomePage extends StatelessWidget {
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 25,
-                        fontWeight:
-                            FontWeight.bold,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                     SizedBox(height: 7),
@@ -770,8 +402,7 @@ class HomePage extends StatelessWidget {
               SizedBox(
                 height: 90,
                 child: ListView(
-                  scrollDirection:
-                      Axis.horizontal,
+                  scrollDirection: Axis.horizontal,
                   children: const [
                     CategoryCard(
                       icon: Icons.phone_android,
@@ -840,8 +471,7 @@ class CategoryCard extends StatelessWidget {
       child: SizedBox(
         width: 115,
         child: Column(
-          mainAxisAlignment:
-              MainAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon),
             const SizedBox(height: 5),
@@ -903,9 +533,7 @@ class CategoriesPage extends StatelessWidget {
                 final categoryProducts =
                     products
                         .where(
-                          (p) =>
-                              p.category ==
-                              category,
+                          (p) => p.category == category,
                         )
                         .toList();
 
@@ -917,8 +545,7 @@ class CategoriesPage extends StatelessWidget {
                   children:
                       categoryProducts
                           .map(
-                            (product) =>
-                                ProductTile(
+                            (product) => ProductTile(
                               product: product,
                               onCartChanged:
                                   onCartChanged,
@@ -966,8 +593,7 @@ class ProductTile extends StatelessWidget {
         await Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) =>
-                ProductDetailsPage(
+            builder: (_) => ProductDetailsPage(
               product: product,
               onCartChanged: onCartChanged,
             ),
@@ -995,16 +621,11 @@ class ProductTile extends StatelessWidget {
                           product.imageUrl,
                           fit: BoxFit.cover,
                           errorBuilder:
-                              (
-                            context,
-                            error,
-                            stack,
-                          ) {
+                              (context, error, stack) {
                             return const ColoredBox(
                               color: Colors.black12,
                               child: Icon(
-                                Icons
-                                    .image_not_supported,
+                                Icons.image_not_supported,
                               ),
                             );
                           },
@@ -1012,8 +633,7 @@ class ProductTile extends StatelessWidget {
                       : const ColoredBox(
                           color: Colors.black12,
                           child: Icon(
-                            Icons
-                                .shopping_bag_outlined,
+                            Icons.shopping_bag_outlined,
                           ),
                         ),
                 ),
@@ -1029,8 +649,7 @@ class ProductTile extends StatelessWidget {
                           ? 'Unnamed Product'
                           : product.name,
                       style: const TextStyle(
-                        fontWeight:
-                            FontWeight.bold,
+                        fontWeight: FontWeight.bold,
                         fontSize: 16,
                       ),
                     ),
@@ -1038,8 +657,7 @@ class ProductTile extends StatelessWidget {
                     Text(
                       product.category,
                       style: TextStyle(
-                        color:
-                            Colors.grey.shade600,
+                        color: Colors.grey.shade600,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -1049,24 +667,17 @@ class ProductTile extends StatelessWidget {
                           Text(
                             '₹${product.originalPrice.toStringAsFixed(0)}',
                             style: TextStyle(
-                              color: Colors
-                                  .grey
-                                  .shade600,
+                              color: Colors.grey.shade600,
                               decoration:
-                                  TextDecoration
-                                      .lineThrough,
+                                  TextDecoration.lineThrough,
                             ),
                           ),
-                          const SizedBox(
-                            width: 7,
-                          ),
+                          const SizedBox(width: 7),
                           Text(
                             '${product.discountPercent.toStringAsFixed(0)}% OFF',
-                            style:
-                                const TextStyle(
+                            style: const TextStyle(
                               color: Colors.green,
-                              fontWeight:
-                                  FontWeight.bold,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                         ],
@@ -1075,8 +686,7 @@ class ProductTile extends StatelessWidget {
                     Text(
                       '₹${product.sellingPrice.toStringAsFixed(0)}',
                       style: const TextStyle(
-                        fontWeight:
-                            FontWeight.bold,
+                        fontWeight: FontWeight.bold,
                         fontSize: 16,
                       ),
                     ),
@@ -1089,8 +699,7 @@ class ProductTile extends StatelessWidget {
                         color: outOfStock
                             ? Colors.red
                             : Colors.green,
-                        fontWeight:
-                            FontWeight.w600,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
@@ -1101,12 +710,10 @@ class ProductTile extends StatelessWidget {
                   width: 95,
                   child: Text(
                     'Out of Stock',
-                    textAlign:
-                        TextAlign.center,
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.red,
-                      fontWeight:
-                          FontWeight.bold,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 )
@@ -1114,8 +721,9 @@ class ProductTile extends StatelessWidget {
                 IconButton.filled(
                   onPressed: () async {
                     final added =
-                        await CartController
-                            .addProduct(product);
+                        await CartController.addProduct(
+                      product,
+                    );
 
                     if (added) {
                       onCartChanged();
@@ -1142,8 +750,7 @@ class ProductTile extends StatelessWidget {
                 )
               else
                 Row(
-                  mainAxisSize:
-                      MainAxisSize.min,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
                       onPressed: () async {
@@ -1155,21 +762,18 @@ class ProductTile extends StatelessWidget {
                         onCartChanged();
                       },
                       icon: const Icon(
-                        Icons
-                            .remove_circle_outline,
+                        Icons.remove_circle_outline,
                       ),
                     ),
                     Text(
                       '$cartQuantity',
                       style: const TextStyle(
-                        fontWeight:
-                            FontWeight.bold,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                     IconButton(
                       onPressed:
-                          cartQuantity >=
-                                  product.stock
+                          cartQuantity >= product.stock
                               ? null
                               : () async {
                                   await CartController
@@ -1180,8 +784,7 @@ class ProductTile extends StatelessWidget {
                                   onCartChanged();
                                 },
                       icon: const Icon(
-                        Icons
-                            .add_circle_outline,
+                        Icons.add_circle_outline,
                       ),
                     ),
                   ],
@@ -1198,8 +801,7 @@ class ProductTile extends StatelessWidget {
 // PRODUCT DETAILS PAGE
 // ============================================================
 
-class ProductDetailsPage
-    extends StatefulWidget {
+class ProductDetailsPage extends StatefulWidget {
   final Product product;
   final VoidCallback onCartChanged;
 
@@ -1269,15 +871,10 @@ class _ProductDetailsPageState
                             product.imageUrl,
                             fit: BoxFit.cover,
                             errorBuilder:
-                                (
-                              context,
-                              error,
-                              stack,
-                            ) {
+                                (context, error, stack) {
                               return const Center(
                                 child: Icon(
-                                  Icons
-                                      .image_not_supported,
+                                  Icons.image_not_supported,
                                   size: 70,
                                 ),
                               );
@@ -1285,8 +882,7 @@ class _ProductDetailsPageState
                           )
                         : const Center(
                             child: Icon(
-                              Icons
-                                  .shopping_bag_outlined,
+                              Icons.shopping_bag_outlined,
                               size: 80,
                             ),
                           ),
@@ -1305,8 +901,7 @@ class _ProductDetailsPageState
                 const SizedBox(height: 8),
                 if (product.category.isNotEmpty)
                   Chip(
-                    label:
-                        Text(product.category),
+                    label: Text(product.category),
                   ),
                 const SizedBox(height: 10),
                 if (product.hasDiscount)
@@ -1316,11 +911,9 @@ class _ProductDetailsPageState
                         '₹${product.originalPrice.toStringAsFixed(0)}',
                         style: TextStyle(
                           fontSize: 18,
-                          color:
-                              Colors.grey.shade600,
+                          color: Colors.grey.shade600,
                           decoration:
-                              TextDecoration
-                                  .lineThrough,
+                              TextDecoration.lineThrough,
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -1329,8 +922,7 @@ class _ProductDetailsPageState
                         style: const TextStyle(
                           fontSize: 17,
                           color: Colors.green,
-                          fontWeight:
-                              FontWeight.bold,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ],
@@ -1364,8 +956,7 @@ class _ProductDetailsPageState
                         color: outOfStock
                             ? Colors.red
                             : Colors.green,
-                        fontWeight:
-                            FontWeight.bold,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ],
@@ -1375,8 +966,7 @@ class _ProductDetailsPageState
                   'Description',
                   style: TextStyle(
                     fontSize: 20,
-                    fontWeight:
-                        FontWeight.bold,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -1387,8 +977,7 @@ class _ProductDetailsPageState
                   style: TextStyle(
                     fontSize: 16,
                     height: 1.5,
-                    color:
-                        Colors.grey.shade700,
+                    color: Colors.grey.shade700,
                   ),
                 ),
                 const SizedBox(height: 30),
@@ -1398,8 +987,8 @@ class _ProductDetailsPageState
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Theme.of(context)
-                  .scaffoldBackgroundColor,
+              color:
+                  Theme.of(context).scaffoldBackgroundColor,
               border: Border(
                 top: BorderSide(
                   color: Colors.grey.shade300,
@@ -1414,8 +1003,7 @@ class _ProductDetailsPageState
                 child: outOfStock
                     ? FilledButton(
                         onPressed: null,
-                        child:
-                            const Text(
+                        child: const Text(
                           'Out of Stock',
                         ),
                       )
@@ -1431,8 +1019,7 @@ class _ProductDetailsPageState
                               if (added) {
                                 refreshCart();
 
-                                if (!context
-                                    .mounted) {
+                                if (!context.mounted) {
                                   return;
                                 }
 
@@ -1440,19 +1027,16 @@ class _ProductDetailsPageState
                                   context,
                                 ).showSnackBar(
                                   const SnackBar(
-                                    content: Text(
-                                      'Added to cart',
-                                    ),
+                                    content:
+                                        Text('Added to cart'),
                                   ),
                                 );
                               }
                             },
                             icon: const Icon(
-                              Icons
-                                  .add_shopping_cart,
+                              Icons.add_shopping_cart,
                             ),
-                            label:
-                                const Text(
+                            label: const Text(
                               'Add to Cart',
                               style: TextStyle(
                                 fontSize: 16,
@@ -1464,10 +1048,8 @@ class _ProductDetailsPageState
                         : Row(
                             children: [
                               Expanded(
-                                child:
-                                    OutlinedButton.icon(
-                                  onPressed:
-                                      () async {
+                                child: OutlinedButton.icon(
+                                  onPressed: () async {
                                     await CartController
                                         .decreaseQuantity(
                                       product.id,
@@ -1475,54 +1057,42 @@ class _ProductDetailsPageState
 
                                     refreshCart();
                                   },
-                                  icon:
-                                      const Icon(
+                                  icon: const Icon(
                                     Icons.remove,
                                   ),
-                                  label:
-                                      const Text(
+                                  label: const Text(
                                     'Remove',
                                   ),
                                 ),
                               ),
-                              const SizedBox(
-                                width: 12,
-                              ),
+                              const SizedBox(width: 12),
                               Text(
                                 '$quantity',
-                                style:
-                                    const TextStyle(
+                                style: const TextStyle(
                                   fontSize: 20,
                                   fontWeight:
                                       FontWeight.bold,
                                 ),
                               ),
-                              const SizedBox(
-                                width: 12,
-                              ),
+                              const SizedBox(width: 12),
                               Expanded(
-                                child:
-                                    FilledButton.icon(
+                                child: FilledButton.icon(
                                   onPressed:
                                       quantity >=
-                                              product
-                                                  .stock
+                                              product.stock
                                           ? null
                                           : () async {
                                               await CartController
                                                   .increaseQuantity(
-                                                product
-                                                    .id,
+                                                product.id,
                                               );
 
                                               refreshCart();
                                             },
-                                  icon:
-                                      const Icon(
+                                  icon: const Icon(
                                     Icons.add,
                                   ),
-                                  label:
-                                      const Text(
+                                  label: const Text(
                                     'Add',
                                   ),
                                 ),
@@ -1564,7 +1134,7 @@ const List<String> fullOrderStatuses = [
 ];
 
 // ============================================================
-// ACTIVE ORDER TRACKING - CART
+// ACTIVE ORDER TRACKING
 // ============================================================
 
 class ActiveOrderTracking extends StatelessWidget {
@@ -1721,8 +1291,7 @@ class ActiveOrderTracking extends StatelessWidget {
                     SizedBox(
                       width: 22,
                       height: 22,
-                      child:
-                          CircularProgressIndicator(
+                      child: CircularProgressIndicator(
                         strokeWidth: 2,
                       ),
                     ),
@@ -1785,8 +1354,7 @@ class ActiveOrderTracking extends StatelessWidget {
                 child: Row(
                   children: [
                     Icon(
-                      Icons
-                          .local_shipping_outlined,
+                      Icons.local_shipping_outlined,
                       color: Colors.deepPurple,
                     ),
                     SizedBox(width: 8),
@@ -1794,8 +1362,7 @@ class ActiveOrderTracking extends StatelessWidget {
                       'Active Order Tracking',
                       style: TextStyle(
                         fontSize: 19,
-                        fontWeight:
-                            FontWeight.bold,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ],
@@ -1850,8 +1417,7 @@ class ActiveOrderTracking extends StatelessWidget {
         children: [
           Container(
             width: double.infinity,
-            padding:
-                const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(14),
             color: statusColor(
               currentStatus,
             ).withOpacity(0.10),
@@ -1860,13 +1426,9 @@ class ActiveOrderTracking extends StatelessWidget {
                 CircleAvatar(
                   radius: 21,
                   backgroundColor:
-                      statusColor(
-                    currentStatus,
-                  ),
+                      statusColor(currentStatus),
                   child: Icon(
-                    statusIcon(
-                      currentStatus,
-                    ),
+                    statusIcon(currentStatus),
                     color: Colors.white,
                     size: 22,
                   ),
@@ -1889,12 +1451,9 @@ class ActiveOrderTracking extends StatelessWidget {
                         currentStatus,
                         style: TextStyle(
                           fontSize: 18,
-                          fontWeight:
-                              FontWeight.bold,
+                          fontWeight: FontWeight.bold,
                           color:
-                              statusColor(
-                            currentStatus,
-                          ),
+                              statusColor(currentStatus),
                         ),
                       ),
                     ],
@@ -1913,10 +1472,8 @@ class ActiveOrderTracking extends StatelessWidget {
                     ),
                     Text(
                       '#${shortOrderId(orderId)}',
-                      style:
-                          const TextStyle(
-                        fontWeight:
-                            FontWeight.bold,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
                         fontSize: 12,
                       ),
                     ),
@@ -1925,7 +1482,6 @@ class ActiveOrderTracking extends StatelessWidget {
               ],
             ),
           ),
-
           Padding(
             padding: const EdgeInsets.all(14),
             child: Column(
@@ -1934,52 +1490,39 @@ class ActiveOrderTracking extends StatelessWidget {
               children: [
                 Row(
                   mainAxisAlignment:
-                      MainAxisAlignment
-                          .spaceBetween,
+                      MainAxisAlignment.spaceBetween,
                   children: [
                     const Text(
                       'Order Progress',
                       style: TextStyle(
-                        fontWeight:
-                            FontWeight.bold,
+                        fontWeight: FontWeight.bold,
                         fontSize: 16,
                       ),
                     ),
                     Text(
                       '₹${double.tryParse(total.toString())?.toStringAsFixed(0) ?? total}',
-                      style:
-                          const TextStyle(
-                        fontWeight:
-                            FontWeight.bold,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
                         fontSize: 16,
                       ),
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 14),
-
                 _TrackingTimeline(
                   currentIndex: currentIndex,
                 ),
-
                 if (courierName.isNotEmpty ||
                     courierMobile.isNotEmpty) ...[
                   const SizedBox(height: 14),
                   Container(
                     width: double.infinity,
-                    padding:
-                        const EdgeInsets.all(12),
-                    decoration:
-                        BoxDecoration(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
                       borderRadius:
-                          BorderRadius.circular(
-                        12,
-                      ),
+                          BorderRadius.circular(12),
                       color:
-                          Colors.teal.withOpacity(
-                        0.08,
-                      ),
+                          Colors.teal.withOpacity(0.08),
                     ),
                     child: Row(
                       children: [
@@ -1987,37 +1530,29 @@ class ActiveOrderTracking extends StatelessWidget {
                           Icons.delivery_dining,
                           color: Colors.teal,
                         ),
-                        const SizedBox(
-                          width: 10,
-                        ),
+                        const SizedBox(width: 10),
                         Expanded(
                           child: Column(
                             crossAxisAlignment:
-                                CrossAxisAlignment
-                                    .start,
+                                CrossAxisAlignment.start,
                             children: [
                               const Text(
                                 'Courier',
-                                style:
-                                    TextStyle(
+                                style: TextStyle(
                                   fontSize: 12,
-                                  color:
-                                      Colors.grey,
+                                  color: Colors.grey,
                                 ),
                               ),
-                              if (courierName
-                                  .isNotEmpty)
+                              if (courierName.isNotEmpty)
                                 Text(
                                   courierName,
                                   style:
                                       const TextStyle(
                                     fontWeight:
-                                        FontWeight
-                                            .bold,
+                                        FontWeight.bold,
                                   ),
                                 ),
-                              if (courierMobile
-                                  .isNotEmpty)
+                              if (courierMobile.isNotEmpty)
                                 Text(
                                   courierMobile,
                                   style:
@@ -2032,9 +1567,7 @@ class ActiveOrderTracking extends StatelessWidget {
                     ),
                   ),
                 ],
-
                 const SizedBox(height: 14),
-
                 SizedBox(
                   width: double.infinity,
                   height: 44,
@@ -2092,8 +1625,7 @@ class _TrackingTimeline extends StatelessWidget {
               index == currentIndex;
 
           final last =
-              index ==
-                  fullOrderStatuses.length - 1;
+              index == fullOrderStatuses.length - 1;
 
           return IntrinsicHeight(
             child: Row(
@@ -2111,19 +1643,16 @@ class _TrackingTimeline extends StatelessWidget {
                           shape: BoxShape.circle,
                           color: completed
                               ? Colors.deepPurple
-                              : Colors.grey
-                                  .shade300,
+                              : Colors.grey.shade300,
                         ),
                         child: Icon(
                           completed
                               ? Icons.check
-                              : Icons
-                                  .circle_outlined,
+                              : Icons.circle_outlined,
                           size: 15,
                           color: completed
                               ? Colors.white
-                              : Colors.grey
-                                  .shade600,
+                              : Colors.grey.shade600,
                         ),
                       ),
                       if (!last)
@@ -2131,15 +1660,12 @@ class _TrackingTimeline extends StatelessWidget {
                           child: Container(
                             width: 2,
                             margin:
-                                const EdgeInsets
-                                    .symmetric(
+                                const EdgeInsets.symmetric(
                               vertical: 2,
                             ),
-                            color: index <
-                                    currentIndex
+                            color: index < currentIndex
                                 ? Colors.deepPurple
-                                : Colors.grey
-                                    .shade300,
+                                : Colors.grey.shade300,
                           ),
                         ),
                     ],
@@ -2158,56 +1684,38 @@ class _TrackingTimeline extends StatelessWidget {
                           child: Text(
                             status,
                             style: TextStyle(
-                              fontWeight:
-                                  isCurrent
-                                      ? FontWeight
-                                          .bold
-                                      : FontWeight
-                                          .normal,
+                              fontWeight: isCurrent
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
                               color: isCurrent
-                                  ? Colors
-                                      .deepPurple
+                                  ? Colors.deepPurple
                                   : completed
-                                      ? Colors
-                                          .black87
-                                      : Colors
-                                          .grey
-                                          .shade600,
+                                      ? Colors.black87
+                                      : Colors.grey.shade600,
                             ),
                           ),
                         ),
                         if (isCurrent)
                           Container(
                             padding:
-                                const EdgeInsets
-                                    .symmetric(
+                                const EdgeInsets.symmetric(
                               horizontal: 8,
                               vertical: 4,
                             ),
-                            decoration:
-                                BoxDecoration(
-                              color: Colors
-                                  .deepPurple
-                                  .withOpacity(
-                                0.10,
-                              ),
+                            decoration: BoxDecoration(
+                              color:
+                                  Colors.deepPurple
+                                      .withOpacity(0.10),
                               borderRadius:
-                                  BorderRadius
-                                      .circular(
-                                20,
-                              ),
+                                  BorderRadius.circular(20),
                             ),
-                            child:
-                                const Text(
+                            child: const Text(
                               'NOW',
-                              style:
-                                  TextStyle(
+                              style: TextStyle(
                                 fontSize: 10,
-                                fontWeight:
-                                    FontWeight
-                                        .bold,
-                                color: Colors
-                                    .deepPurple,
+                                fontWeight: FontWeight.bold,
+                                color:
+                                    Colors.deepPurple,
                               ),
                             ),
                           ),
@@ -2260,28 +1768,18 @@ class _CartPageState extends State<CartPage> {
           if (items.isNotEmpty)
             Padding(
               padding:
-                  const EdgeInsets.only(
-                right: 12,
-              ),
+                  const EdgeInsets.only(right: 12),
               child: Center(
                 child: Text(
                   '${CartController.itemCount} item${CartController.itemCount == 1 ? '' : 's'}',
                   style: const TextStyle(
-                    fontWeight:
-                        FontWeight.w600,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
             ),
         ],
       ),
-
-      // ========================================================
-      // IMPORTANT:
-      // Active Order Tracking is now visible even when
-      // shopping cart is empty.
-      // ========================================================
-
       body: ListView(
         padding: const EdgeInsets.only(
           bottom: 20,
@@ -2302,8 +1800,7 @@ class _CartPageState extends State<CartPage> {
                     MainAxisAlignment.center,
                 children: [
                   Icon(
-                    Icons
-                        .remove_shopping_cart_outlined,
+                    Icons.remove_shopping_cart_outlined,
                     size: 70,
                   ),
                   SizedBox(height: 12),
@@ -2311,15 +1808,13 @@ class _CartPageState extends State<CartPage> {
                     'Your cart is empty',
                     style: TextStyle(
                       fontSize: 18,
-                      fontWeight:
-                          FontWeight.w600,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                   SizedBox(height: 6),
                   Text(
                     'Add products to your cart to continue shopping.',
-                    textAlign:
-                        TextAlign.center,
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.grey,
                     ),
@@ -2342,35 +1837,27 @@ class _CartPageState extends State<CartPage> {
                     (item) {
                       return Card(
                         margin:
-                            const EdgeInsets
-                                .only(
+                            const EdgeInsets.only(
                           bottom: 12,
                         ),
                         child: Padding(
                           padding:
-                              const EdgeInsets
-                                  .all(10),
+                              const EdgeInsets.all(10),
                           child: Row(
                             children: [
                               SizedBox(
                                 width: 70,
                                 height: 70,
-                                child:
-                                    ClipRRect(
+                                child: ClipRRect(
                                   borderRadius:
-                                      BorderRadius
-                                          .circular(
+                                      BorderRadius.circular(
                                     10,
                                   ),
-                                  child: item
-                                          .imageUrl
+                                  child: item.imageUrl
                                           .isNotEmpty
-                                      ? Image
-                                          .network(
-                                          item
-                                              .imageUrl,
-                                          fit: BoxFit
-                                              .cover,
+                                      ? Image.network(
+                                          item.imageUrl,
+                                          fit: BoxFit.cover,
                                           errorBuilder:
                                               (
                                             context,
@@ -2389,39 +1876,28 @@ class _CartPageState extends State<CartPage> {
                                         ),
                                 ),
                               ),
-
-                              const SizedBox(
-                                width: 12,
-                              ),
-
+                              const SizedBox(width: 12),
                               Expanded(
-                                child:
-                                    Column(
+                                child: Column(
                                   crossAxisAlignment:
-                                      CrossAxisAlignment
-                                          .start,
+                                      CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       item.name,
                                       style:
                                           const TextStyle(
                                         fontWeight:
-                                            FontWeight
-                                                .bold,
+                                            FontWeight.bold,
                                       ),
                                     ),
-
                                     const SizedBox(
                                       height: 5,
                                     ),
-
-                                    if (item
-                                            .originalPrice >
+                                    if (item.originalPrice >
                                         item.numericPrice)
                                       Text(
                                         '₹${item.originalPrice.toStringAsFixed(0)}',
-                                        style:
-                                            TextStyle(
+                                        style: TextStyle(
                                           color: Colors
                                               .grey
                                               .shade600,
@@ -2430,19 +1906,15 @@ class _CartPageState extends State<CartPage> {
                                                   .lineThrough,
                                         ),
                                       ),
-
                                     Text(
                                       '₹${item.numericPrice.toStringAsFixed(0)}',
                                       style:
                                           const TextStyle(
                                         fontWeight:
-                                            FontWeight
-                                                .bold,
+                                            FontWeight.bold,
                                       ),
                                     ),
-
-                                    if (item
-                                            .discountPercent >
+                                    if (item.discountPercent >
                                         0)
                                       Text(
                                         '${item.discountPercent.toStringAsFixed(0)}% OFF',
@@ -2454,11 +1926,9 @@ class _CartPageState extends State<CartPage> {
                                               FontWeight.bold,
                                         ),
                                       ),
-
                                     const SizedBox(
                                       height: 8,
                                     ),
-
                                     Row(
                                       children: [
                                         IconButton(
@@ -2477,7 +1947,6 @@ class _CartPageState extends State<CartPage> {
                                                 .remove_circle_outline,
                                           ),
                                         ),
-
                                         Text(
                                           '${item.quantity}',
                                           style:
@@ -2486,7 +1955,6 @@ class _CartPageState extends State<CartPage> {
                                                 FontWeight.bold,
                                           ),
                                         ),
-
                                         IconButton(
                                           onPressed:
                                               item.quantity >=
@@ -2511,7 +1979,6 @@ class _CartPageState extends State<CartPage> {
                                   ],
                                 ),
                               ),
-
                               IconButton(
                                 onPressed:
                                     () async {
@@ -2524,10 +1991,8 @@ class _CartPageState extends State<CartPage> {
                                 },
                                 icon:
                                     const Icon(
-                                  Icons
-                                      .delete_outline,
-                                  color:
-                                      Colors.red,
+                                  Icons.delete_outline,
+                                  color: Colors.red,
                                 ),
                               ),
                             ],
@@ -2539,65 +2004,47 @@ class _CartPageState extends State<CartPage> {
                 ],
               ),
             ),
-
-            // ==================================================
-            // CART TOTAL / CHECKOUT
-            // ==================================================
-
             Container(
               margin:
-                  const EdgeInsets.only(
-                top: 4,
-              ),
+                  const EdgeInsets.only(top: 4),
               padding:
                   const EdgeInsets.all(16),
-              decoration:
-                  BoxDecoration(
+              decoration: BoxDecoration(
                 border: Border(
                   top: BorderSide(
-                    color: Colors
-                        .grey
-                        .shade300,
+                    color: Colors.grey.shade300,
                   ),
                 ),
               ),
               child: Column(
                 children: [
-                  if (CartController
-                          .productSavings >
+                  if (CartController.productSavings >
                       0)
                     Row(
                       mainAxisAlignment:
-                          MainAxisAlignment
-                              .spaceBetween,
+                          MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
                           'Product Savings',
                         ),
                         Text(
                           '- ₹${CartController.productSavings.toStringAsFixed(0)}',
-                          style:
-                              const TextStyle(
-                            color:
-                                Colors.green,
+                          style: const TextStyle(
+                            color: Colors.green,
                             fontWeight:
                                 FontWeight.bold,
                           ),
                         ),
                       ],
                     ),
-
                   const SizedBox(height: 6),
-
                   Row(
                     mainAxisAlignment:
-                        MainAxisAlignment
-                            .spaceBetween,
+                        MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
                         'Total',
-                        style:
-                            TextStyle(
+                        style: TextStyle(
                           fontSize: 20,
                           fontWeight:
                               FontWeight.bold,
@@ -2605,8 +2052,7 @@ class _CartPageState extends State<CartPage> {
                       ),
                       Text(
                         '₹${CartController.total.toStringAsFixed(0)}',
-                        style:
-                            const TextStyle(
+                        style: const TextStyle(
                           fontSize: 22,
                           fontWeight:
                               FontWeight.bold,
@@ -2614,23 +2060,18 @@ class _CartPageState extends State<CartPage> {
                       ),
                     ],
                   ),
-
                   const SizedBox(height: 12),
-
                   SizedBox(
                     width: double.infinity,
                     height: 52,
                     child: FilledButton(
                       onPressed: () async {
                         final user =
-                            FirebaseAuth
-                                .instance
-                                .currentUser;
+                            FirebaseAuth.instance.currentUser;
 
                         if (user == null) {
                           final loginResult =
-                              await Navigator
-                                  .push(
+                              await Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (_) =>
@@ -2638,10 +2079,8 @@ class _CartPageState extends State<CartPage> {
                             ),
                           );
 
-                          if (loginResult !=
-                                  true ||
-                              FirebaseAuth
-                                      .instance
+                          if (loginResult != true ||
+                              FirebaseAuth.instance
                                       .currentUser ==
                                   null) {
                             return;
@@ -2649,8 +2088,7 @@ class _CartPageState extends State<CartPage> {
                         }
 
                         final result =
-                            await Navigator
-                                .push(
+                            await Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (_) =>
@@ -2659,20 +2097,15 @@ class _CartPageState extends State<CartPage> {
                         );
 
                         if (result == true) {
-                          if (!mounted) {
-                            return;
-                          }
+                          if (!mounted) return;
 
                           setState(() {});
-                          widget
-                              .onCartChanged();
+                          widget.onCartChanged();
                         }
                       },
-                      child:
-                          const Text(
+                      child: const Text(
                         'Proceed to Checkout',
-                        style:
-                            TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
                           fontWeight:
                               FontWeight.bold,
@@ -2715,17 +2148,11 @@ class _ProfilePageState
     try {
       await FirebaseAuth.instance.signOut();
 
-      // Cart intentionally remains saved.
-      // This prevents cart from disappearing
-      // during logout/login navigation.
-
       if (!mounted) return;
 
       widget.onProfileChanged();
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content:
               Text('Logged out successfully'),
@@ -2736,9 +2163,7 @@ class _ProfilePageState
     } catch (_) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
             'Could not logout. Please try again.',
@@ -2806,9 +2231,7 @@ class _ProfilePageState
               size: 45,
             ),
           ),
-
           const SizedBox(height: 10),
-
           Center(
             child: Text(
               userName,
@@ -2818,7 +2241,6 @@ class _ProfilePageState
               ),
             ),
           ),
-
           if (isLoggedIn &&
               email.isNotEmpty) ...[
             const SizedBox(height: 4),
@@ -2826,13 +2248,11 @@ class _ProfilePageState
               child: Text(
                 email,
                 style: TextStyle(
-                  color:
-                      Colors.grey.shade700,
+                  color: Colors.grey.shade700,
                 ),
               ),
             ),
           ],
-
           if (isLoggedIn &&
               mobile.isNotEmpty) ...[
             const SizedBox(height: 4),
@@ -2840,15 +2260,12 @@ class _ProfilePageState
               child: Text(
                 mobile,
                 style: TextStyle(
-                  color:
-                      Colors.grey.shade700,
+                  color: Colors.grey.shade700,
                 ),
               ),
             ),
           ],
-
           const SizedBox(height: 20),
-
           if (!isLoggedIn)
             ListTile(
               leading:
@@ -2865,14 +2282,12 @@ class _ProfilePageState
             ListTile(
               leading:
                   const Icon(Icons.logout),
-              title:
-                  const Text('Logout'),
+              title: const Text('Logout'),
               subtitle: const Text(
                 'Sign out from your account',
               ),
               onTap: logout,
             ),
-
           const ListTile(
             leading: Icon(
               Icons.location_on_outlined,
@@ -2880,7 +2295,6 @@ class _ProfilePageState
             title:
                 Text('Saved Addresses'),
           ),
-
           ListTile(
             leading:
                 const Icon(Icons.receipt_long),
@@ -2890,9 +2304,7 @@ class _ProfilePageState
               'View your placed orders',
             ),
             onTap: () async {
-              if (FirebaseAuth
-                      .instance
-                      .currentUser ==
+              if (FirebaseAuth.instance.currentUser ==
                   null) {
                 final result =
                     await Navigator.push(
@@ -2908,9 +2320,7 @@ class _ProfilePageState
                 }
               }
 
-              if (!mounted) {
-                return;
-              }
+              if (!mounted) return;
 
               Navigator.push(
                 context,
@@ -2921,7 +2331,6 @@ class _ProfilePageState
               );
             },
           ),
-
           ListTile(
             leading: const Icon(
               Icons.admin_panel_settings_outlined,
@@ -2938,7 +2347,6 @@ class _ProfilePageState
               );
             },
           ),
-
           const ListTile(
             leading:
                 Icon(Icons.help_outline),
