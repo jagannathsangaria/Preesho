@@ -83,13 +83,14 @@ class _VendorDocumentsPageState
     }
 
     try {
-      final XFile? picked =
-          await _picker.pickImage(
+      final XFile? picked = await _picker.pickImage(
         source: ImageSource.gallery,
         imageQuality: 85,
       );
 
       if (picked == null) return;
+
+      if (!mounted) return;
 
       setState(() {
         _loading = true;
@@ -106,8 +107,7 @@ class _VendorDocumentsPageState
           .child(_uid)
           .child(fileName);
 
-      final UploadTask uploadTask =
-          storageRef.putFile(
+      final UploadTask uploadTask = storageRef.putFile(
         file,
         SettableMetadata(
           contentType: 'image/jpeg',
@@ -120,22 +120,41 @@ class _VendorDocumentsPageState
       final String downloadUrl =
           await snapshot.ref.getDownloadURL();
 
-      await _firestore
-          .collection('vendors')
-          .doc(_uid)
-          .set(
+      final DocumentReference<Map<String, dynamic>>
+          vendorRef = _firestore
+              .collection('vendors')
+              .doc(_uid);
+
+      final vendorSnapshot =
+          await vendorRef.get();
+
+      final vendorData =
+          vendorSnapshot.data() ?? {};
+
+      final Map<String, dynamic> documents =
+          Map<String, dynamic>.from(
+        vendorData['documents'] ?? {},
+      );
+
+      /*
+       * Vendor upload always resets this particular
+       * document to PENDING.
+       *
+       * Admin verification/rejection is therefore
+       * performed only after the latest upload.
+       */
+      documents[document.key] = {
+        'status': 'pending',
+        'url': downloadUrl,
+        'fileName': fileName,
+        'uploadedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      await vendorRef.set(
         {
-          'documents': {
-            document.key: {
-              'status': 'pending',
-              'url': downloadUrl,
-              'fileName': fileName,
-              'uploadedAt':
-                  FieldValue.serverTimestamp(),
-            },
-          },
-          'updatedAt':
-              FieldValue.serverTimestamp(),
+          'documents': documents,
+          'updatedAt': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),
       );
@@ -143,12 +162,14 @@ class _VendorDocumentsPageState
       if (!mounted) return;
 
       _showMessage(
-        '${document.title} uploaded successfully.',
+        '${document.title} uploaded successfully. Waiting for Admin verification.',
       );
     } catch (e) {
-      _showMessage(
-        'Upload failed. Please try again.',
-      );
+      if (mounted) {
+        _showMessage(
+          'Upload failed. Please try again.',
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -168,9 +189,8 @@ class _VendorDocumentsPageState
         _loading = true;
       });
 
-      final vendorRef = _firestore
-          .collection('vendors')
-          .doc(_uid);
+      final vendorRef =
+          _firestore.collection('vendors').doc(_uid);
 
       final vendorSnapshot =
           await vendorRef.get();
@@ -178,15 +198,27 @@ class _VendorDocumentsPageState
       final data =
           vendorSnapshot.data() ?? {};
 
-      final documents =
+      final Map<String, dynamic> documents =
           Map<String, dynamic>.from(
         data['documents'] ?? {},
       );
 
-      final documentData =
+      final Map<String, dynamic> documentData =
           Map<String, dynamic>.from(
         documents[document.key] ?? {},
       );
+
+      final String status =
+          documentData['status']?.toString() ??
+              'pending';
+
+      // Verified document cannot be deleted.
+      if (status == 'verified') {
+        _showMessage(
+          'Verified document cannot be removed.',
+        );
+        return;
+      }
 
       final String? url =
           documentData['url']?.toString();
@@ -197,18 +229,18 @@ class _VendorDocumentsPageState
               .refFromURL(url)
               .delete();
         } catch (_) {
-          // Firestore status will still be reset.
+          // Continue with Firestore cleanup.
         }
       }
 
       documents[document.key] = {
         'status': 'pending',
+        'updatedAt': FieldValue.serverTimestamp(),
       };
 
       await vendorRef.update({
         'documents': documents,
-        'updatedAt':
-            FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
       });
 
       if (!mounted) return;
@@ -217,9 +249,11 @@ class _VendorDocumentsPageState
         '${document.title} removed.',
       );
     } catch (e) {
-      _showMessage(
-        'Unable to remove document.',
-      );
+      if (mounted) {
+        _showMessage(
+          'Unable to remove document.',
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -244,8 +278,10 @@ class _VendorDocumentsPageState
     switch (status) {
       case 'verified':
         return Colors.green;
+
       case 'rejected':
         return Colors.red;
+
       case 'pending':
       default:
         return Colors.orange;
@@ -256,8 +292,10 @@ class _VendorDocumentsPageState
     switch (status) {
       case 'verified':
         return 'VERIFIED';
+
       case 'rejected':
         return 'REJECTED';
+
       case 'pending':
       default:
         return 'PENDING';
@@ -288,7 +326,8 @@ class _VendorDocumentsPageState
           ),
         ),
       ),
-      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      body: StreamBuilder<
+          DocumentSnapshot<Map<String, dynamic>>>(
         stream: _firestore
             .collection('vendors')
             .doc(_uid)
@@ -304,7 +343,7 @@ class _VendorDocumentsPageState
           final vendorData =
               snapshot.data?.data() ?? {};
 
-          final documents =
+          final Map<String, dynamic> documents =
               Map<String, dynamic>.from(
             vendorData['documents'] ?? {},
           );
@@ -314,7 +353,7 @@ class _VendorDocumentsPageState
           for (final document in _documents) {
             if (!document.required) continue;
 
-            final documentData =
+            final Map<String, dynamic> documentData =
                 Map<String, dynamic>.from(
               documents[document.key] ?? {},
             );
@@ -341,18 +380,28 @@ class _VendorDocumentsPageState
                   const SizedBox(height: 16),
 
                   const Text(
-                    'Required Documents',
+                    'Vendor KYC & Documents',
                     style: TextStyle(
                       fontSize: 19,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
 
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 6),
+
+                  const Text(
+                    'Upload all required documents for Admin verification.',
+                    style: TextStyle(
+                      color: Colors.grey,
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
 
                   ..._documents.map(
                     (document) {
-                      final documentData =
+                      final Map<String, dynamic>
+                          documentData =
                           Map<String, dynamic>.from(
                         documents[document.key] ?? {},
                       );
@@ -388,9 +437,9 @@ class _VendorDocumentsPageState
                         Expanded(
                           child: Text(
                             'After uploading, your documents will be '
-                            'reviewed by Preesho Admin. Vendor approval '
-                            'will be possible only after all 5 required '
-                            'documents are verified.',
+                            'reviewed by Preesho Admin. Final vendor '
+                            'approval is possible only after all 5 '
+                            'required documents are verified.',
                           ),
                         ),
                       ],
@@ -415,7 +464,7 @@ class _VendorDocumentsPageState
                             CircularProgressIndicator(),
                             SizedBox(height: 16),
                             Text(
-                              'Uploading document...',
+                              'Processing document...',
                             ),
                           ],
                         ),
@@ -486,16 +535,19 @@ class _VendorDocumentsPageState
                   BorderRadius.circular(10),
             ),
 
-            if (allVerified) ...[
-              const SizedBox(height: 12),
-              const Text(
-                'Your documents are verified. Admin can now approve your vendor account.',
-                style: TextStyle(
-                  color: Colors.green,
-                  fontWeight: FontWeight.w600,
-                ),
+            const SizedBox(height: 12),
+
+            Text(
+              allVerified
+                  ? 'All required documents are verified. Admin can now approve your vendor account.'
+                  : '${5 - verifiedCount} required document${5 - verifiedCount == 1 ? '' : 's'} pending verification.',
+              style: TextStyle(
+                color: allVerified
+                    ? Colors.green
+                    : Colors.orange.shade800,
+                fontWeight: FontWeight.w600,
               ),
-            ],
+            ),
           ],
         ),
       ),
@@ -511,6 +563,9 @@ class _VendorDocumentsPageState
 
     final String url =
         data['url']?.toString() ?? '';
+
+    final String rejectionReason =
+        data['rejectionReason']?.toString() ?? '';
 
     final bool uploaded =
         url.isNotEmpty;
@@ -663,6 +718,108 @@ class _VendorDocumentsPageState
               ],
             ),
 
+            if (status == 'rejected') ...[
+              const SizedBox(height: 10),
+
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.red
+                      .withOpacity(0.06),
+                  borderRadius:
+                      BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.red
+                        .withOpacity(0.15),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(
+                          Icons.error_outline,
+                          color: Colors.red,
+                          size: 18,
+                        ),
+                        SizedBox(width: 6),
+                        Text(
+                          'Document Rejected',
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontWeight:
+                                FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    if (rejectionReason.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'Reason: $rejectionReason',
+                        style: const TextStyle(
+                          color: Colors.red,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 6),
+
+                    const Text(
+                      'Please upload a corrected document.',
+                      style: TextStyle(
+                        color: Colors.red,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            if (status == 'verified') ...[
+              const SizedBox(height: 10),
+
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.green
+                      .withOpacity(0.06),
+                  borderRadius:
+                      BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(
+                      Icons.verified,
+                      color: Colors.green,
+                      size: 18,
+                    ),
+                    SizedBox(width: 7),
+                    Expanded(
+                      child: Text(
+                        'Verified by Preesho Admin. This document is locked.',
+                        style: TextStyle(
+                          color: Colors.green,
+                          fontSize: 12,
+                          fontWeight:
+                              FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
             const SizedBox(height: 12),
 
             Row(
@@ -706,28 +863,6 @@ class _VendorDocumentsPageState
                 ],
               ],
             ),
-
-            if (status == 'rejected') ...[
-              const SizedBox(height: 8),
-              Container(
-                width: double.infinity,
-                padding:
-                    const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.red
-                      .withOpacity(0.06),
-                  borderRadius:
-                      BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  'This document was rejected by Admin. Please upload a corrected document.',
-                  style: TextStyle(
-                    color: Colors.red,
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-            ],
           ],
         ),
       ),
