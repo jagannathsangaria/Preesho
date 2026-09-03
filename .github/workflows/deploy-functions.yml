@@ -27,5 +27,8 @@ jobs:
 
       - name: Deploy Firebase Functions
         env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-        run: firebase deploy --only functions --token "$FIREBASE_TOKEN"
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
+        run: |
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$GOOGLE_APPLICATION_CREDENTIALS"
+          firebase deploy --only functions --project preesho
+          rm -f "$GOOGLE_APPLICATION_CREDENTIALS"
