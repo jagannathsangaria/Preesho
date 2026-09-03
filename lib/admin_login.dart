@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'admin_panel.dart';
 import 'courier_panel.dart';
+import 'vendor_panel.dart';
 
 class AdminLogin extends StatefulWidget {
   const AdminLogin({super.key});
@@ -47,15 +48,9 @@ class _AdminLoginState extends State<AdminLogin> {
 
       final firestore = FirebaseFirestore.instance;
 
-      // ------------------------------------------------------------
-      // 1. CHECK ADMIN
-      // Existing Preesho structure:
-      //
-      // Admins
-      //   └── USER_UID
-      //        Email: admin@preesho.com
-      //        Role: Admin
-      // ------------------------------------------------------------
+      // ============================================================
+      // 1. ADMIN CHECK
+      // ============================================================
 
       final adminDoc = await firestore
           .collection('Admins')
@@ -84,49 +79,138 @@ class _AdminLoginState extends State<AdminLogin> {
         }
       }
 
-      // ------------------------------------------------------------
-      // 2. CHECK COURIER
-      //
-      // users
-      //   └── USER_UID
-      //        role: courier
-      //
-      // We also support Role: Courier for flexibility.
-      // ------------------------------------------------------------
+      // ============================================================
+      // 2. USER DOCUMENT
+      // ============================================================
 
       final userDoc = await firestore
           .collection('users')
           .doc(user.uid)
           .get();
 
-      if (userDoc.exists) {
-        final data = userDoc.data() ?? {};
+      final userData = userDoc.data() ?? {};
 
-        final roleValue =
-            data['role'] ?? data['Role'];
+      final roleValue = userData['role'] ?? userData['Role'];
 
-        final role = roleValue
-            ?.toString()
-            .trim()
-            .toLowerCase();
+      final role = roleValue
+          ?.toString()
+          .trim()
+          .toLowerCase();
 
-        if (role == 'courier') {
+      // ============================================================
+      // 3. COURIER CHECK
+      // ============================================================
+
+      if (role == 'courier') {
+        if (!mounted) return;
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const CourierPanel(),
+          ),
+        );
+
+        return;
+      }
+
+      // ============================================================
+      // 4. VENDOR CHECK
+      // ============================================================
+
+      if (role == 'vendor') {
+        final vendorDoc = await firestore
+            .collection('vendors')
+            .doc(user.uid)
+            .get();
+
+        final vendorData = vendorDoc.data() ?? {};
+
+        // User document status
+        final userVendorStatus =
+            userData['vendorStatus']
+                ?.toString()
+                .trim()
+                .toLowerCase();
+
+        // Vendor document status
+        final vendorStatus =
+            vendorData['status']
+                ?.toString()
+                .trim()
+                .toLowerCase();
+
+        // Prefer vendor document status if available.
+        final effectiveStatus =
+            vendorStatus?.isNotEmpty == true
+                ? vendorStatus
+                : userVendorStatus;
+
+        // Active can be maintained in either document.
+        final userActive =
+            userData['active'] == true;
+
+        final vendorActive =
+            vendorData['active'] == true;
+
+        final isActive =
+            userActive || vendorActive;
+
+        // ------------------------------------------------------------
+        // APPROVED + ACTIVE VENDOR
+        // ------------------------------------------------------------
+
+        if (effectiveStatus == 'approved' && isActive) {
           if (!mounted) return;
 
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (_) => const CourierPanel(),
+              builder: (_) => const VendorPanel(),
             ),
           );
 
           return;
         }
+
+        // ------------------------------------------------------------
+        // VENDOR NOT APPROVED
+        // ------------------------------------------------------------
+
+        await FirebaseAuth.instance.signOut();
+
+        if (effectiveStatus == 'pending') {
+          showMessage(
+            'Vendor account is pending approval.',
+          );
+        } else if (effectiveStatus == 'rejected') {
+          showMessage(
+            'Vendor application has been rejected.',
+          );
+        } else if (effectiveStatus == 'suspended') {
+          showMessage(
+            'Vendor account is suspended.',
+          );
+        } else if (effectiveStatus != 'approved') {
+          showMessage(
+            'Vendor account is not approved yet.',
+          );
+        } else if (!isActive) {
+          showMessage(
+            'Vendor account is inactive.',
+          );
+        } else {
+          showMessage(
+            'Vendor access denied.',
+          );
+        }
+
+        return;
       }
 
-      // ------------------------------------------------------------
-      // 3. USER IS NOT ADMIN OR COURIER
-      // ------------------------------------------------------------
+      // ============================================================
+      // 5. UNKNOWN / UNAUTHORIZED STAFF
+      // ============================================================
 
       await FirebaseAuth.instance.signOut();
 
@@ -143,12 +227,14 @@ class _AdminLoginState extends State<AdminLogin> {
       } else if (e.code == 'invalid-email') {
         message = 'Invalid email address';
       } else if (e.code == 'too-many-requests') {
-        message = 'Too many attempts. Try again later.';
+        message =
+            'Too many attempts. Try again later.';
       } else if (e.code == 'network-request-failed') {
         message =
             'Network error. Check your internet connection.';
       } else if (e.code == 'user-disabled') {
-        message = 'This account has been disabled.';
+        message =
+            'This account has been disabled.';
       }
 
       showMessage(message);
@@ -224,7 +310,7 @@ class _AdminLoginState extends State<AdminLogin> {
                   const SizedBox(height: 8),
 
                   const Text(
-                    'Admin & Courier access',
+                    'Admin, Courier & Vendor access',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.grey,
@@ -241,7 +327,9 @@ class _AdminLoginState extends State<AdminLogin> {
                       labelText: 'Email',
                       hintText: 'Enter email',
                       prefixIcon:
-                          const Icon(Icons.email_outlined),
+                          const Icon(
+                        Icons.email_outlined,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius:
                             BorderRadius.circular(12),
@@ -257,7 +345,9 @@ class _AdminLoginState extends State<AdminLogin> {
                     decoration: InputDecoration(
                       labelText: 'Password',
                       prefixIcon:
-                          const Icon(Icons.lock_outline),
+                          const Icon(
+                        Icons.lock_outline,
+                      ),
                       suffixIcon: IconButton(
                         onPressed: () {
                           setState(() {
@@ -295,7 +385,9 @@ class _AdminLoginState extends State<AdminLogin> {
                                 strokeWidth: 2,
                               ),
                             )
-                          : const Icon(Icons.login),
+                          : const Icon(
+                              Icons.login,
+                            ),
                       label: Text(
                         loading
                             ? 'Logging in...'
