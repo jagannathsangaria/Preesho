@@ -21,7 +21,6 @@ exports.createCourierAccount = onCall(
     region: "asia-south1",
   },
   async (request) => {
-    // Check login
     if (!request.auth) {
       throw new HttpsError(
         "unauthenticated",
@@ -31,7 +30,6 @@ exports.createCourierAccount = onCall(
 
     const adminUid = request.auth.uid;
 
-    // Check Admin document
     const adminDoc = await db
         .collection("Admins")
         .doc(adminUid)
@@ -57,7 +55,6 @@ exports.createCourierAccount = onCall(
       );
     }
 
-    // Request data
     const data = request.data || {};
 
     const name = String(data.name || "").trim();
@@ -67,7 +64,6 @@ exports.createCourierAccount = onCall(
     const phone = String(data.phone || "").trim();
     const password = String(data.password || "");
 
-    // Validation
     if (!name) {
       throw new HttpsError(
         "invalid-argument",
@@ -99,7 +95,6 @@ exports.createCourierAccount = onCall(
       );
     }
 
-    // Check existing Firebase user
     try {
       await auth.getUserByEmail(email);
 
@@ -120,7 +115,6 @@ exports.createCourierAccount = onCall(
       }
     }
 
-    // Create Firebase Auth user
     let courierUser;
 
     try {
@@ -152,7 +146,6 @@ exports.createCourierAccount = onCall(
 
     const courierUid = courierUser.uid;
 
-    // Create Firestore records
     try {
       const batch = db.batch();
 
@@ -194,7 +187,6 @@ exports.createCourierAccount = onCall(
         error
       );
 
-      // Roll back Firebase Auth user
       try {
         await auth.deleteUser(courierUid);
       } catch (deleteError) {
@@ -232,10 +224,6 @@ exports.authorizeVendor = onCall(
     region: "asia-south1",
   },
   async (request) => {
-    // --------------------------------------------------------
-    // 1. Check Admin Login
-    // --------------------------------------------------------
-
     if (!request.auth) {
       throw new HttpsError(
         "unauthenticated",
@@ -244,10 +232,6 @@ exports.authorizeVendor = onCall(
     }
 
     const adminUid = request.auth.uid;
-
-    // --------------------------------------------------------
-    // 2. Verify Admin
-    // --------------------------------------------------------
 
     const adminDoc = await db
         .collection("Admins")
@@ -274,10 +258,6 @@ exports.authorizeVendor = onCall(
       );
     }
 
-    // --------------------------------------------------------
-    // 3. Get Request Data
-    // --------------------------------------------------------
-
     const data = request.data || {};
 
     const targetUid = String(
@@ -286,10 +266,8 @@ exports.authorizeVendor = onCall(
 
     const targetEmail = String(
       data.email || ""
-    ).trim()
-        .toLowerCase();
+    ).trim().toLowerCase();
 
-    // UID preferred
     let vendorUser;
 
     try {
@@ -323,10 +301,6 @@ exports.authorizeVendor = onCall(
 
     const vendorUid = vendorUser.uid;
 
-    // --------------------------------------------------------
-    // 4. Get Existing User Data
-    // --------------------------------------------------------
-
     const userRef = db
         .collection("users")
         .doc(vendorUid);
@@ -336,10 +310,6 @@ exports.authorizeVendor = onCall(
     const existingUserData = userDoc.exists
       ? userDoc.data() || {}
       : {};
-
-    // --------------------------------------------------------
-    // 5. Prevent Admin/Courier From Becoming Vendor
-    // --------------------------------------------------------
 
     const existingRole = String(
       existingUserData.role ||
@@ -361,10 +331,6 @@ exports.authorizeVendor = onCall(
       );
     }
 
-    // --------------------------------------------------------
-    // 6. Vendor Basic Details
-    // --------------------------------------------------------
-
     const vendorName =
       String(
         data.name ||
@@ -379,8 +345,7 @@ exports.authorizeVendor = onCall(
         existingUserData.email ||
         vendorUser.email ||
         ""
-      ).trim()
-        .toLowerCase();
+      ).trim().toLowerCase();
 
     const vendorPhone =
       String(
@@ -403,14 +368,15 @@ exports.authorizeVendor = onCall(
       );
     }
 
-    // --------------------------------------------------------
-    // 7. Create / Update User + Vendor Records
-    // --------------------------------------------------------
+    const vendorRef = db
+        .collection("vendors")
+        .doc(vendorUid);
+
+    const vendorDoc = await vendorRef.get();
 
     try {
       const batch = db.batch();
 
-      // users/{uid}
       batch.set(
         userRef,
         {
@@ -418,20 +384,14 @@ exports.authorizeVendor = onCall(
           name: vendorName,
           email: vendorEmail,
           phone: vendorPhone,
-
           role: "vendor",
-
           vendorStatus: "approved",
           active: true,
-
           vendorAuthorizedAt:
             FieldValue.serverTimestamp(),
-
           vendorAuthorizedBy: adminUid,
-
           updatedAt:
             FieldValue.serverTimestamp(),
-
           ...(userDoc.exists
             ? {}
             : {
@@ -444,11 +404,6 @@ exports.authorizeVendor = onCall(
         }
       );
 
-      // vendors/{uid}
-      const vendorRef = db
-          .collection("vendors")
-          .doc(vendorUid);
-
       batch.set(
         vendorRef,
         {
@@ -456,26 +411,20 @@ exports.authorizeVendor = onCall(
           name: vendorName,
           email: vendorEmail,
           phone: vendorPhone,
-
           role: "vendor",
-
           status: "approved",
           active: true,
-
           authorizedBy: adminUid,
-
           authorizedAt:
             FieldValue.serverTimestamp(),
-
           updatedAt:
             FieldValue.serverTimestamp(),
-
-          ...(await vendorRef.get()).exists
+          ...(vendorDoc.exists
             ? {}
             : {
                 createdAt:
                   FieldValue.serverTimestamp(),
-              },
+              }),
         },
         {
           merge: true,
@@ -483,7 +432,6 @@ exports.authorizeVendor = onCall(
       );
 
       await batch.commit();
-
     } catch (error) {
       console.error(
         "Vendor authorization failed:",
@@ -496,10 +444,6 @@ exports.authorizeVendor = onCall(
       );
     }
 
-    // --------------------------------------------------------
-    // 8. Success Response
-    // --------------------------------------------------------
-
     return {
       success: true,
       uid: vendorUid,
@@ -510,6 +454,318 @@ exports.authorizeVendor = onCall(
       vendorStatus: "approved",
       active: true,
       message: "Vendor authorized successfully.",
+    };
+  }
+);
+
+
+// ============================================================
+// UPDATE VENDOR STATUS - ADMIN ONLY
+// ============================================================
+
+exports.updateVendorStatus = onCall(
+  {
+    region: "asia-south1",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "You must be logged in."
+      );
+    }
+
+    const adminUid = request.auth.uid;
+
+    const adminDoc = await db
+        .collection("Admins")
+        .doc(adminUid)
+        .get();
+
+    if (!adminDoc.exists) {
+      throw new HttpsError(
+        "permission-denied",
+        "Only Admin can update vendor status."
+      );
+    }
+
+    const adminData = adminDoc.data() || {};
+
+    const adminRole = String(
+      adminData.Role || adminData.role || ""
+    ).toLowerCase();
+
+    if (adminRole !== "admin") {
+      throw new HttpsError(
+        "permission-denied",
+        "Admin permission required."
+      );
+    }
+
+    const data = request.data || {};
+
+    const vendorUid = String(
+      data.vendorUid || ""
+    ).trim();
+
+    const status = String(
+      data.status || ""
+    ).trim().toLowerCase();
+
+    const reason = String(
+      data.reason || ""
+    ).trim();
+
+    if (!vendorUid) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Vendor UID is required."
+      );
+    }
+
+    const allowedStatuses = [
+      "pending",
+      "approved",
+      "rejected",
+      "suspended",
+    ];
+
+    if (!allowedStatuses.includes(status)) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Invalid vendor status."
+      );
+    }
+
+    const userRef = db
+        .collection("users")
+        .doc(vendorUid);
+
+    const vendorRef = db
+        .collection("vendors")
+        .doc(vendorUid);
+
+    const [userDoc, vendorDoc] = await Promise.all([
+      userRef.get(),
+      vendorRef.get(),
+    ]);
+
+    if (!userDoc.exists && !vendorDoc.exists) {
+      throw new HttpsError(
+        "not-found",
+        "Vendor not found."
+      );
+    }
+
+    const batch = db.batch();
+
+    const isApproved = status === "approved";
+
+    batch.set(
+      userRef,
+      {
+        role: "vendor",
+        vendorStatus: status,
+        active: isApproved,
+        vendorStatusUpdatedAt:
+          FieldValue.serverTimestamp(),
+        vendorStatusUpdatedBy: adminUid,
+        vendorStatusReason: reason,
+        updatedAt:
+          FieldValue.serverTimestamp(),
+      },
+      {
+        merge: true,
+      }
+    );
+
+    batch.set(
+      vendorRef,
+      {
+        role: "vendor",
+        status: status,
+        active: isApproved,
+        statusUpdatedAt:
+          FieldValue.serverTimestamp(),
+        statusUpdatedBy: adminUid,
+        statusReason: reason,
+        updatedAt:
+          FieldValue.serverTimestamp(),
+      },
+      {
+        merge: true,
+      }
+    );
+
+    await batch.commit();
+
+    return {
+      success: true,
+      vendorUid: vendorUid,
+      status: status,
+      active: isApproved,
+      updatedBy: adminUid,
+      message: "Vendor status updated successfully.",
+    };
+  }
+);
+
+
+// ============================================================
+// UPDATE VENDOR DOCUMENT STATUS - ADMIN ONLY
+// ============================================================
+
+exports.updateVendorDocumentStatus = onCall(
+  {
+    region: "asia-south1",
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError(
+        "unauthenticated",
+        "You must be logged in."
+      );
+    }
+
+    const adminUid = request.auth.uid;
+
+    const adminDoc = await db
+        .collection("Admins")
+        .doc(adminUid)
+        .get();
+
+    if (!adminDoc.exists) {
+      throw new HttpsError(
+        "permission-denied",
+        "Only Admin can verify vendor documents."
+      );
+    }
+
+    const adminData = adminDoc.data() || {};
+
+    const adminRole = String(
+      adminData.Role || adminData.role || ""
+    ).toLowerCase();
+
+    if (adminRole !== "admin") {
+      throw new HttpsError(
+        "permission-denied",
+        "Admin permission required."
+      );
+    }
+
+    const data = request.data || {};
+
+    const vendorUid = String(
+      data.vendorUid || ""
+    ).trim();
+
+    const documentType = String(
+      data.documentType || ""
+    ).trim();
+
+    const status = String(
+      data.status || ""
+    ).trim().toLowerCase();
+
+    const reason = String(
+      data.reason || ""
+    ).trim();
+
+    if (!vendorUid) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Vendor UID is required."
+      );
+    }
+
+    const allowedDocuments = [
+      "pan",
+      "aadhaar",
+      "gst",
+      "bank",
+      "addressProof",
+      "other",
+    ];
+
+    if (!allowedDocuments.includes(documentType)) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Invalid document type."
+      );
+    }
+
+    const allowedStatuses = [
+      "pending",
+      "verified",
+      "rejected",
+    ];
+
+    if (!allowedStatuses.includes(status)) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Invalid document status."
+      );
+    }
+
+    const vendorRef = db
+        .collection("vendors")
+        .doc(vendorUid);
+
+    const vendorDoc = await vendorRef.get();
+
+    if (!vendorDoc.exists) {
+      throw new HttpsError(
+        "not-found",
+        "Vendor not found."
+      );
+    }
+
+    const vendorData = vendorDoc.data() || {};
+
+    const existingDocuments =
+      vendorData.documents || {};
+
+    const existingDocument =
+      existingDocuments[documentType] || {};
+
+    const updatedDocument = {
+      ...existingDocument,
+
+      status: status,
+
+      verificationReason: reason,
+
+      verifiedBy: adminUid,
+
+      verifiedAt:
+        FieldValue.serverTimestamp(),
+
+      updatedAt:
+        FieldValue.serverTimestamp(),
+    };
+
+    await vendorRef.set(
+      {
+        documents: {
+          [documentType]: updatedDocument,
+        },
+        updatedAt:
+          FieldValue.serverTimestamp(),
+      },
+      {
+        merge: true,
+      }
+    );
+
+    return {
+      success: true,
+      vendorUid: vendorUid,
+      documentType: documentType,
+      status: status,
+      verifiedBy: adminUid,
+      message:
+        "Vendor document status updated successfully.",
     };
   }
 );
