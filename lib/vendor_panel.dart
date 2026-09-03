@@ -37,7 +37,7 @@ class _VendorPanelState extends State<VendorPanel> {
   }
 
   // ============================================================
-  // VENDOR ACCESS CHECK
+  // VENDOR ACCESS
   // ============================================================
 
   Future<void> _checkVendorAccess() async {
@@ -61,11 +61,8 @@ class _VendorPanelState extends State<VendorPanel> {
           .doc(user.uid)
           .get();
 
-      final userData =
-          userDoc.data() ?? {};
-
-      final vendorData =
-          vendorDoc.data() ?? {};
+      final userData = userDoc.data() ?? {};
+      final vendorData = vendorDoc.data() ?? {};
 
       final roleValue =
           userData['role'] ??
@@ -74,35 +71,31 @@ class _VendorPanelState extends State<VendorPanel> {
           vendorData['Role'];
 
       final role = roleValue
-          ?.toString()
-          .trim()
-          .toLowerCase();
-
-      final userStatus =
-          userData['vendorStatus']
               ?.toString()
               .trim()
-              .toLowerCase();
+              .toLowerCase() ??
+          '';
 
-      final vendorStatus =
-          vendorData['status']
+      final userStatus = userData['vendorStatus']
               ?.toString()
               .trim()
-              .toLowerCase();
+              .toLowerCase() ??
+          '';
 
-      final status =
-          vendorStatus.isNotEmpty
-              ? vendorStatus
-              : userStatus;
+      final vendorStatus = vendorData['status']
+              ?.toString()
+              .trim()
+              .toLowerCase() ??
+          '';
 
-      final userActive =
-          userData['active'] == true;
+      final status = vendorStatus.isNotEmpty
+          ? vendorStatus
+          : userStatus;
 
-      final vendorActive =
-          vendorData['active'] == true;
+      final userActive = userData['active'] == true;
+      final vendorActive = vendorData['active'] == true;
 
-      final active =
-          userActive || vendorActive;
+      final active = userActive || vendorActive;
 
       if (role != 'vendor' ||
           status != 'approved' ||
@@ -198,107 +191,87 @@ class _VendorPanelState extends State<VendorPanel> {
   }
 
   // ============================================================
-  // ADD / EDIT PRODUCT
+  // PRODUCT DIALOG
   // ============================================================
 
   Future<void> _showProductDialog({
     DocumentSnapshot<Map<String, dynamic>>? product,
   }) async {
-    final data =
-        product?.data() ?? {};
+    final data = product?.data() ?? {};
 
-    final nameController =
-        TextEditingController(
+    final nameController = TextEditingController(
       text: data['Name']?.toString() ?? '',
     );
 
-    final categoryController =
-        TextEditingController(
+    final categoryController = TextEditingController(
       text: data['Category']?.toString() ?? '',
     );
 
-    final priceController =
-        TextEditingController(
+    final priceController = TextEditingController(
       text: data['Price']?.toString() ?? '',
     );
 
-    final mrpController =
-        TextEditingController(
+    final mrpController = TextEditingController(
       text: data['MRP']?.toString() ?? '',
     );
 
-    final discountController =
-        TextEditingController(
+    final discountController = TextEditingController(
       text: data['DiscountPercent']?.toString() ?? '',
     );
 
-    final stockController =
-        TextEditingController(
+    final stockController = TextEditingController(
       text: data['Stock']?.toString() ?? '',
     );
 
-    final brandController =
-        TextEditingController(
+    final brandController = TextEditingController(
       text: data['Brand']?.toString() ?? '',
     );
 
-    final materialController =
-        TextEditingController(
+    final materialController = TextEditingController(
       text: data['Material']?.toString() ?? '',
     );
 
-    final colorController =
-        TextEditingController(
+    final colorController = TextEditingController(
       text: data['Color']?.toString() ?? '',
     );
 
-    final sizeController =
-        TextEditingController(
+    final sizeController = TextEditingController(
       text: data['Size']?.toString() ?? '',
     );
 
-    final weightController =
-        TextEditingController(
+    final weightController = TextEditingController(
       text: data['Weight']?.toString() ?? '',
     );
 
-    final warrantyController =
-        TextEditingController(
+    final warrantyController = TextEditingController(
       text: data['Warranty']?.toString() ?? '',
     );
 
-    final descriptionController =
-        TextEditingController(
+    final descriptionController = TextEditingController(
       text: data['Description']?.toString() ?? '',
     );
 
-    final remarkController =
-        TextEditingController(
+    final remarkController = TextEditingController(
       text: data['Remark']?.toString() ?? '',
     );
 
-    final highlightsController =
-        TextEditingController(
+    final highlightsController = TextEditingController(
       text: _readList(data['Highlights']),
     );
 
-    final imageUrlsController =
-        TextEditingController(
+    final imageUrlsController = TextEditingController(
       text: _readImageUrls(data),
     );
 
-    bool active =
-        data['Active'] != false;
+    bool active = data['Active'] != false;
 
-    final formKey =
-        GlobalKey<FormState>();
+    final formKey = GlobalKey<FormState>();
 
     await showDialog(
       context: context,
       builder: (dialogContext) {
         return StatefulBuilder(
-          builder:
-              (context, setDialogState) {
+          builder: (context, setDialogState) {
             return AlertDialog(
               title: Text(
                 product == null
@@ -324,26 +297,22 @@ class _VendorPanelState extends State<VendorPanel> {
                         _field(
                           priceController,
                           'Selling Price',
-                          keyboard:
-                              TextInputType.number,
+                          keyboard: TextInputType.number,
                         ),
                         _field(
                           mrpController,
                           'MRP',
-                          keyboard:
-                              TextInputType.number,
+                          keyboard: TextInputType.number,
                         ),
                         _field(
                           discountController,
                           'Discount %',
-                          keyboard:
-                              TextInputType.number,
+                          keyboard: TextInputType.number,
                         ),
                         _field(
                           stockController,
                           'Stock',
-                          keyboard:
-                              TextInputType.number,
+                          keyboard: TextInputType.number,
                         ),
                         _field(
                           brandController,
@@ -382,33 +351,25 @@ class _VendorPanelState extends State<VendorPanel> {
                         _field(
                           highlightsController,
                           'Highlights',
-                          hint:
-                              'One highlight per line',
+                          hint: 'One highlight per line',
                           maxLines: 4,
                         ),
                         _field(
                           imageUrlsController,
                           'Image URLs',
-                          hint:
-                              'One image URL per line',
+                          hint: 'One image URL per line',
                           maxLines: 5,
                         ),
                         SwitchListTile(
-                          contentPadding:
-                              EdgeInsets.zero,
-                          title:
-                              const Text(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text(
                             'Product Active',
                           ),
                           value: active,
-                          onChanged:
-                              (value) {
-                            setDialogState(
-                              () {
-                                active =
-                                    value;
-                              },
-                            );
+                          onChanged: (value) {
+                            setDialogState(() {
+                              active = value;
+                            });
                           },
                         ),
                       ],
@@ -418,92 +379,46 @@ class _VendorPanelState extends State<VendorPanel> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () =>
-                      Navigator.pop(
-                    dialogContext,
-                  ),
-                  child:
-                      const Text('Cancel'),
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                  },
+                  child: const Text('Cancel'),
                 ),
                 FilledButton(
                   onPressed: () async {
-                    if (!formKey
-                        .currentState!
-                        .validate()) {
+                    if (!formKey.currentState!.validate()) {
                       return;
                     }
 
-                    Navigator.pop(
-                      dialogContext,
-                    );
+                    Navigator.pop(dialogContext);
 
                     await _saveProduct(
                       product: product,
-                      name: nameController
-                          .text
-                          .trim(),
-                      category:
-                          categoryController
-                              .text
-                              .trim(),
-                      price:
-                          _number(
-                        priceController.text,
-                      ),
-                      mrp: _number(
-                        mrpController.text,
-                      ),
-                      discount:
-                          _number(
+                      name: nameController.text.trim(),
+                      category: categoryController.text.trim(),
+                      price: _number(priceController.text),
+                      mrp: _number(mrpController.text),
+                      discount: _number(
                         discountController.text,
                       ),
-                      stock: _number(
-                        stockController.text,
-                      ),
-                      brand:
-                          brandController.text
-                              .trim(),
-                      material:
-                          materialController
-                              .text
-                              .trim(),
-                      color:
-                          colorController.text
-                              .trim(),
-                      size:
-                          sizeController.text
-                              .trim(),
-                      weight:
-                          weightController
-                              .text
-                              .trim(),
-                      warranty:
-                          warrantyController
-                              .text
-                              .trim(),
+                      stock: _number(stockController.text),
+                      brand: brandController.text.trim(),
+                      material: materialController.text.trim(),
+                      color: colorController.text.trim(),
+                      size: sizeController.text.trim(),
+                      weight: weightController.text.trim(),
+                      warranty: warrantyController.text.trim(),
                       description:
-                          descriptionController
-                              .text
-                              .trim(),
-                      remark:
-                          remarkController.text
-                              .trim(),
+                          descriptionController.text.trim(),
+                      remark: remarkController.text.trim(),
                       highlights:
-                          _splitLines(
-                        highlightsController
-                            .text,
-                      ),
+                          _splitLines(highlightsController.text),
                       imageUrls:
-                          _splitLines(
-                        imageUrlsController
-                            .text,
-                      ),
+                          _splitLines(imageUrlsController.text),
                       active: active,
                     );
                   },
-                  child: const Text(
-                    'Save Product',
-                  ),
+                  child: const Text('Save Product'),
                 ),
               ],
             );
@@ -555,16 +470,10 @@ class _VendorPanelState extends State<VendorPanel> {
     required bool active,
   }) async {
     try {
-      final collection =
-          _firestore.collection('Products');
-
-      // ========================================================
-      // SECURITY CHECK FOR EDIT
-      // ========================================================
+      final collection = _firestore.collection('Products');
 
       if (product != null) {
-        final existingData =
-            product.data() ?? {};
+        final existingData = product.data() ?? {};
 
         final existingVendorUid =
             existingData['vendorUid']
@@ -579,8 +488,7 @@ class _VendorPanelState extends State<VendorPanel> {
         }
       }
 
-      final productData =
-          <String, dynamic>{
+      final productData = <String, dynamic>{
         'Name': name,
         'Category': category,
         'Price': price,
@@ -589,9 +497,7 @@ class _VendorPanelState extends State<VendorPanel> {
         'Stock': stock,
         'ImageUrls': imageUrls,
         'Imageurl':
-            imageUrls.isNotEmpty
-                ? imageUrls.first
-                : '',
+            imageUrls.isNotEmpty ? imageUrls.first : '',
         'Description': description,
         'Remark': remark,
         'Brand': brand,
@@ -602,25 +508,16 @@ class _VendorPanelState extends State<VendorPanel> {
         'Warranty': warranty,
         'Highlights': highlights,
         'Active': active,
-
-        // ======================================================
-        // VENDOR MAPPING
-        // ======================================================
-
         'vendorUid': _vendorUid,
         'vendorName': _vendorName,
-
-        'UpdatedAt':
-            FieldValue.serverTimestamp(),
+        'UpdatedAt': FieldValue.serverTimestamp(),
       };
 
       if (product == null) {
         productData['CreatedAt'] =
             FieldValue.serverTimestamp();
 
-        await collection.add(
-          productData,
-        );
+        await collection.add(productData);
 
         _showMessage(
           'Product added successfully.',
@@ -646,16 +543,12 @@ class _VendorPanelState extends State<VendorPanel> {
   // ============================================================
 
   Future<void> _deleteProduct(
-    DocumentSnapshot<Map<String, dynamic>>
-        product,
+    DocumentSnapshot<Map<String, dynamic>> product,
   ) async {
-    final data =
-        product.data() ?? {};
+    final data = product.data() ?? {};
 
     final productVendor =
-        data['vendorUid']
-            ?.toString()
-            .trim();
+        data['vendorUid']?.toString().trim();
 
     if (productVendor != _vendorUid) {
       _showMessage(
@@ -664,43 +557,33 @@ class _VendorPanelState extends State<VendorPanel> {
       return;
     }
 
-    final confirmed =
-        await showDialog<bool>(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title:
-              const Text('Delete Product'),
+          title: const Text('Delete Product'),
           content: const Text(
             'Are you sure you want to delete this product?',
           ),
           actions: [
             TextButton(
-              onPressed: () =>
-                  Navigator.pop(
-                context,
-                false,
-              ),
-              child:
-                  const Text('Cancel'),
+              onPressed: () {
+                Navigator.pop(context, false);
+              },
+              child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () =>
-                  Navigator.pop(
-                context,
-                true,
-              ),
-              child:
-                  const Text('Delete'),
+              onPressed: () {
+                Navigator.pop(context, true);
+              },
+              child: const Text('Delete'),
             ),
           ],
         );
       },
     );
 
-    if (confirmed != true) {
-      return;
-    }
+    if (confirmed != true) return;
 
     try {
       await _firestore
@@ -708,9 +591,7 @@ class _VendorPanelState extends State<VendorPanel> {
           .doc(product.id)
           .delete();
 
-      _showMessage(
-        'Product deleted.',
-      );
+      _showMessage('Product deleted.');
     } catch (e) {
       _showMessage(
         'Unable to delete product.',
@@ -736,8 +617,7 @@ class _VendorPanelState extends State<VendorPanel> {
         if (snapshot.connectionState ==
             ConnectionState.waiting) {
           return const Center(
-            child:
-                CircularProgressIndicator(),
+            child: CircularProgressIndicator(),
           );
         }
 
@@ -745,20 +625,17 @@ class _VendorPanelState extends State<VendorPanel> {
           return Center(
             child: Text(
               'Unable to load products.\n${snapshot.error}',
-              textAlign:
-                  TextAlign.center,
+              textAlign: TextAlign.center,
             ),
           );
         }
 
-        final products =
-            snapshot.data?.docs ?? [];
+        final products = snapshot.data?.docs ?? [];
 
         if (products.isEmpty) {
           return Center(
             child: Padding(
-              padding:
-                  const EdgeInsets.all(30),
+              padding: const EdgeInsets.all(30),
               child: Column(
                 mainAxisAlignment:
                     MainAxisAlignment.center,
@@ -767,37 +644,24 @@ class _VendorPanelState extends State<VendorPanel> {
                     Icons.inventory_2_outlined,
                     size: 70,
                   ),
-                  const SizedBox(
-                    height: 16,
-                  ),
+                  const SizedBox(height: 16),
                   const Text(
                     'No products yet',
                     style: TextStyle(
                       fontSize: 20,
-                      fontWeight:
-                          FontWeight.bold,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(
-                    height: 8,
-                  ),
+                  const SizedBox(height: 8),
                   const Text(
                     'Add your first product to start selling.',
-                    textAlign:
-                        TextAlign.center,
+                    textAlign: TextAlign.center,
                   ),
-                  const SizedBox(
-                    height: 20,
-                  ),
+                  const SizedBox(height: 20),
                   FilledButton.icon(
-                    onPressed:
-                        _showProductDialog,
-                    icon: const Icon(
-                      Icons.add,
-                    ),
-                    label: const Text(
-                      'Add Product',
-                    ),
+                    onPressed: _showProductDialog,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add Product'),
                   ),
                 ],
               ),
@@ -806,52 +670,39 @@ class _VendorPanelState extends State<VendorPanel> {
         }
 
         return ListView.builder(
-          padding:
-              const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16),
           itemCount: products.length,
-          itemBuilder:
-              (context, index) {
-            final product =
-                products[index];
-
-            final data =
-                product.data();
+          itemBuilder: (context, index) {
+            final product = products[index];
+            final data = product.data();
 
             final name =
-                data['Name']
-                        ?.toString() ??
+                data['Name']?.toString() ??
                     'Unnamed Product';
 
             final price =
-                data['Price']
-                        ?.toString() ??
-                    '0';
+                data['Price']?.toString() ?? '0';
 
             final stock =
-                data['Stock']
-                        ?.toString() ??
-                    '0';
+                data['Stock']?.toString() ?? '0';
 
             final active =
                 data['Active'] != false;
 
             return Card(
-              margin:
-                  const EdgeInsets.only(
+              margin: const EdgeInsets.only(
                 bottom: 12,
               ),
               child: ListTile(
-                leading: CircleAvatar(
-                  child: const Icon(
+                leading: const CircleAvatar(
+                  child: Icon(
                     Icons.shopping_bag_outlined,
                   ),
                 ),
                 title: Text(
                   name,
-                  style:
-                      const TextStyle(
-                    fontWeight:
-                        FontWeight.bold,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
                 subtitle: Text(
@@ -862,34 +713,25 @@ class _VendorPanelState extends State<VendorPanel> {
                 isThreeLine: true,
                 trailing:
                     PopupMenuButton<String>(
-                  onSelected:
-                      (value) {
-                    if (value ==
-                        'edit') {
+                  onSelected: (value) {
+                    if (value == 'edit') {
                       _showProductDialog(
-                        product:
-                            product,
+                        product: product,
                       );
                     }
 
-                    if (value ==
-                        'delete') {
-                      _deleteProduct(
-                        product,
-                      );
+                    if (value == 'delete') {
+                      _deleteProduct(product);
                     }
                   },
-                  itemBuilder:
-                      (context) => [
+                  itemBuilder: (context) => [
                     const PopupMenuItem(
                       value: 'edit',
-                      child:
-                          Text('Edit'),
+                      child: Text('Edit'),
                     ),
                     const PopupMenuItem(
                       value: 'delete',
-                      child:
-                          Text('Delete'),
+                      child: Text('Delete'),
                     ),
                   ],
                 ),
@@ -908,13 +750,6 @@ class _VendorPanelState extends State<VendorPanel> {
 
   // ============================================================
   // ORDERS
-  //
-  // New checkout writes vendorUids for EVERY order.
-  // Therefore arrayContains handles:
-  // 1. Single vendor
-  // 2. Multi vendor
-  //
-  // Legacy orders with only vendorUid are also checked separately.
   // ============================================================
 
   Widget _buildOrders() {
@@ -943,112 +778,80 @@ class _VendorPanelState extends State<VendorPanel> {
                 legacySnapshot.connectionState ==
                     ConnectionState.waiting) {
               return const Center(
-                child:
-                    CircularProgressIndicator(),
+                child: CircularProgressIndicator(),
               );
             }
 
-            if (newSnapshot.hasError &&
-                legacySnapshot.hasError) {
-              return Center(
-                child: Text(
-                  'Unable to load orders.\n'
-                  '${newSnapshot.error}',
-                  textAlign:
-                      TextAlign.center,
-                ),
-              );
-            }
-
-            // ==================================================
-            // MERGE BOTH QUERY RESULTS
-            // ==================================================
-
-            final Map<String,
-                    DocumentSnapshot<Map<String, dynamic>>>
+            final Map<
+                    String,
+                    DocumentSnapshot<
+                        Map<String, dynamic>>>
                 orderMap = {};
 
             for (final doc
-                in newSnapshot.data?.docs ??
-                    []) {
+                in newSnapshot.data?.docs ?? []) {
               orderMap[doc.id] = doc;
             }
 
             for (final doc
-                in legacySnapshot.data?.docs ??
-                    []) {
+                in legacySnapshot.data?.docs ?? []) {
               orderMap[doc.id] = doc;
             }
 
-            final orders =
+            final allOrders =
                 orderMap.values.toList();
 
-            // ==================================================
-            // SORT NEWEST FIRST
-            // ==================================================
+            // --------------------------------------------------
+            // Only keep orders containing THIS vendor's items.
+            // --------------------------------------------------
 
-            orders.sort(
-              (a, b) {
-                final aData =
-                    a.data() ?? {};
+            final orders = allOrders.where((order) {
+              return _orderBelongsToVendor(
+                order.data() ?? {},
+              );
+            }).toList();
 
-                final bData =
-                    b.data() ?? {};
+            orders.sort((a, b) {
+              final aData = a.data() ?? {};
+              final bData = b.data() ?? {};
 
-                final aTime =
-                    _timestampValue(
-                  aData['createdAt'] ??
-                      aData['placedAt'],
-                );
+              final aTime = _timestampValue(
+                aData['createdAt'] ??
+                    aData['placedAt'],
+              );
 
-                final bTime =
-                    _timestampValue(
-                  bData['createdAt'] ??
-                      bData['placedAt'],
-                );
+              final bTime = _timestampValue(
+                bData['createdAt'] ??
+                    bData['placedAt'],
+              );
 
-                return bTime.compareTo(
-                  aTime,
-                );
-              },
-            );
+              return bTime.compareTo(aTime);
+            });
 
             if (orders.isEmpty) {
               return const Center(
                 child: Padding(
-                  padding:
-                      EdgeInsets.all(30),
+                  padding: EdgeInsets.all(30),
                   child: Column(
                     mainAxisAlignment:
-                        MainAxisAlignment
-                            .center,
+                        MainAxisAlignment.center,
                     children: [
                       Icon(
-                        Icons
-                            .receipt_long_outlined,
+                        Icons.receipt_long_outlined,
                         size: 70,
                       ),
-                      SizedBox(
-                        height: 16,
-                      ),
+                      SizedBox(height: 16),
                       Text(
                         'No orders yet',
-                        style:
-                            TextStyle(
+                        style: TextStyle(
                           fontSize: 20,
-                          fontWeight:
-                              FontWeight
-                                  .bold,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                      SizedBox(
-                        height: 8,
-                      ),
+                      SizedBox(height: 8),
                       Text(
                         'Orders containing your products will appear here.',
-                        textAlign:
-                            TextAlign
-                                .center,
+                        textAlign: TextAlign.center,
                       ),
                     ],
                   ),
@@ -1057,17 +860,11 @@ class _VendorPanelState extends State<VendorPanel> {
             }
 
             return ListView.builder(
-              padding:
-                  const EdgeInsets.all(16),
-              itemCount:
-                  orders.length,
-              itemBuilder:
-                  (context, index) {
-                final order =
-                    orders[index];
-
+              padding: const EdgeInsets.all(16),
+              itemCount: orders.length,
+              itemBuilder: (context, index) {
                 return _buildOrderCard(
-                  order,
+                  orders[index],
                 );
               },
             );
@@ -1078,19 +875,40 @@ class _VendorPanelState extends State<VendorPanel> {
   }
 
   // ============================================================
+  // CHECK WHETHER ORDER BELONGS TO CURRENT VENDOR
+  // ============================================================
+
+  bool _orderBelongsToVendor(
+    Map<String, dynamic> data,
+  ) {
+    final orderVendorUid =
+        data['vendorUid']?.toString().trim();
+
+    if (orderVendorUid == _vendorUid) {
+      return true;
+    }
+
+    final vendorUids = data['vendorUids'];
+
+    if (vendorUids is List) {
+      return vendorUids.any(
+        (uid) =>
+            uid?.toString().trim() ==
+            _vendorUid,
+      );
+    }
+
+    return false;
+  }
+
+  // ============================================================
   // ORDER CARD
   // ============================================================
 
   Widget _buildOrderCard(
-    DocumentSnapshot<Map<String, dynamic>>
-        order,
+    DocumentSnapshot<Map<String, dynamic>> order,
   ) {
-    final data =
-        order.data() ?? {};
-
-    // ==========================================================
-    // CUSTOMER INFORMATION
-    // ==========================================================
+    final data = order.data() ?? {};
 
     final customer =
         data['customerName'] ??
@@ -1104,225 +922,148 @@ class _VendorPanelState extends State<VendorPanel> {
             data['Phone'] ??
             '';
 
-    // ==========================================================
-    // STATUS
-    // ==========================================================
-
     final status =
         data['orderStatus'] ??
             data['status'] ??
             'Placed';
 
-    // ==========================================================
-    // ONLY THIS VENDOR'S ITEMS
-    // ==========================================================
-
     final List<dynamic> allItems =
         data['items'] is List
-            ? List<dynamic>.from(
-                data['items'],
-              )
+            ? List<dynamic>.from(data['items'])
             : [];
 
-    final List<Map<String, dynamic>>
-        vendorItems = [];
+    final List<Map<String, dynamic>> vendorItems = [];
 
     double vendorTotal = 0;
-
     int vendorQuantity = 0;
 
     for (final item in allItems) {
-      if (item is! Map) {
-        continue;
-      }
+      if (item is! Map) continue;
 
       final itemMap =
-          Map<String, dynamic>.from(
-        item,
-      );
+          Map<String, dynamic>.from(item);
 
       final itemVendorUid =
           itemMap['vendorUid']
               ?.toString()
               .trim();
 
-      if (itemVendorUid !=
-          _vendorUid) {
+      if (itemVendorUid != _vendorUid) {
         continue;
       }
 
       final quantity =
-          _toInt(
-        itemMap['quantity'],
-      );
+          _toInt(itemMap['quantity']);
 
       final price =
-          _toDouble(
-        itemMap['price'],
-      );
+          _toDouble(itemMap['price']);
 
       final itemTotal =
-          _toDouble(
-        itemMap['total'],
-      );
+          _toDouble(itemMap['total']);
 
       vendorQuantity += quantity;
 
-      vendorTotal +=
-          itemTotal > 0
-              ? itemTotal
-              : price * quantity;
+      vendorTotal += itemTotal > 0
+          ? itemTotal
+          : price * quantity;
 
-      vendorItems.add(
-        itemMap,
-      );
+      vendorItems.add(itemMap);
     }
 
-    // ==========================================================
-    // LEGACY ORDER FALLBACK
-    //
-    // If old order doesn't have item-level vendorUid but
-    // order-level vendorUid belongs to this vendor, show items.
-    // ==========================================================
-
+    // Legacy single-vendor order.
     if (vendorItems.isEmpty &&
         data['vendorUid']
                 ?.toString()
                 .trim() ==
             _vendorUid) {
       for (final item in allItems) {
-        if (item is! Map) {
-          continue;
-        }
+        if (item is! Map) continue;
 
         final itemMap =
-            Map<String, dynamic>.from(
-          item,
-        );
+            Map<String, dynamic>.from(item);
 
         final quantity =
-            _toInt(
-          itemMap['quantity'],
-        );
+            _toInt(itemMap['quantity']);
 
         final price =
-            _toDouble(
-          itemMap['price'],
-        );
+            _toDouble(itemMap['price']);
 
         final itemTotal =
-            _toDouble(
-          itemMap['total'],
-        );
+            _toDouble(itemMap['total']);
 
-        vendorQuantity +=
-            quantity;
+        vendorQuantity += quantity;
 
-        vendorTotal +=
-            itemTotal > 0
-                ? itemTotal
-                : price * quantity;
+        vendorTotal += itemTotal > 0
+            ? itemTotal
+            : price * quantity;
 
-        vendorItems.add(
-          itemMap,
-        );
+        vendorItems.add(itemMap);
       }
     }
-
-    // ==========================================================
-    // DO NOT SHOW ORDER IF THIS VENDOR HAS NO ITEM
-    // ==========================================================
 
     if (vendorItems.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    final date =
-        _formatTimestamp(
+    final date = _formatTimestamp(
       data['createdAt'] ??
           data['placedAt'],
     );
 
     final isMultiVendor =
-        data['isMultiVendor'] ==
-            true;
+        data['isMultiVendor'] == true ||
+        ((data['vendorUids'] is List) &&
+            (data['vendorUids'] as List).length > 1);
 
     return Card(
-      margin:
-          const EdgeInsets.only(
+      margin: const EdgeInsets.only(
         bottom: 14,
       ),
       child: ExpansionTile(
-        leading: CircleAvatar(
-          child: const Icon(
-            Icons.receipt_long,
-          ),
+        leading: const CircleAvatar(
+          child: Icon(Icons.receipt_long),
         ),
-
         title: Text(
           'Order #${order.id}',
-          style:
-              const TextStyle(
-            fontWeight:
-                FontWeight.bold,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
           ),
         ),
-
         subtitle: Padding(
-          padding:
-              const EdgeInsets.only(
-            top: 5,
-          ),
+          padding: const EdgeInsets.only(top: 5),
           child: Column(
             crossAxisAlignment:
                 CrossAxisAlignment.start,
             children: [
-              Text(
-                'Customer: $customer',
-              ),
-              if (phone
-                  .toString()
-                  .isNotEmpty)
-                Text(
-                  'Phone: $phone',
-                ),
+              Text('Customer: $customer'),
+              if (phone.toString().isNotEmpty)
+                Text('Phone: $phone'),
               Text(
                 'My Items: $vendorQuantity',
               ),
               Text(
                 'My Total: ₹${_formatMoney(vendorTotal)}',
-                style:
-                    const TextStyle(
-                  fontWeight:
-                      FontWeight.bold,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-              Text(
-                'Status: $status',
-              ),
+              Text('Status: $status'),
               if (isMultiVendor)
                 const Text(
                   'Multi-vendor Order',
-                  style:
-                      TextStyle(
-                    fontWeight:
-                        FontWeight.bold,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               if (date.isNotEmpty)
-                Text(
-                  date,
-                ),
+                Text(date),
             ],
           ),
         ),
-
         children: [
           const Divider(),
-
           Padding(
-            padding:
-                const EdgeInsets.fromLTRB(
+            padding: const EdgeInsets.fromLTRB(
               16,
               4,
               16,
@@ -1334,67 +1075,44 @@ class _VendorPanelState extends State<VendorPanel> {
               children: [
                 const Text(
                   'Your Products',
-                  style:
-                      TextStyle(
+                  style: TextStyle(
                     fontSize: 17,
-                    fontWeight:
-                        FontWeight.bold,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-
-                const SizedBox(
-                  height: 10,
-                ),
+                const SizedBox(height: 10),
 
                 ...vendorItems.map(
                   (item) =>
-                      _buildVendorOrderItem(
-                    item,
-                  ),
+                      _buildVendorOrderItem(item),
                 ),
 
-                const SizedBox(
-                  height: 10,
-                ),
+                const SizedBox(height: 10),
 
                 Container(
-                  width:
-                      double.infinity,
-                  padding:
-                      const EdgeInsets.all(
-                    12,
-                  ),
-                  decoration:
-                      BoxDecoration(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
                     borderRadius:
-                        BorderRadius.circular(
-                      10,
-                    ),
-                    border:
-                        Border.all(
-                      color:
-                          Colors.grey.shade300,
+                        BorderRadius.circular(10),
+                    border: Border.all(
+                      color: Colors.grey.shade300,
                     ),
                   ),
                   child: Row(
                     mainAxisAlignment:
-                        MainAxisAlignment
-                            .spaceBetween,
+                        MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
                         'Your Order Total',
-                        style:
-                            TextStyle(
-                          fontWeight:
-                              FontWeight.bold,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                       Text(
                         '₹${_formatMoney(vendorTotal)}',
-                        style:
-                            const TextStyle(
-                          fontWeight:
-                              FontWeight.bold,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
                           fontSize: 17,
                         ),
                       ),
@@ -1402,19 +1120,16 @@ class _VendorPanelState extends State<VendorPanel> {
                   ),
                 ),
 
-                const SizedBox(
-                  height: 8,
-                ),
-
-                if (isMultiVendor)
+                if (isMultiVendor) ...[
+                  const SizedBox(height: 8),
                   const Text(
                     'Other vendors\' products are hidden from you.',
-                    style:
-                        TextStyle(
+                    style: TextStyle(
                       color: Colors.grey,
                       fontSize: 12,
                     ),
                   ),
+                ],
               ],
             ),
           ),
@@ -1424,7 +1139,7 @@ class _VendorPanelState extends State<VendorPanel> {
   }
 
   // ============================================================
-  // VENDOR ORDER ITEM
+  // ORDER ITEM
   // ============================================================
 
   Widget _buildVendorOrderItem(
@@ -1436,90 +1151,60 @@ class _VendorPanelState extends State<VendorPanel> {
             'Product';
 
     final quantity =
-        _toInt(
-      item['quantity'],
-    );
+        _toInt(item['quantity']);
 
     final price =
-        _toDouble(
-      item['price'],
-    );
+        _toDouble(item['price']);
 
     final total =
-        _toDouble(
-      item['total'],
-    );
+        _toDouble(item['total']);
 
     final imageUrl =
-        item['imageUrl']
-                ?.toString() ??
-            '';
+        item['imageUrl']?.toString() ?? '';
+
+    final calculatedTotal =
+        total > 0
+            ? total
+            : price * quantity;
 
     return Container(
-      margin:
-          const EdgeInsets.only(
+      margin: const EdgeInsets.only(
         bottom: 10,
       ),
-      padding:
-          const EdgeInsets.all(10),
-      decoration:
-          BoxDecoration(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
         borderRadius:
-            BorderRadius.circular(
-          10,
-        ),
-        border:
-            Border.all(
-          color:
-              Colors.grey.shade300,
+            BorderRadius.circular(10),
+        border: Border.all(
+          color: Colors.grey.shade300,
         ),
       ),
       child: Row(
         crossAxisAlignment:
-            CrossAxisAlignment
-                .start,
+            CrossAxisAlignment.start,
         children: [
-          _buildProductImage(
-            imageUrl,
-          ),
-
-          const SizedBox(
-            width: 12,
-          ),
-
+          _buildProductImage(imageUrl),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment:
-                  CrossAxisAlignment
-                      .start,
+                  CrossAxisAlignment.start,
               children: [
                 Text(
                   name,
-                  style:
-                      const TextStyle(
-                    fontWeight:
-                        FontWeight.bold,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-
-                const SizedBox(
-                  height: 4,
-                ),
-
-                Text(
-                  'Qty: $quantity',
-                ),
-
+                const SizedBox(height: 4),
+                Text('Qty: $quantity'),
                 Text(
                   'Price: ₹${_formatMoney(price)}',
                 ),
-
                 Text(
-                  'Total: ₹${_formatMoney(total > 0 ? total : price * quantity)}',
-                  style:
-                      const TextStyle(
-                    fontWeight:
-                        FontWeight.bold,
+                  'Total: ₹${_formatMoney(calculatedTotal)}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ],
@@ -1541,27 +1226,20 @@ class _VendorPanelState extends State<VendorPanel> {
       return Container(
         width: 58,
         height: 58,
-        decoration:
-            BoxDecoration(
+        decoration: BoxDecoration(
           borderRadius:
-              BorderRadius.circular(
-            8,
-          ),
-          color:
-              Colors.grey.shade200,
+              BorderRadius.circular(8),
+          color: Colors.grey.shade200,
         ),
         child: const Icon(
-          Icons
-              .image_not_supported_outlined,
+          Icons.image_not_supported_outlined,
         ),
       );
     }
 
     return ClipRRect(
       borderRadius:
-          BorderRadius.circular(
-        8,
-      ),
+          BorderRadius.circular(8),
       child: Image.network(
         url,
         width: 58,
@@ -1572,11 +1250,9 @@ class _VendorPanelState extends State<VendorPanel> {
           return Container(
             width: 58,
             height: 58,
-            color:
-                Colors.grey.shade200,
+            color: Colors.grey.shade200,
             child: const Icon(
-              Icons
-                  .image_not_supported_outlined,
+              Icons.image_not_supported_outlined,
             ),
           );
         },
@@ -1608,8 +1284,7 @@ class _VendorPanelState extends State<VendorPanel> {
                 _vendorActive;
 
         return ListView(
-          padding:
-              const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16),
           children: [
             Card(
               child: Padding(
@@ -1624,67 +1299,41 @@ class _VendorPanelState extends State<VendorPanel> {
                         size: 40,
                       ),
                     ),
-
-                    const SizedBox(
-                      height: 14,
-                    ),
-
+                    const SizedBox(height: 14),
                     Text(
                       _vendorName.isEmpty
                           ? 'Vendor'
                           : _vendorName,
-                      style:
-                          const TextStyle(
+                      style: const TextStyle(
                         fontSize: 22,
                         fontWeight:
                             FontWeight.bold,
                       ),
                     ),
-
-                    const SizedBox(
-                      height: 6,
-                    ),
-
+                    const SizedBox(height: 6),
                     Text(
                       _vendorEmail,
-                      style:
-                          const TextStyle(
+                      style: const TextStyle(
                         color: Colors.grey,
                       ),
                     ),
-
-                    if (_vendorPhone
-                        .isNotEmpty) ...[
-                      const SizedBox(
-                        height: 4,
-                      ),
+                    if (_vendorPhone.isNotEmpty) ...[
+                      const SizedBox(height: 4),
                       Text(
                         _vendorPhone,
-                        style:
-                            const TextStyle(
+                        style: const TextStyle(
                           color: Colors.grey,
                         ),
                       ),
                     ],
-
-                    const SizedBox(
-                      height: 18,
-                    ),
-
+                    const SizedBox(height: 18),
                     Row(
                       mainAxisAlignment:
-                          MainAxisAlignment
-                              .center,
+                          MainAxisAlignment.center,
                       children: [
-                        _statusChip(
-                          status,
-                        ),
-                        const SizedBox(
-                          width: 8,
-                        ),
-                        _activeChip(
-                          active,
-                        ),
+                        _statusChip(status),
+                        const SizedBox(width: 8),
+                        _activeChip(active),
                       ],
                     ),
                   ],
@@ -1692,39 +1341,26 @@ class _VendorPanelState extends State<VendorPanel> {
               ),
             ),
 
-            const SizedBox(
-              height: 16,
-            ),
-
-            // ==================================================
-            // KYC / DOCUMENTS
-            // ==================================================
+            const SizedBox(height: 16),
 
             Card(
               child: ListTile(
-                leading:
-                    const CircleAvatar(
+                leading: const CircleAvatar(
                   child: Icon(
-                    Icons
-                        .verified_user_outlined,
+                    Icons.verified_user_outlined,
                   ),
                 ),
                 title: const Text(
                   'KYC & Documents',
-                  style:
-                      TextStyle(
-                    fontWeight:
-                        FontWeight.bold,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                subtitle:
-                    const Text(
+                subtitle: const Text(
                   'PAN, Aadhaar, GST, Bank & Address Proof',
                 ),
                 trailing:
-                    const Icon(
-                  Icons.chevron_right,
-                ),
+                    const Icon(Icons.chevron_right),
                 onTap: () {
                   Navigator.push(
                     context,
@@ -1737,69 +1373,44 @@ class _VendorPanelState extends State<VendorPanel> {
               ),
             ),
 
-            const SizedBox(
-              height: 12,
-            ),
+            const SizedBox(height: 12),
 
             Card(
               child: ListTile(
-                leading:
-                    const CircleAvatar(
+                leading: const CircleAvatar(
                   child: Icon(
                     Icons.badge_outlined,
                   ),
                 ),
-                title:
-                    const Text(
-                  'Vendor ID',
-                ),
-                subtitle:
-                    Text(
-                  _vendorUid,
-                ),
+                title: const Text('Vendor ID'),
+                subtitle: Text(_vendorUid),
               ),
             ),
 
-            const SizedBox(
-              height: 12,
-            ),
+            const SizedBox(height: 12),
 
             Card(
               child: ListTile(
-                leading:
-                    const CircleAvatar(
+                leading: const CircleAvatar(
                   child: Icon(
-                    Icons
-                        .check_circle_outline,
+                    Icons.check_circle_outline,
                   ),
                 ),
                 title:
-                    const Text(
-                  'Approval Status',
-                ),
+                    const Text('Approval Status'),
                 subtitle:
-                    Text(
-                  status.toUpperCase(),
-                ),
+                    Text(status.toUpperCase()),
               ),
             ),
 
-            const SizedBox(
-              height: 24,
-            ),
+            const SizedBox(height: 24),
 
             SizedBox(
               height: 50,
-              child:
-                  OutlinedButton.icon(
+              child: OutlinedButton.icon(
                 onPressed: _logout,
-                icon: const Icon(
-                  Icons.logout,
-                ),
-                label:
-                    const Text(
-                  'Logout',
-                ),
+                icon: const Icon(Icons.logout),
+                label: const Text('Logout'),
               ),
             ),
           ],
@@ -1814,30 +1425,24 @@ class _VendorPanelState extends State<VendorPanel> {
 
   Widget _buildDashboard() {
     return ListView(
-      padding:
-          const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
       children: [
         Card(
           elevation: 2,
           child: Padding(
-            padding:
-                const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment:
                   CrossAxisAlignment.start,
               children: [
                 Text(
                   'Welcome, ${_vendorName.isEmpty ? 'Vendor' : _vendorName}',
-                  style:
-                      const TextStyle(
+                  style: const TextStyle(
                     fontSize: 22,
-                    fontWeight:
-                        FontWeight.bold,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(
-                  height: 8,
-                ),
+                const SizedBox(height: 8),
                 const Text(
                   'Manage your products and orders from your Vendor Panel.',
                 ),
@@ -1846,66 +1451,49 @@ class _VendorPanelState extends State<VendorPanel> {
           ),
         ),
 
-        const SizedBox(
-          height: 16,
-        ),
+        const SizedBox(height: 16),
 
         Row(
           children: [
             Expanded(
               child: _dashboardCount(
-                icon: Icons
-                    .inventory_2_outlined,
+                icon:
+                    Icons.inventory_2_outlined,
                 title: 'Products',
                 stream: _firestore
                     .collection('Products')
                     .where(
                       'vendorUid',
-                      isEqualTo:
-                          _vendorUid,
+                      isEqualTo: _vendorUid,
                     )
                     .snapshots(),
               ),
             ),
-            const SizedBox(
-              width: 12,
-            ),
+            const SizedBox(width: 12),
             Expanded(
-              child:
-                  _buildOrderCountCard(),
+              child: _buildOrderCountCard(),
             ),
           ],
         ),
 
-        const SizedBox(
-          height: 16,
-        ),
+        const SizedBox(height: 16),
 
         Card(
           child: ListTile(
-            leading:
-                const CircleAvatar(
-              child: Icon(
-                Icons.add_business,
-              ),
+            leading: const CircleAvatar(
+              child: Icon(Icons.add_business),
             ),
-            title:
-                const Text(
+            title: const Text(
               'Add Product',
-              style:
-                  TextStyle(
-                fontWeight:
-                    FontWeight.bold,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
               ),
             ),
-            subtitle:
-                const Text(
+            subtitle: const Text(
               'Add a new product to your store',
             ),
             trailing:
-                const Icon(
-              Icons.chevron_right,
-            ),
+                const Icon(Icons.chevron_right),
             onTap: () {
               setState(() {
                 _currentIndex = 1;
@@ -1916,36 +1504,26 @@ class _VendorPanelState extends State<VendorPanel> {
           ),
         ),
 
-        const SizedBox(
-          height: 12,
-        ),
+        const SizedBox(height: 12),
 
         Card(
           child: ListTile(
-            leading:
-                const CircleAvatar(
+            leading: const CircleAvatar(
               child: Icon(
-                Icons
-                    .verified_user_outlined,
+                Icons.verified_user_outlined,
               ),
             ),
-            title:
-                const Text(
+            title: const Text(
               'KYC & Documents',
-              style:
-                  TextStyle(
-                fontWeight:
-                    FontWeight.bold,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
               ),
             ),
-            subtitle:
-                const Text(
+            subtitle: const Text(
               'Upload and track your required documents',
             ),
             trailing:
-                const Icon(
-              Icons.chevron_right,
-            ),
+                const Icon(Icons.chevron_right),
             onTap: () {
               Navigator.push(
                 context,
@@ -1958,24 +1536,18 @@ class _VendorPanelState extends State<VendorPanel> {
           ),
         ),
 
-        const SizedBox(
-          height: 16,
-        ),
+        const SizedBox(height: 16),
 
         Card(
           child: ListTile(
-            leading:
-                const Icon(
+            leading: const Icon(
               Icons.verified,
               color: Colors.green,
             ),
-            title:
-                const Text(
+            title: const Text(
               'Vendor Account Approved',
-              style:
-                  TextStyle(
-                fontWeight:
-                    FontWeight.bold,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
               ),
             ),
             subtitle: Text(
@@ -1989,26 +1561,23 @@ class _VendorPanelState extends State<VendorPanel> {
   }
 
   // ============================================================
-  // ORDER COUNT CARD
+  // ORDER COUNT
   // ============================================================
 
   Widget _buildOrderCountCard() {
     return Card(
       child: Padding(
-        padding:
-            const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(18),
         child: StreamBuilder<
             QuerySnapshot<Map<String, dynamic>>>(
           stream: _firestore
               .collection('orders')
               .where(
                 'vendorUids',
-                arrayContains:
-                    _vendorUid,
+                arrayContains: _vendorUid,
               )
               .snapshots(),
-          builder:
-              (context, newSnapshot) {
+          builder: (context, newSnapshot) {
             return StreamBuilder<
                 QuerySnapshot<
                     Map<String, dynamic>>>(
@@ -2016,56 +1585,49 @@ class _VendorPanelState extends State<VendorPanel> {
                   .collection('orders')
                   .where(
                     'vendorUid',
-                    isEqualTo:
-                        _vendorUid,
+                    isEqualTo: _vendorUid,
                   )
                   .snapshots(),
-              builder:
-                  (context, legacySnapshot) {
-                final ids =
-                    <String>{};
+              builder: (
+                context,
+                legacySnapshot,
+              ) {
+                final ids = <String>{};
 
                 for (final doc
-                    in newSnapshot
-                            .data
-                            ?.docs ??
-                        []) {
-                  ids.add(doc.id);
+                    in newSnapshot.data?.docs ?? []) {
+                  if (_orderBelongsToVendor(
+                    doc.data(),
+                  )) {
+                    ids.add(doc.id);
+                  }
                 }
 
                 for (final doc
-                    in legacySnapshot
-                            .data
-                            ?.docs ??
-                        []) {
-                  ids.add(doc.id);
+                    in legacySnapshot.data?.docs ?? []) {
+                  if (_orderBelongsToVendor(
+                    doc.data(),
+                  )) {
+                    ids.add(doc.id);
+                  }
                 }
 
                 return Column(
                   children: [
                     const Icon(
-                      Icons
-                          .receipt_long_outlined,
+                      Icons.receipt_long_outlined,
                       size: 34,
                     ),
-                    const SizedBox(
-                      height: 10,
-                    ),
+                    const SizedBox(height: 10),
                     Text(
                       '${ids.length}',
-                      style:
-                          const TextStyle(
+                      style: const TextStyle(
                         fontSize: 26,
-                        fontWeight:
-                            FontWeight.bold,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(
-                      height: 4,
-                    ),
-                    const Text(
-                      'Orders',
-                    ),
+                    const SizedBox(height: 4),
+                    const Text('Orders'),
                   ],
                 );
               },
@@ -2090,16 +1652,13 @@ class _VendorPanelState extends State<VendorPanel> {
   }) {
     return Card(
       child: Padding(
-        padding:
-            const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(18),
         child: StreamBuilder<
             QuerySnapshot<Map<String, dynamic>>>(
           stream: stream,
-          builder:
-              (context, snapshot) {
+          builder: (context, snapshot) {
             final count =
-                snapshot.data?.docs.length ??
-                    0;
+                snapshot.data?.docs.length ?? 0;
 
             return Column(
               children: [
@@ -2107,21 +1666,15 @@ class _VendorPanelState extends State<VendorPanel> {
                   icon,
                   size: 34,
                 ),
-                const SizedBox(
-                  height: 10,
-                ),
+                const SizedBox(height: 10),
                 Text(
                   '$count',
-                  style:
-                      const TextStyle(
+                  style: const TextStyle(
                     fontSize: 26,
-                    fontWeight:
-                        FontWeight.bold,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(
-                  height: 4,
-                ),
+                const SizedBox(height: 4),
                 Text(title),
               ],
             );
@@ -2132,12 +1685,10 @@ class _VendorPanelState extends State<VendorPanel> {
   }
 
   // ============================================================
-  // STATUS UI
+  // STATUS
   // ============================================================
 
-  Widget _statusChip(
-    String status,
-  ) {
+  Widget _statusChip(String status) {
     Color color;
 
     switch (status.toLowerCase()) {
@@ -2146,9 +1697,6 @@ class _VendorPanelState extends State<VendorPanel> {
         break;
 
       case 'rejected':
-        color = Colors.red;
-        break;
-
       case 'suspended':
         color = Colors.red;
         break;
@@ -2159,8 +1707,7 @@ class _VendorPanelState extends State<VendorPanel> {
 
     return Chip(
       avatar: Icon(
-        status.toLowerCase() ==
-                'approved'
+        status.toLowerCase() == 'approved'
             ? Icons.check_circle
             : Icons.info_outline,
         size: 18,
@@ -2170,36 +1717,28 @@ class _VendorPanelState extends State<VendorPanel> {
         status.toUpperCase(),
         style: TextStyle(
           color: color,
-          fontWeight:
-              FontWeight.bold,
+          fontWeight: FontWeight.bold,
         ),
       ),
     );
   }
 
-  Widget _activeChip(
-    bool active,
-  ) {
+  Widget _activeChip(bool active) {
     return Chip(
       avatar: Icon(
         active
             ? Icons.power
             : Icons.power_off,
         size: 18,
-        color: active
-            ? Colors.green
-            : Colors.red,
+        color:
+            active ? Colors.green : Colors.red,
       ),
       label: Text(
-        active
-            ? 'ACTIVE'
-            : 'INACTIVE',
+        active ? 'ACTIVE' : 'INACTIVE',
         style: TextStyle(
-          color: active
-              ? Colors.green
-              : Colors.red,
-          fontWeight:
-              FontWeight.bold,
+          color:
+              active ? Colors.green : Colors.red,
+          fontWeight: FontWeight.bold,
         ),
       ),
     );
@@ -2218,8 +1757,7 @@ class _VendorPanelState extends State<VendorPanel> {
     String? hint,
   }) {
     return Padding(
-      padding:
-          const EdgeInsets.only(
+      padding: const EdgeInsets.only(
         bottom: 12,
       ),
       child: TextFormField(
@@ -2236,8 +1774,7 @@ class _VendorPanelState extends State<VendorPanel> {
                 return null;
               }
             : null,
-        decoration:
-            InputDecoration(
+        decoration: InputDecoration(
           labelText: label,
           hintText: hint,
           border:
@@ -2247,18 +1784,14 @@ class _VendorPanelState extends State<VendorPanel> {
     );
   }
 
-  double _number(
-    String value,
-  ) {
+  double _number(String value) {
     return double.tryParse(
           value.trim(),
         ) ??
         0;
   }
 
-  double _toDouble(
-    dynamic value,
-  ) {
+  double _toDouble(dynamic value) {
     if (value is num) {
       return value.toDouble();
     }
@@ -2269,9 +1802,7 @@ class _VendorPanelState extends State<VendorPanel> {
         0;
   }
 
-  int _toInt(
-    dynamic value,
-  ) {
+  int _toInt(dynamic value) {
     if (value is int) {
       return value;
     }
@@ -2286,42 +1817,26 @@ class _VendorPanelState extends State<VendorPanel> {
         0;
   }
 
-  String _formatMoney(
-    double value,
-  ) {
+  String _formatMoney(double value) {
     if (value == value.roundToDouble()) {
-      return value
-          .toInt()
-          .toString();
+      return value.toInt().toString();
     }
 
-    return value.toStringAsFixed(
-      2,
-    );
+    return value.toStringAsFixed(2);
   }
 
-  List<String> _splitLines(
-    String value,
-  ) {
+  List<String> _splitLines(String value) {
     return value
         .split('\n')
-        .map(
-          (e) => e.trim(),
-        )
-        .where(
-          (e) => e.isNotEmpty,
-        )
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
         .toList();
   }
 
-  String _readList(
-    dynamic value,
-  ) {
+  String _readList(dynamic value) {
     if (value is List) {
       return value
-          .map(
-            (e) => e.toString(),
-          )
+          .map((e) => e.toString())
           .join('\n');
     }
 
@@ -2331,25 +1846,18 @@ class _VendorPanelState extends State<VendorPanel> {
   String _readImageUrls(
     Map<String, dynamic> data,
   ) {
-    final urls =
-        data['ImageUrls'];
+    final urls = data['ImageUrls'];
 
     if (urls is List) {
       return urls
-          .map(
-            (e) => e.toString(),
-          )
+          .map((e) => e.toString())
           .join('\n');
     }
 
-    return data['Imageurl']
-            ?.toString() ??
-        '';
+    return data['Imageurl']?.toString() ?? '';
   }
 
-  DateTime _timestampValue(
-    dynamic value,
-  ) {
+  DateTime _timestampValue(dynamic value) {
     if (value is Timestamp) {
       return value.toDate();
     }
@@ -2358,69 +1866,44 @@ class _VendorPanelState extends State<VendorPanel> {
       return value;
     }
 
-    return DateTime.fromMillisecondsSinceEpoch(
-      0,
-    );
+    return DateTime.fromMillisecondsSinceEpoch(0);
   }
 
-  String _formatTimestamp(
-    dynamic value,
-  ) {
+  String _formatTimestamp(dynamic value) {
     if (value == null) {
       return '';
     }
 
-    final date =
-        _timestampValue(value);
+    final date = _timestampValue(value);
 
-    if (date.millisecondsSinceEpoch ==
-        0) {
+    if (date.millisecondsSinceEpoch == 0) {
       return '';
     }
 
     final day =
-        date.day.toString().padLeft(
-              2,
-              '0',
-            );
+        date.day.toString().padLeft(2, '0');
 
     final month =
-        date.month.toString().padLeft(
-              2,
-              '0',
-            );
+        date.month.toString().padLeft(2, '0');
 
-    final year =
-        date.year.toString();
+    final year = date.year.toString();
 
     final hour =
-        date.hour.toString().padLeft(
-              2,
-              '0',
-            );
+        date.hour.toString().padLeft(2, '0');
 
     final minute =
-        date.minute.toString().padLeft(
-              2,
-              '0',
-            );
+        date.minute.toString().padLeft(2, '0');
 
     return '$day/$month/$year $hour:$minute';
   }
 
-  void _showMessage(
-    String message,
-  ) {
+  void _showMessage(String message) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context)
-        .showSnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content:
-            Text(message),
-        behavior:
-            SnackBarBehavior
-                .floating,
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -2430,14 +1913,11 @@ class _VendorPanelState extends State<VendorPanel> {
   // ============================================================
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(
         body: Center(
-          child:
-              CircularProgressIndicator(),
+          child: CircularProgressIndicator(),
         ),
       );
     }
@@ -2470,86 +1950,60 @@ class _VendorPanelState extends State<VendorPanel> {
       appBar: AppBar(
         title: Text(
           titles[_currentIndex],
-          style:
-              const TextStyle(
-            fontWeight:
-                FontWeight.bold,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
           ),
         ),
         actions: [
           IconButton(
             tooltip: 'Logout',
             onPressed: _logout,
-            icon:
-                const Icon(
-              Icons.logout,
-            ),
+            icon: const Icon(Icons.logout),
           ),
         ],
       ),
-
-      body:
-          pages[_currentIndex],
-
+      body: pages[_currentIndex],
       floatingActionButton:
           _currentIndex == 1
               ? FloatingActionButton.extended(
                   onPressed:
                       _showProductDialog,
                   icon:
-                      const Icon(
-                    Icons.add,
-                  ),
+                      const Icon(Icons.add),
                   label:
-                      const Text(
-                    'Add Product',
-                  ),
+                      const Text('Add Product'),
                 )
               : null,
-
-      bottomNavigationBar:
-          NavigationBar(
-        selectedIndex:
-            _currentIndex,
-        onDestinationSelected:
-            (index) {
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _currentIndex,
+        onDestinationSelected: (index) {
           setState(() {
-            _currentIndex =
-                index;
+            _currentIndex = index;
           });
         },
         destinations: const [
           NavigationDestination(
             icon: Icon(
-              Icons
-                  .dashboard_outlined,
+              Icons.dashboard_outlined,
             ),
             selectedIcon:
-                Icon(
-              Icons.dashboard,
-            ),
+                Icon(Icons.dashboard),
             label: 'Dashboard',
           ),
           NavigationDestination(
             icon: Icon(
-              Icons
-                  .inventory_2_outlined,
+              Icons.inventory_2_outlined,
             ),
             selectedIcon:
-                Icon(
-              Icons.inventory_2,
-            ),
+                Icon(Icons.inventory_2),
             label: 'Products',
           ),
           NavigationDestination(
             icon: Icon(
-              Icons
-                  .receipt_long_outlined,
+              Icons.receipt_long_outlined,
             ),
             selectedIcon:
-                Icon(
-              Icons.receipt_long,
-            ),
+                Icon(Icons.receipt_long),
             label: 'Orders',
           ),
           NavigationDestination(
@@ -2557,9 +2011,7 @@ class _VendorPanelState extends State<VendorPanel> {
               Icons.person_outline,
             ),
             selectedIcon:
-                Icon(
-              Icons.person,
-            ),
+                Icon(Icons.person),
             label: 'Profile',
           ),
         ],
