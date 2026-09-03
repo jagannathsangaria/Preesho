@@ -530,6 +530,10 @@ class _VendorPanelState extends State<VendorPanel> {
     imageUrlsController.dispose();
   }
 
+  // ============================================================
+  // SAVE PRODUCT
+  // ============================================================
+
   Future<void> _saveProduct({
     DocumentSnapshot<Map<String, dynamic>>? product,
     required String name,
@@ -554,7 +558,29 @@ class _VendorPanelState extends State<VendorPanel> {
       final collection =
           _firestore.collection('Products');
 
-      final productData = <String, dynamic>{
+      // ========================================================
+      // SECURITY CHECK FOR EDIT
+      // ========================================================
+
+      if (product != null) {
+        final existingData =
+            product.data() ?? {};
+
+        final existingVendorUid =
+            existingData['vendorUid']
+                ?.toString()
+                .trim();
+
+        if (existingVendorUid != _vendorUid) {
+          _showMessage(
+            'You can only edit your own products.',
+          );
+          return;
+        }
+      }
+
+      final productData =
+          <String, dynamic>{
         'Name': name,
         'Category': category,
         'Price': price,
@@ -562,9 +588,10 @@ class _VendorPanelState extends State<VendorPanel> {
         'DiscountPercent': discount,
         'Stock': stock,
         'ImageUrls': imageUrls,
-        'Imageurl': imageUrls.isNotEmpty
-            ? imageUrls.first
-            : '',
+        'Imageurl':
+            imageUrls.isNotEmpty
+                ? imageUrls.first
+                : '',
         'Description': description,
         'Remark': remark,
         'Brand': brand,
@@ -576,7 +603,10 @@ class _VendorPanelState extends State<VendorPanel> {
         'Highlights': highlights,
         'Active': active,
 
-        // Vendor mapping
+        // ======================================================
+        // VENDOR MAPPING
+        // ======================================================
+
         'vendorUid': _vendorUid,
         'vendorName': _vendorName,
 
@@ -588,7 +618,9 @@ class _VendorPanelState extends State<VendorPanel> {
         productData['CreatedAt'] =
             FieldValue.serverTimestamp();
 
-        await collection.add(productData);
+        await collection.add(
+          productData,
+        );
 
         _showMessage(
           'Product added successfully.',
@@ -614,13 +646,16 @@ class _VendorPanelState extends State<VendorPanel> {
   // ============================================================
 
   Future<void> _deleteProduct(
-    DocumentSnapshot<Map<String, dynamic>> product,
+    DocumentSnapshot<Map<String, dynamic>>
+        product,
   ) async {
     final data =
         product.data() ?? {};
 
     final productVendor =
-        data['vendorUid']?.toString();
+        data['vendorUid']
+            ?.toString()
+            .trim();
 
     if (productVendor != _vendorUid) {
       _showMessage(
@@ -663,7 +698,9 @@ class _VendorPanelState extends State<VendorPanel> {
       },
     );
 
-    if (confirmed != true) return;
+    if (confirmed != true) {
+      return;
+    }
 
     try {
       await _firestore
@@ -730,7 +767,9 @@ class _VendorPanelState extends State<VendorPanel> {
                     Icons.inventory_2_outlined,
                     size: 70,
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(
+                    height: 16,
+                  ),
                   const Text(
                     'No products yet',
                     style: TextStyle(
@@ -739,13 +778,17 @@ class _VendorPanelState extends State<VendorPanel> {
                           FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(
+                    height: 8,
+                  ),
                   const Text(
                     'Add your first product to start selling.',
                     textAlign:
                         TextAlign.center,
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(
+                    height: 20,
+                  ),
                   FilledButton.icon(
                     onPressed:
                         _showProductDialog,
@@ -812,11 +855,13 @@ class _VendorPanelState extends State<VendorPanel> {
                   ),
                 ),
                 subtitle: Text(
-                  'Price: ₹$price\nStock: $stock',
+                  'Price: ₹$price\n'
+                  'Stock: $stock\n'
+                  'Status: ${active ? "Active" : "Inactive"}',
                 ),
                 isThreeLine: true,
-                trailing: PopupMenuButton<
-                    String>(
+                trailing:
+                    PopupMenuButton<String>(
                   onSelected:
                       (value) {
                     if (value ==
@@ -863,6 +908,13 @@ class _VendorPanelState extends State<VendorPanel> {
 
   // ============================================================
   // ORDERS
+  //
+  // New checkout writes vendorUids for EVERY order.
+  // Therefore arrayContains handles:
+  // 1. Single vendor
+  // 2. Multi vendor
+  //
+  // Legacy orders with only vendorUid are also checked separately.
   // ============================================================
 
   Widget _buildOrders() {
@@ -871,131 +923,664 @@ class _VendorPanelState extends State<VendorPanel> {
       stream: _firestore
           .collection('orders')
           .where(
-            'vendorUid',
-            isEqualTo: _vendorUid,
+            'vendorUids',
+            arrayContains: _vendorUid,
           )
           .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState ==
-            ConnectionState.waiting) {
-          return const Center(
-            child:
-                CircularProgressIndicator(),
-          );
-        }
+      builder: (context, newSnapshot) {
+        return StreamBuilder<
+            QuerySnapshot<Map<String, dynamic>>>(
+          stream: _firestore
+              .collection('orders')
+              .where(
+                'vendorUid',
+                isEqualTo: _vendorUid,
+              )
+              .snapshots(),
+          builder: (context, legacySnapshot) {
+            if (newSnapshot.connectionState ==
+                    ConnectionState.waiting &&
+                legacySnapshot.connectionState ==
+                    ConnectionState.waiting) {
+              return const Center(
+                child:
+                    CircularProgressIndicator(),
+              );
+            }
 
-        if (snapshot.hasError) {
-          return Center(
-            child: Text(
-              'Unable to load orders.\n${snapshot.error}',
-              textAlign:
-                  TextAlign.center,
-            ),
-          );
-        }
+            if (newSnapshot.hasError &&
+                legacySnapshot.hasError) {
+              return Center(
+                child: Text(
+                  'Unable to load orders.\n'
+                  '${newSnapshot.error}',
+                  textAlign:
+                      TextAlign.center,
+                ),
+              );
+            }
 
-        final orders =
-            snapshot.data?.docs ?? [];
+            // ==================================================
+            // MERGE BOTH QUERY RESULTS
+            // ==================================================
 
-        if (orders.isEmpty) {
-          return const Center(
-            child: Padding(
-              padding:
-                  EdgeInsets.all(30),
-              child: Column(
-                mainAxisAlignment:
-                    MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.receipt_long_outlined,
-                    size: 70,
-                  ),
-                  SizedBox(height: 16),
-                  Text(
-                    'No orders yet',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight:
-                          FontWeight.bold,
-                    ),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Orders containing your products will appear here.',
-                    textAlign:
-                        TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
+            final Map<String,
+                    DocumentSnapshot<Map<String, dynamic>>>
+                orderMap = {};
 
-        return ListView.builder(
-          padding:
-              const EdgeInsets.all(16),
-          itemCount: orders.length,
-          itemBuilder:
-              (context, index) {
-            final order =
-                orders[index];
+            for (final doc
+                in newSnapshot.data?.docs ??
+                    []) {
+              orderMap[doc.id] = doc;
+            }
 
-            final data =
-                order.data();
+            for (final doc
+                in legacySnapshot.data?.docs ??
+                    []) {
+              orderMap[doc.id] = doc;
+            }
 
-            final status =
-                data['status']
-                        ?.toString() ??
-                    'Placed';
+            final orders =
+                orderMap.values.toList();
 
-            final customer =
-                data['customerName'] ??
-                    data['CustomerName'] ??
-                    data['name'] ??
-                    'Customer';
+            // ==================================================
+            // SORT NEWEST FIRST
+            // ==================================================
 
-            final phone =
-                data['phone'] ??
-                    data['Phone'] ??
-                    '';
+            orders.sort(
+              (a, b) {
+                final aData =
+                    a.data() ?? {};
 
-            final total =
-                data['totalAmount'] ??
-                    data['total'] ??
-                    data['Total'] ??
-                    0;
+                final bData =
+                    b.data() ?? {};
 
-            return Card(
-              margin:
-                  const EdgeInsets.only(
-                bottom: 12,
-              ),
-              child: ListTile(
-                leading: CircleAvatar(
-                  child: const Icon(
-                    Icons.receipt_long,
+                final aTime =
+                    _timestampValue(
+                  aData['createdAt'] ??
+                      aData['placedAt'],
+                );
+
+                final bTime =
+                    _timestampValue(
+                  bData['createdAt'] ??
+                      bData['placedAt'],
+                );
+
+                return bTime.compareTo(
+                  aTime,
+                );
+              },
+            );
+
+            if (orders.isEmpty) {
+              return const Center(
+                child: Padding(
+                  padding:
+                      EdgeInsets.all(30),
+                  child: Column(
+                    mainAxisAlignment:
+                        MainAxisAlignment
+                            .center,
+                    children: [
+                      Icon(
+                        Icons
+                            .receipt_long_outlined,
+                        size: 70,
+                      ),
+                      SizedBox(
+                        height: 16,
+                      ),
+                      Text(
+                        'No orders yet',
+                        style:
+                            TextStyle(
+                          fontSize: 20,
+                          fontWeight:
+                              FontWeight
+                                  .bold,
+                        ),
+                      ),
+                      SizedBox(
+                        height: 8,
+                      ),
+                      Text(
+                        'Orders containing your products will appear here.',
+                        textAlign:
+                            TextAlign
+                                .center,
+                      ),
+                    ],
                   ),
                 ),
-                title: Text(
-                  'Order #${order.id}',
+              );
+            }
+
+            return ListView.builder(
+              padding:
+                  const EdgeInsets.all(16),
+              itemCount:
+                  orders.length,
+              itemBuilder:
+                  (context, index) {
+                final order =
+                    orders[index];
+
+                return _buildOrderCard(
+                  order,
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ============================================================
+  // ORDER CARD
+  // ============================================================
+
+  Widget _buildOrderCard(
+    DocumentSnapshot<Map<String, dynamic>>
+        order,
+  ) {
+    final data =
+        order.data() ?? {};
+
+    // ==========================================================
+    // CUSTOMER INFORMATION
+    // ==========================================================
+
+    final customer =
+        data['customerName'] ??
+            data['CustomerName'] ??
+            data['name'] ??
+            'Customer';
+
+    final phone =
+        data['customerMobile'] ??
+            data['phone'] ??
+            data['Phone'] ??
+            '';
+
+    // ==========================================================
+    // STATUS
+    // ==========================================================
+
+    final status =
+        data['orderStatus'] ??
+            data['status'] ??
+            'Placed';
+
+    // ==========================================================
+    // ONLY THIS VENDOR'S ITEMS
+    // ==========================================================
+
+    final List<dynamic> allItems =
+        data['items'] is List
+            ? List<dynamic>.from(
+                data['items'],
+              )
+            : [];
+
+    final List<Map<String, dynamic>>
+        vendorItems = [];
+
+    double vendorTotal = 0;
+
+    int vendorQuantity = 0;
+
+    for (final item in allItems) {
+      if (item is! Map) {
+        continue;
+      }
+
+      final itemMap =
+          Map<String, dynamic>.from(
+        item,
+      );
+
+      final itemVendorUid =
+          itemMap['vendorUid']
+              ?.toString()
+              .trim();
+
+      if (itemVendorUid !=
+          _vendorUid) {
+        continue;
+      }
+
+      final quantity =
+          _toInt(
+        itemMap['quantity'],
+      );
+
+      final price =
+          _toDouble(
+        itemMap['price'],
+      );
+
+      final itemTotal =
+          _toDouble(
+        itemMap['total'],
+      );
+
+      vendorQuantity += quantity;
+
+      vendorTotal +=
+          itemTotal > 0
+              ? itemTotal
+              : price * quantity;
+
+      vendorItems.add(
+        itemMap,
+      );
+    }
+
+    // ==========================================================
+    // LEGACY ORDER FALLBACK
+    //
+    // If old order doesn't have item-level vendorUid but
+    // order-level vendorUid belongs to this vendor, show items.
+    // ==========================================================
+
+    if (vendorItems.isEmpty &&
+        data['vendorUid']
+                ?.toString()
+                .trim() ==
+            _vendorUid) {
+      for (final item in allItems) {
+        if (item is! Map) {
+          continue;
+        }
+
+        final itemMap =
+            Map<String, dynamic>.from(
+          item,
+        );
+
+        final quantity =
+            _toInt(
+          itemMap['quantity'],
+        );
+
+        final price =
+            _toDouble(
+          itemMap['price'],
+        );
+
+        final itemTotal =
+            _toDouble(
+          itemMap['total'],
+        );
+
+        vendorQuantity +=
+            quantity;
+
+        vendorTotal +=
+            itemTotal > 0
+                ? itemTotal
+                : price * quantity;
+
+        vendorItems.add(
+          itemMap,
+        );
+      }
+    }
+
+    // ==========================================================
+    // DO NOT SHOW ORDER IF THIS VENDOR HAS NO ITEM
+    // ==========================================================
+
+    if (vendorItems.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final date =
+        _formatTimestamp(
+      data['createdAt'] ??
+          data['placedAt'],
+    );
+
+    final isMultiVendor =
+        data['isMultiVendor'] ==
+            true;
+
+    return Card(
+      margin:
+          const EdgeInsets.only(
+        bottom: 14,
+      ),
+      child: ExpansionTile(
+        leading: CircleAvatar(
+          child: const Icon(
+            Icons.receipt_long,
+          ),
+        ),
+
+        title: Text(
+          'Order #${order.id}',
+          style:
+              const TextStyle(
+            fontWeight:
+                FontWeight.bold,
+          ),
+        ),
+
+        subtitle: Padding(
+          padding:
+              const EdgeInsets.only(
+            top: 5,
+          ),
+          child: Column(
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Customer: $customer',
+              ),
+              if (phone
+                  .toString()
+                  .isNotEmpty)
+                Text(
+                  'Phone: $phone',
+                ),
+              Text(
+                'My Items: $vendorQuantity',
+              ),
+              Text(
+                'My Total: ₹${_formatMoney(vendorTotal)}',
+                style:
+                    const TextStyle(
+                  fontWeight:
+                      FontWeight.bold,
+                ),
+              ),
+              Text(
+                'Status: $status',
+              ),
+              if (isMultiVendor)
+                const Text(
+                  'Multi-vendor Order',
+                  style:
+                      TextStyle(
+                    fontWeight:
+                        FontWeight.bold,
+                  ),
+                ),
+              if (date.isNotEmpty)
+                Text(
+                  date,
+                ),
+            ],
+          ),
+        ),
+
+        children: [
+          const Divider(),
+
+          Padding(
+            padding:
+                const EdgeInsets.fromLTRB(
+              16,
+              4,
+              16,
+              16,
+            ),
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Your Products',
+                  style:
+                      TextStyle(
+                    fontSize: 17,
+                    fontWeight:
+                        FontWeight.bold,
+                  ),
+                ),
+
+                const SizedBox(
+                  height: 10,
+                ),
+
+                ...vendorItems.map(
+                  (item) =>
+                      _buildVendorOrderItem(
+                    item,
+                  ),
+                ),
+
+                const SizedBox(
+                  height: 10,
+                ),
+
+                Container(
+                  width:
+                      double.infinity,
+                  padding:
+                      const EdgeInsets.all(
+                    12,
+                  ),
+                  decoration:
+                      BoxDecoration(
+                    borderRadius:
+                        BorderRadius.circular(
+                      10,
+                    ),
+                    border:
+                        Border.all(
+                      color:
+                          Colors.grey.shade300,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment:
+                        MainAxisAlignment
+                            .spaceBetween,
+                    children: [
+                      const Text(
+                        'Your Order Total',
+                        style:
+                            TextStyle(
+                          fontWeight:
+                              FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        '₹${_formatMoney(vendorTotal)}',
+                        style:
+                            const TextStyle(
+                          fontWeight:
+                              FontWeight.bold,
+                          fontSize: 17,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(
+                  height: 8,
+                ),
+
+                if (isMultiVendor)
+                  const Text(
+                    'Other vendors\' products are hidden from you.',
+                    style:
+                        TextStyle(
+                      color: Colors.grey,
+                      fontSize: 12,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // VENDOR ORDER ITEM
+  // ============================================================
+
+  Widget _buildVendorOrderItem(
+    Map<String, dynamic> item,
+  ) {
+    final name =
+        item['name']?.toString() ??
+            item['Name']?.toString() ??
+            'Product';
+
+    final quantity =
+        _toInt(
+      item['quantity'],
+    );
+
+    final price =
+        _toDouble(
+      item['price'],
+    );
+
+    final total =
+        _toDouble(
+      item['total'],
+    );
+
+    final imageUrl =
+        item['imageUrl']
+                ?.toString() ??
+            '';
+
+    return Container(
+      margin:
+          const EdgeInsets.only(
+        bottom: 10,
+      ),
+      padding:
+          const EdgeInsets.all(10),
+      decoration:
+          BoxDecoration(
+        borderRadius:
+            BorderRadius.circular(
+          10,
+        ),
+        border:
+            Border.all(
+          color:
+              Colors.grey.shade300,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment:
+            CrossAxisAlignment
+                .start,
+        children: [
+          _buildProductImage(
+            imageUrl,
+          ),
+
+          const SizedBox(
+            width: 12,
+          ),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment
+                      .start,
+              children: [
+                Text(
+                  name,
                   style:
                       const TextStyle(
                     fontWeight:
                         FontWeight.bold,
                   ),
                 ),
-                subtitle: Text(
-                  'Customer: $customer\n'
-                  'Phone: $phone\n'
-                  'Total: ₹$total\n'
-                  'Status: $status',
+
+                const SizedBox(
+                  height: 4,
                 ),
-                isThreeLine: true,
-              ),
-            );
-          },
-        );
-      },
+
+                Text(
+                  'Qty: $quantity',
+                ),
+
+                Text(
+                  'Price: ₹${_formatMoney(price)}',
+                ),
+
+                Text(
+                  'Total: ₹${_formatMoney(total > 0 ? total : price * quantity)}',
+                  style:
+                      const TextStyle(
+                    fontWeight:
+                        FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // PRODUCT IMAGE
+  // ============================================================
+
+  Widget _buildProductImage(
+    String url,
+  ) {
+    if (url.trim().isEmpty) {
+      return Container(
+        width: 58,
+        height: 58,
+        decoration:
+            BoxDecoration(
+          borderRadius:
+              BorderRadius.circular(
+            8,
+          ),
+          color:
+              Colors.grey.shade200,
+        ),
+        child: const Icon(
+          Icons
+              .image_not_supported_outlined,
+        ),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius:
+          BorderRadius.circular(
+        8,
+      ),
+      child: Image.network(
+        url,
+        width: 58,
+        height: 58,
+        fit: BoxFit.cover,
+        errorBuilder:
+            (context, error, stack) {
+          return Container(
+            width: 58,
+            height: 58,
+            color:
+                Colors.grey.shade200,
+            child: const Icon(
+              Icons
+                  .image_not_supported_outlined,
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -1040,7 +1625,9 @@ class _VendorPanelState extends State<VendorPanel> {
                       ),
                     ),
 
-                    const SizedBox(height: 14),
+                    const SizedBox(
+                      height: 14,
+                    ),
 
                     Text(
                       _vendorName.isEmpty
@@ -1054,7 +1641,9 @@ class _VendorPanelState extends State<VendorPanel> {
                       ),
                     ),
 
-                    const SizedBox(height: 6),
+                    const SizedBox(
+                      height: 6,
+                    ),
 
                     Text(
                       _vendorEmail,
@@ -1066,7 +1655,9 @@ class _VendorPanelState extends State<VendorPanel> {
 
                     if (_vendorPhone
                         .isNotEmpty) ...[
-                      const SizedBox(height: 4),
+                      const SizedBox(
+                        height: 4,
+                      ),
                       Text(
                         _vendorPhone,
                         style:
@@ -1076,7 +1667,9 @@ class _VendorPanelState extends State<VendorPanel> {
                       ),
                     ],
 
-                    const SizedBox(height: 18),
+                    const SizedBox(
+                      height: 18,
+                    ),
 
                     Row(
                       mainAxisAlignment:
@@ -1099,27 +1692,33 @@ class _VendorPanelState extends State<VendorPanel> {
               ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(
+              height: 16,
+            ),
 
-            // ======================================================
+            // ==================================================
             // KYC / DOCUMENTS
-            // ======================================================
+            // ==================================================
 
             Card(
               child: ListTile(
-                leading: const CircleAvatar(
+                leading:
+                    const CircleAvatar(
                   child: Icon(
-                    Icons.verified_user_outlined,
+                    Icons
+                        .verified_user_outlined,
                   ),
                 ),
                 title: const Text(
                   'KYC & Documents',
-                  style: TextStyle(
+                  style:
+                      TextStyle(
                     fontWeight:
                         FontWeight.bold,
                   ),
                 ),
-                subtitle: const Text(
+                subtitle:
+                    const Text(
                   'PAN, Aadhaar, GST, Bank & Address Proof',
                 ),
                 trailing:
@@ -1138,52 +1737,67 @@ class _VendorPanelState extends State<VendorPanel> {
               ),
             ),
 
-            const SizedBox(height: 12),
+            const SizedBox(
+              height: 12,
+            ),
 
             Card(
               child: ListTile(
-                leading: const CircleAvatar(
+                leading:
+                    const CircleAvatar(
                   child: Icon(
                     Icons.badge_outlined,
                   ),
                 ),
-                title: const Text(
+                title:
+                    const Text(
                   'Vendor ID',
                 ),
-                subtitle: Text(
+                subtitle:
+                    Text(
                   _vendorUid,
                 ),
               ),
             ),
 
-            const SizedBox(height: 12),
+            const SizedBox(
+              height: 12,
+            ),
 
             Card(
               child: ListTile(
-                leading: const CircleAvatar(
+                leading:
+                    const CircleAvatar(
                   child: Icon(
-                    Icons.check_circle_outline,
+                    Icons
+                        .check_circle_outline,
                   ),
                 ),
-                title: const Text(
+                title:
+                    const Text(
                   'Approval Status',
                 ),
-                subtitle: Text(
+                subtitle:
+                    Text(
                   status.toUpperCase(),
                 ),
               ),
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(
+              height: 24,
+            ),
 
             SizedBox(
               height: 50,
-              child: OutlinedButton.icon(
+              child:
+                  OutlinedButton.icon(
                 onPressed: _logout,
                 icon: const Icon(
                   Icons.logout,
                 ),
-                label: const Text(
+                label:
+                    const Text(
                   'Logout',
                 ),
               ),
@@ -1221,7 +1835,9 @@ class _VendorPanelState extends State<VendorPanel> {
                         FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(
+                  height: 8,
+                ),
                 const Text(
                   'Manage your products and orders from your Vendor Panel.',
                 ),
@@ -1230,57 +1846,60 @@ class _VendorPanelState extends State<VendorPanel> {
           ),
         ),
 
-        const SizedBox(height: 16),
+        const SizedBox(
+          height: 16,
+        ),
 
         Row(
           children: [
             Expanded(
               child: _dashboardCount(
-                icon: Icons.inventory_2_outlined,
+                icon: Icons
+                    .inventory_2_outlined,
                 title: 'Products',
                 stream: _firestore
                     .collection('Products')
                     .where(
                       'vendorUid',
-                      isEqualTo: _vendorUid,
+                      isEqualTo:
+                          _vendorUid,
                     )
                     .snapshots(),
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(
+              width: 12,
+            ),
             Expanded(
-              child: _dashboardCount(
-                icon: Icons.receipt_long_outlined,
-                title: 'Orders',
-                stream: _firestore
-                    .collection('orders')
-                    .where(
-                      'vendorUid',
-                      isEqualTo: _vendorUid,
-                    )
-                    .snapshots(),
-              ),
+              child:
+                  _buildOrderCountCard(),
             ),
           ],
         ),
 
-        const SizedBox(height: 16),
+        const SizedBox(
+          height: 16,
+        ),
 
         Card(
           child: ListTile(
-            leading: const CircleAvatar(
+            leading:
+                const CircleAvatar(
               child: Icon(
                 Icons.add_business,
               ),
             ),
-            title: const Text(
+            title:
+                const Text(
               'Add Product',
-              style: TextStyle(
+              style:
+                  TextStyle(
                 fontWeight:
                     FontWeight.bold,
               ),
             ),
-            subtitle: const Text(
+            subtitle:
+                const Text(
               'Add a new product to your store',
             ),
             trailing:
@@ -1291,28 +1910,36 @@ class _VendorPanelState extends State<VendorPanel> {
               setState(() {
                 _currentIndex = 1;
               });
+
               _showProductDialog();
             },
           ),
         ),
 
-        const SizedBox(height: 12),
+        const SizedBox(
+          height: 12,
+        ),
 
         Card(
           child: ListTile(
-            leading: const CircleAvatar(
+            leading:
+                const CircleAvatar(
               child: Icon(
-                Icons.verified_user_outlined,
+                Icons
+                    .verified_user_outlined,
               ),
             ),
-            title: const Text(
+            title:
+                const Text(
               'KYC & Documents',
-              style: TextStyle(
+              style:
+                  TextStyle(
                 fontWeight:
                     FontWeight.bold,
               ),
             ),
-            subtitle: const Text(
+            subtitle:
+                const Text(
               'Upload and track your required documents',
             ),
             trailing:
@@ -1331,17 +1958,22 @@ class _VendorPanelState extends State<VendorPanel> {
           ),
         ),
 
-        const SizedBox(height: 16),
+        const SizedBox(
+          height: 16,
+        ),
 
         Card(
           child: ListTile(
-            leading: const Icon(
+            leading:
+                const Icon(
               Icons.verified,
               color: Colors.green,
             ),
-            title: const Text(
+            title:
+                const Text(
               'Vendor Account Approved',
-              style: TextStyle(
+              style:
+                  TextStyle(
                 fontWeight:
                     FontWeight.bold,
               ),
@@ -1356,10 +1988,104 @@ class _VendorPanelState extends State<VendorPanel> {
     );
   }
 
+  // ============================================================
+  // ORDER COUNT CARD
+  // ============================================================
+
+  Widget _buildOrderCountCard() {
+    return Card(
+      child: Padding(
+        padding:
+            const EdgeInsets.all(18),
+        child: StreamBuilder<
+            QuerySnapshot<Map<String, dynamic>>>(
+          stream: _firestore
+              .collection('orders')
+              .where(
+                'vendorUids',
+                arrayContains:
+                    _vendorUid,
+              )
+              .snapshots(),
+          builder:
+              (context, newSnapshot) {
+            return StreamBuilder<
+                QuerySnapshot<
+                    Map<String, dynamic>>>(
+              stream: _firestore
+                  .collection('orders')
+                  .where(
+                    'vendorUid',
+                    isEqualTo:
+                        _vendorUid,
+                  )
+                  .snapshots(),
+              builder:
+                  (context, legacySnapshot) {
+                final ids =
+                    <String>{};
+
+                for (final doc
+                    in newSnapshot
+                            .data
+                            ?.docs ??
+                        []) {
+                  ids.add(doc.id);
+                }
+
+                for (final doc
+                    in legacySnapshot
+                            .data
+                            ?.docs ??
+                        []) {
+                  ids.add(doc.id);
+                }
+
+                return Column(
+                  children: [
+                    const Icon(
+                      Icons
+                          .receipt_long_outlined,
+                      size: 34,
+                    ),
+                    const SizedBox(
+                      height: 10,
+                    ),
+                    Text(
+                      '${ids.length}',
+                      style:
+                          const TextStyle(
+                        fontSize: 26,
+                        fontWeight:
+                            FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(
+                      height: 4,
+                    ),
+                    const Text(
+                      'Orders',
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // DASHBOARD COUNT
+  // ============================================================
+
   Widget _dashboardCount({
     required IconData icon,
     required String title,
-    required Stream<QuerySnapshot<Map<String, dynamic>>>
+    required Stream<
+            QuerySnapshot<
+                Map<String, dynamic>>>
         stream,
   }) {
     return Card(
@@ -1381,7 +2107,9 @@ class _VendorPanelState extends State<VendorPanel> {
                   icon,
                   size: 34,
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(
+                  height: 10,
+                ),
                 Text(
                   '$count',
                   style:
@@ -1391,7 +2119,9 @@ class _VendorPanelState extends State<VendorPanel> {
                         FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(
+                  height: 4,
+                ),
                 Text(title),
               ],
             );
@@ -1414,12 +2144,15 @@ class _VendorPanelState extends State<VendorPanel> {
       case 'approved':
         color = Colors.green;
         break;
+
       case 'rejected':
         color = Colors.red;
         break;
+
       case 'suspended':
         color = Colors.red;
         break;
+
       default:
         color = Colors.orange;
     }
@@ -1499,6 +2232,7 @@ class _VendorPanelState extends State<VendorPanel> {
                     value.trim().isEmpty) {
                   return '$label is required';
                 }
+
                 return null;
               }
             : null,
@@ -1513,11 +2247,57 @@ class _VendorPanelState extends State<VendorPanel> {
     );
   }
 
-  double _number(String value) {
+  double _number(
+    String value,
+  ) {
     return double.tryParse(
           value.trim(),
         ) ??
         0;
+  }
+
+  double _toDouble(
+    dynamic value,
+  ) {
+    if (value is num) {
+      return value.toDouble();
+    }
+
+    return double.tryParse(
+          value?.toString() ?? '',
+        ) ??
+        0;
+  }
+
+  int _toInt(
+    dynamic value,
+  ) {
+    if (value is int) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    return int.tryParse(
+          value?.toString() ?? '',
+        ) ??
+        0;
+  }
+
+  String _formatMoney(
+    double value,
+  ) {
+    if (value == value.roundToDouble()) {
+      return value
+          .toInt()
+          .toString();
+    }
+
+    return value.toStringAsFixed(
+      2,
+    );
   }
 
   List<String> _splitLines(
@@ -1534,7 +2314,9 @@ class _VendorPanelState extends State<VendorPanel> {
         .toList();
   }
 
-  String _readList(dynamic value) {
+  String _readList(
+    dynamic value,
+  ) {
     if (value is List) {
       return value
           .map(
@@ -1549,7 +2331,8 @@ class _VendorPanelState extends State<VendorPanel> {
   String _readImageUrls(
     Map<String, dynamic> data,
   ) {
-    final urls = data['ImageUrls'];
+    final urls =
+        data['ImageUrls'];
 
     if (urls is List) {
       return urls
@@ -1559,11 +2342,70 @@ class _VendorPanelState extends State<VendorPanel> {
           .join('\n');
     }
 
-    final single =
-        data['Imageurl']?.toString() ??
-            '';
+    return data['Imageurl']
+            ?.toString() ??
+        '';
+  }
 
-    return single;
+  DateTime _timestampValue(
+    dynamic value,
+  ) {
+    if (value is Timestamp) {
+      return value.toDate();
+    }
+
+    if (value is DateTime) {
+      return value;
+    }
+
+    return DateTime.fromMillisecondsSinceEpoch(
+      0,
+    );
+  }
+
+  String _formatTimestamp(
+    dynamic value,
+  ) {
+    if (value == null) {
+      return '';
+    }
+
+    final date =
+        _timestampValue(value);
+
+    if (date.millisecondsSinceEpoch ==
+        0) {
+      return '';
+    }
+
+    final day =
+        date.day.toString().padLeft(
+              2,
+              '0',
+            );
+
+    final month =
+        date.month.toString().padLeft(
+              2,
+              '0',
+            );
+
+    final year =
+        date.year.toString();
+
+    final hour =
+        date.hour.toString().padLeft(
+              2,
+              '0',
+            );
+
+    final minute =
+        date.minute.toString().padLeft(
+              2,
+              '0',
+            );
+
+    return '$day/$month/$year $hour:$minute';
   }
 
   void _showMessage(
@@ -1574,9 +2416,11 @@ class _VendorPanelState extends State<VendorPanel> {
     ScaffoldMessenger.of(context)
         .showSnackBar(
       SnackBar(
-        content: Text(message),
+        content:
+            Text(message),
         behavior:
-            SnackBarBehavior.floating,
+            SnackBarBehavior
+                .floating,
       ),
     );
   }
@@ -1670,13 +2514,15 @@ class _VendorPanelState extends State<VendorPanel> {
         onDestinationSelected:
             (index) {
           setState(() {
-            _currentIndex = index;
+            _currentIndex =
+                index;
           });
         },
         destinations: const [
           NavigationDestination(
             icon: Icon(
-              Icons.dashboard_outlined,
+              Icons
+                  .dashboard_outlined,
             ),
             selectedIcon:
                 Icon(
@@ -1686,7 +2532,8 @@ class _VendorPanelState extends State<VendorPanel> {
           ),
           NavigationDestination(
             icon: Icon(
-              Icons.inventory_2_outlined,
+              Icons
+                  .inventory_2_outlined,
             ),
             selectedIcon:
                 Icon(
@@ -1696,7 +2543,8 @@ class _VendorPanelState extends State<VendorPanel> {
           ),
           NavigationDestination(
             icon: Icon(
-              Icons.receipt_long_outlined,
+              Icons
+                  .receipt_long_outlined,
             ),
             selectedIcon:
                 Icon(
