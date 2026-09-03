@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_functions/firebase_functions.dart';
 
 class CourierManagementPage extends StatefulWidget {
   const CourierManagementPage({super.key});
@@ -14,19 +15,36 @@ class _CourierManagementPageState
   final FirebaseFirestore _firestore =
       FirebaseFirestore.instance;
 
+  final FirebaseFunctions _functions =
+      FirebaseFunctions.instanceFor(
+    region: 'asia-south1',
+  );
+
   final nameController = TextEditingController();
   final emailController = TextEditingController();
   final phoneController = TextEditingController();
+  final passwordController = TextEditingController();
 
   bool saving = false;
+  bool obscurePassword = true;
 
   Future<void> _addCourier() async {
     final name = nameController.text.trim();
-    final email = emailController.text.trim();
+    final email = emailController.text.trim().toLowerCase();
     final phone = phoneController.text.trim();
+    final password = passwordController.text;
 
-    if (name.isEmpty || email.isEmpty) {
-      _showMessage('Courier name and email are required.');
+    if (name.isEmpty || email.isEmpty || password.isEmpty) {
+      _showMessage(
+        'Courier name, email and password are required.',
+      );
+      return;
+    }
+
+    if (password.length < 6) {
+      _showMessage(
+        'Password must contain at least 6 characters.',
+      );
       return;
     }
 
@@ -35,34 +53,62 @@ class _CourierManagementPageState
     });
 
     try {
-      /*
-       * Courier Authentication account creation will be connected
-       * through secure backend/Cloud Function.
-       *
-       * This document is created first so the Admin can maintain
-       * the courier master data.
-       */
+      final callable =
+          _functions.httpsCallable('createCourierAccount');
 
-      final docRef = _firestore.collection('couriers').doc();
-
-      await docRef.set({
+      final result = await callable.call({
         'name': name,
         'email': email,
         'phone': phone,
-        'role': 'courier',
-        'active': true,
-        'createdAt': Timestamp.now(),
-        'updatedAt': Timestamp.now(),
+        'password': password,
       });
 
       if (!mounted) return;
 
+      final resultData =
+          Map<String, dynamic>.from(result.data as Map);
+
       Navigator.pop(context);
 
-      _showMessage('Courier added successfully.');
-    } catch (e) {
       _showMessage(
-        'Unable to add courier.\n$e',
+        resultData['message']?.toString() ??
+            'Courier account created successfully.',
+      );
+    } on FirebaseFunctionsException catch (e) {
+      if (!mounted) return;
+
+      String message;
+
+      switch (e.code) {
+        case 'unauthenticated':
+          message = 'Please login again as Admin.';
+          break;
+
+        case 'permission-denied':
+          message = 'Only Admin can create courier accounts.';
+          break;
+
+        case 'already-exists':
+          message =
+              'A Firebase account already exists with this email.';
+          break;
+
+        case 'invalid-argument':
+          message = e.message ??
+              'Please check courier details.';
+          break;
+
+        default:
+          message = e.message ??
+              'Unable to create courier account.';
+      }
+
+      _showMessage(message);
+    } catch (e) {
+      if (!mounted) return;
+
+      _showMessage(
+        'Unable to create courier account.\n$e',
       );
     } finally {
       if (mounted) {
@@ -157,83 +203,145 @@ class _CourierManagementPageState
     nameController.clear();
     emailController.clear();
     phoneController.clear();
+    passwordController.clear();
+
+    obscurePassword = true;
 
     showDialog(
       context: context,
+      barrierDismissible: !saving,
       builder: (context) {
-        return AlertDialog(
-          title: const Text(
-            'Add Courier',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Courier Name',
-                    prefixIcon:
-                        Icon(Icons.person_outline),
-                    border: OutlineInputBorder(),
-                  ),
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text(
+                'Add Courier',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
                 ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: emailController,
-                  keyboardType:
-                      TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: 'Courier Email',
-                    prefixIcon:
-                        Icon(Icons.email_outlined),
-                    border: OutlineInputBorder(),
-                  ),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: nameController,
+                      textCapitalization:
+                          TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        labelText: 'Courier Name',
+                        prefixIcon:
+                            Icon(Icons.person_outline),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: emailController,
+                      keyboardType:
+                          TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        labelText: 'Courier Email',
+                        prefixIcon:
+                            Icon(Icons.email_outlined),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: phoneController,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(
+                        labelText: 'Phone Number',
+                        prefixIcon:
+                            Icon(Icons.phone_outlined),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: passwordController,
+                      obscureText: obscurePassword,
+                      decoration: InputDecoration(
+                        labelText: 'Login Password',
+                        prefixIcon:
+                            const Icon(Icons.lock_outline),
+                        border:
+                            const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          onPressed: () {
+                            setDialogState(() {
+                              obscurePassword =
+                                  !obscurePassword;
+                            });
+                          },
+                          icon: Icon(
+                            obscurePassword
+                                ? Icons.visibility_outlined
+                                : Icons
+                                    .visibility_off_outlined,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Minimum 6 characters',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: phoneController,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
-                    labelText: 'Phone Number',
-                    prefixIcon:
-                        Icon(Icons.phone_outlined),
-                    border: OutlineInputBorder(),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: saving
+                      ? null
+                      : () {
+                          Navigator.pop(context);
+                        },
+                  child: const Text('Cancel'),
+                ),
+                FilledButton.icon(
+                  onPressed: saving
+                      ? null
+                      : () async {
+                          setDialogState(() {
+                            saving = true;
+                          });
+
+                          await _addCourier();
+
+                          if (mounted) {
+                            setDialogState(() {
+                              saving = false;
+                            });
+                          }
+                        },
+                  icon: saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child:
+                              CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Icon(Icons.add),
+                  label: Text(
+                    saving
+                        ? 'Creating...'
+                        : 'Create Courier',
                   ),
                 ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: saving
-                  ? null
-                  : () {
-                      Navigator.pop(context);
-                    },
-              child: const Text('Cancel'),
-            ),
-            FilledButton.icon(
-              onPressed:
-                  saving ? null : _addCourier,
-              icon: saving
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child:
-                          CircularProgressIndicator(
-                        strokeWidth: 2,
-                      ),
-                    )
-                  : const Icon(Icons.add),
-              label: Text(
-                saving ? 'Saving...' : 'Add Courier',
-              ),
-            ),
-          ],
+            );
+          },
         );
       },
     );
@@ -277,34 +385,27 @@ class _CourierManagementPageState
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     TextField(
-                      controller:
-                          editNameController,
-                      decoration:
-                          const InputDecoration(
+                      controller: editNameController,
+                      decoration: const InputDecoration(
                         labelText: 'Courier Name',
                         border: OutlineInputBorder(),
                       ),
                     ),
                     const SizedBox(height: 14),
                     TextField(
-                      controller:
-                          editEmailController,
+                      controller: editEmailController,
                       keyboardType:
                           TextInputType.emailAddress,
-                      decoration:
-                          const InputDecoration(
+                      decoration: const InputDecoration(
                         labelText: 'Courier Email',
                         border: OutlineInputBorder(),
                       ),
                     ),
                     const SizedBox(height: 14),
                     TextField(
-                      controller:
-                          editPhoneController,
-                      keyboardType:
-                          TextInputType.phone,
-                      decoration:
-                          const InputDecoration(
+                      controller: editPhoneController,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(
                         labelText: 'Phone Number',
                         border: OutlineInputBorder(),
                       ),
@@ -339,7 +440,8 @@ class _CourierManagementPageState
                               'email':
                                   editEmailController
                                       .text
-                                      .trim(),
+                                      .trim()
+                                      .toLowerCase(),
                               'phone':
                                   editPhoneController
                                       .text
@@ -402,6 +504,7 @@ class _CourierManagementPageState
     nameController.dispose();
     emailController.dispose();
     phoneController.dispose();
+    passwordController.dispose();
     super.dispose();
   }
 
@@ -487,7 +590,7 @@ class _CourierManagementPageState
                     SizedBox(height: 8),
                     Text(
                       'Tap Add Courier to create the '
-                      'first courier record.',
+                      'first courier account.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Colors.grey,
@@ -673,9 +776,7 @@ class _CourierManagementPageState
                           ),
                         ],
                       ),
-
                       const Divider(height: 24),
-
                       Row(
                         children: [
                           Container(
