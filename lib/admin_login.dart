@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 
 import 'admin_panel.dart';
 import 'courier_panel.dart';
@@ -14,56 +14,104 @@ class AdminLogin extends StatefulWidget {
 }
 
 class _AdminLoginState extends State<AdminLogin> {
-  final emailController = TextEditingController();
-  final passwordController = TextEditingController();
+  final FirebaseAuth _auth =
+      FirebaseAuth.instance;
 
-  bool hidePassword = true;
-  bool loading = false;
+  final FirebaseFirestore _firestore =
+      FirebaseFirestore.instance;
 
-  Future<void> login() async {
-    final email = emailController.text.trim();
-    final password = passwordController.text;
+  final TextEditingController _emailController =
+      TextEditingController();
 
-    if (email.isEmpty || password.isEmpty) {
-      showMessage('Email and password required');
+  final TextEditingController _passwordController =
+      TextEditingController();
+
+  bool _loading = false;
+  bool _obscurePassword = true;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  // ============================================================
+  // STAFF LOGIN
+  // ============================================================
+
+  Future<void> _login() async {
+    if (_loading) {
+      return;
+    }
+
+    final email =
+        _emailController.text.trim();
+
+    final password =
+        _passwordController.text.trim();
+
+    if (email.isEmpty) {
+      _showMessage(
+        'Please enter email.',
+      );
+      return;
+    }
+
+    if (password.isEmpty) {
+      _showMessage(
+        'Please enter password.',
+      );
       return;
     }
 
     setState(() {
-      loading = true;
+      _loading = true;
     });
 
     try {
+      // ========================================================
+      // FIREBASE AUTH LOGIN
+      // ========================================================
+
       final credential =
-          await FirebaseAuth.instance.signInWithEmailAndPassword(
+          await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      final user = credential.user;
+      final user =
+          credential.user;
 
       if (user == null) {
-        throw Exception('User account not found.');
+        throw Exception(
+          'Unable to login.',
+        );
       }
 
-      final firestore = FirebaseFirestore.instance;
+      // ========================================================
+      // ADMIN CHECK
+      // ========================================================
 
-      // ============================================================
-      // 1. ADMIN CHECK
-      // ============================================================
-
-      final adminDoc = await firestore
-          .collection('Admins')
-          .doc(user.uid)
-          .get();
+      final adminDoc =
+          await _firestore
+              .collection('Admins')
+              .doc(user.uid)
+              .get();
 
       if (adminDoc.exists) {
-        final data = adminDoc.data() ?? {};
+        final adminData =
+            adminDoc.data() ?? {};
 
-        final role = data['Role']
-            ?.toString()
-            .trim()
-            .toLowerCase();
+        final roleValue =
+            adminData['role'] ??
+                adminData['Role'];
+
+        final role =
+            roleValue
+                ?.toString()
+                .trim()
+                .toLowerCase();
 
         if (role == 'admin') {
           if (!mounted) return;
@@ -71,7 +119,8 @@ class _AdminLoginState extends State<AdminLogin> {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (_) => const AdminPanel(),
+              builder: (_) =>
+                  const AdminPanel(),
             ),
           );
 
@@ -79,327 +128,472 @@ class _AdminLoginState extends State<AdminLogin> {
         }
       }
 
-      // ============================================================
-      // 2. USER DOCUMENT
-      // ============================================================
+      // ========================================================
+      // USERS DOCUMENT
+      // ========================================================
 
-      final userDoc = await firestore
-          .collection('users')
-          .doc(user.uid)
-          .get();
+      final userDoc =
+          await _firestore
+              .collection('users')
+              .doc(user.uid)
+              .get();
 
-      final userData = userDoc.data() ?? {};
+      final userData =
+          userDoc.data() ?? {};
 
-      final roleValue = userData['role'] ?? userData['Role'];
+      final roleValue =
+          userData['role'] ??
+              userData['Role'];
 
-      final role = roleValue
-          ?.toString()
-          .trim()
-          .toLowerCase();
+      final role =
+          roleValue
+              ?.toString()
+              .trim()
+              .toLowerCase();
 
-      // ============================================================
-      // 3. COURIER CHECK
-      // ============================================================
+      // ========================================================
+      // COURIER CHECK
+      // ========================================================
 
       if (role == 'courier') {
+        final active =
+            userData['active'] != false;
+
+        if (!active) {
+          await _auth.signOut();
+
+          _showMessage(
+            'Courier account is inactive.',
+          );
+
+          return;
+        }
+
         if (!mounted) return;
 
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => const CourierPanel(),
+            builder: (_) =>
+                const CourierPanel(),
           ),
         );
 
         return;
       }
 
-      // ============================================================
-      // 4. VENDOR CHECK
-      // ============================================================
+      // ========================================================
+      // VENDOR CHECK
+      // ========================================================
 
       if (role == 'vendor') {
-        final vendorDoc = await firestore
-            .collection('vendors')
-            .doc(user.uid)
-            .get();
+        final vendorDoc =
+            await _firestore
+                .collection('vendors')
+                .doc(user.uid)
+                .get();
 
-        final vendorData = vendorDoc.data() ?? {};
+        final vendorData =
+            vendorDoc.data() ?? {};
 
-        // User document status
-        final userVendorStatus =
+        // ======================================================
+        // VENDOR STATUS
+        // ======================================================
+
+        final userStatus =
             userData['vendorStatus']
                 ?.toString()
                 .trim()
                 .toLowerCase();
 
-        // Vendor document status
         final vendorStatus =
             vendorData['status']
                 ?.toString()
                 .trim()
                 .toLowerCase();
 
-        // Prefer vendor document status if available.
-        final effectiveStatus =
-            vendorStatus?.isNotEmpty == true
+        final status =
+            vendorStatus.isNotEmpty
                 ? vendorStatus
-                : userVendorStatus;
+                : userStatus;
 
-        // Active can be maintained in either document.
+        // ======================================================
+        // VENDOR ACTIVE
+        // ======================================================
+
         final userActive =
             userData['active'] == true;
 
         final vendorActive =
             vendorData['active'] == true;
 
-        final isActive =
-            userActive || vendorActive;
+        final active =
+            userActive ||
+                vendorActive;
 
-        // ------------------------------------------------------------
-        // APPROVED + ACTIVE VENDOR
-        // ------------------------------------------------------------
+        // ======================================================
+        // ONLY APPROVED + ACTIVE VENDOR
+        // ======================================================
 
-        if (effectiveStatus == 'approved' && isActive) {
-          if (!mounted) return;
+        if (status != 'approved') {
+          await _auth.signOut();
 
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const VendorPanel(),
-            ),
+          _showMessage(
+            status == 'pending'
+                ? 'Vendor account is pending approval.'
+                : status == 'rejected'
+                    ? 'Vendor account has been rejected.'
+                    : status == 'suspended'
+                        ? 'Vendor account is suspended.'
+                        : 'Vendor account is not approved.',
           );
 
           return;
         }
 
-        // ------------------------------------------------------------
-        // VENDOR NOT APPROVED
-        // ------------------------------------------------------------
+        if (!active) {
+          await _auth.signOut();
 
-        await FirebaseAuth.instance.signOut();
-
-        if (effectiveStatus == 'pending') {
-          showMessage(
-            'Vendor account is pending approval.',
-          );
-        } else if (effectiveStatus == 'rejected') {
-          showMessage(
-            'Vendor application has been rejected.',
-          );
-        } else if (effectiveStatus == 'suspended') {
-          showMessage(
-            'Vendor account is suspended.',
-          );
-        } else if (effectiveStatus != 'approved') {
-          showMessage(
-            'Vendor account is not approved yet.',
-          );
-        } else if (!isActive) {
-          showMessage(
+          _showMessage(
             'Vendor account is inactive.',
           );
-        } else {
-          showMessage(
-            'Vendor access denied.',
-          );
+
+          return;
         }
+
+        // ======================================================
+        // OPEN VENDOR PANEL
+        // ======================================================
+
+        if (!mounted) return;
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                const VendorPanel(),
+          ),
+        );
 
         return;
       }
 
-      // ============================================================
-      // 5. UNKNOWN / UNAUTHORIZED STAFF
-      // ============================================================
+      // ========================================================
+      // ACCESS DENIED
+      // ========================================================
 
-      await FirebaseAuth.instance.signOut();
+      await _auth.signOut();
 
-      showMessage(
-        'Access denied. This account is not authorized for staff login.',
+      _showMessage(
+        'Staff access denied.',
       );
     } on FirebaseAuthException catch (e) {
-      String message = 'Login failed';
+      String message;
 
-      if (e.code == 'invalid-credential' ||
-          e.code == 'wrong-password' ||
-          e.code == 'user-not-found') {
-        message = 'Invalid email or password';
-      } else if (e.code == 'invalid-email') {
-        message = 'Invalid email address';
-      } else if (e.code == 'too-many-requests') {
-        message =
-            'Too many attempts. Try again later.';
-      } else if (e.code == 'network-request-failed') {
-        message =
-            'Network error. Check your internet connection.';
-      } else if (e.code == 'user-disabled') {
-        message =
-            'This account has been disabled.';
+      switch (e.code) {
+        case 'invalid-credential':
+          message =
+              'Invalid email or password.';
+          break;
+
+        case 'invalid-email':
+          message =
+              'Please enter a valid email.';
+          break;
+
+        case 'user-disabled':
+          message =
+              'This account has been disabled.';
+          break;
+
+        case 'user-not-found':
+          message =
+              'Account not found.';
+          break;
+
+        case 'wrong-password':
+          message =
+              'Incorrect password.';
+          break;
+
+        case 'too-many-requests':
+          message =
+              'Too many attempts. Please try again later.';
+          break;
+
+        default:
+          message =
+              'Login failed. Please try again.';
       }
 
-      showMessage(message);
+      if (mounted) {
+        _showMessage(message);
+      }
     } catch (e) {
-      showMessage(
-        'Something went wrong:\n$e',
-      );
+      if (mounted) {
+        _showMessage(
+          'Unable to login. Please try again.',
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
-          loading = false;
+          _loading = false;
         });
       }
     }
   }
 
-  void showMessage(String message) {
+  // ============================================================
+  // MESSAGE
+  // ============================================================
+
+  void _showMessage(
+    String message,
+  ) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
+    ScaffoldMessenger.of(context)
+        .showSnackBar(
       SnackBar(
         content: Text(message),
-        behavior: SnackBarBehavior.floating,
+        behavior:
+            SnackBarBehavior.floating,
       ),
     );
   }
 
-  @override
-  void dispose() {
-    emailController.dispose();
-    passwordController.dispose();
-    super.dispose();
-  }
+  // ============================================================
+  // BUILD
+  // ============================================================
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
           'Staff Login',
           style: TextStyle(
-            fontWeight: FontWeight.bold,
+            fontWeight:
+                FontWeight.bold,
           ),
         ),
       ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Card(
-            elevation: 4,
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.stretch,
-                children: [
-                  const Icon(
-                    Icons.admin_panel_settings,
-                    size: 70,
+
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding:
+                const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints:
+                  const BoxConstraints(
+                maxWidth: 450,
+              ),
+              child: Card(
+                elevation: 3,
+                child: Padding(
+                  padding:
+                      const EdgeInsets.all(
+                    24,
                   ),
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment
+                            .stretch,
+                    children: [
+                      // ==================================================
+                      // ICON
+                      // ==================================================
 
-                  const SizedBox(height: 16),
-
-                  const Text(
-                    'Preesho Staff Login',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  const Text(
-                    'Admin, Courier & Vendor access',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.grey,
-                    ),
-                  ),
-
-                  const SizedBox(height: 28),
-
-                  TextField(
-                    controller: emailController,
-                    keyboardType:
-                        TextInputType.emailAddress,
-                    decoration: InputDecoration(
-                      labelText: 'Email',
-                      hintText: 'Enter email',
-                      prefixIcon:
-                          const Icon(
-                        Icons.email_outlined,
+                      const CircleAvatar(
+                        radius: 38,
+                        child: Icon(
+                          Icons
+                              .admin_panel_settings_outlined,
+                          size: 42,
+                        ),
                       ),
-                      border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
 
-                  const SizedBox(height: 16),
-
-                  TextField(
-                    controller: passwordController,
-                    obscureText: hidePassword,
-                    decoration: InputDecoration(
-                      labelText: 'Password',
-                      prefixIcon:
-                          const Icon(
-                        Icons.lock_outline,
+                      const SizedBox(
+                        height: 18,
                       ),
-                      suffixIcon: IconButton(
-                        onPressed: () {
-                          setState(() {
-                            hidePassword =
-                                !hidePassword;
-                          });
+
+                      const Text(
+                        'Staff Login',
+                        textAlign:
+                            TextAlign.center,
+                        style:
+                            TextStyle(
+                          fontSize: 24,
+                          fontWeight:
+                              FontWeight.bold,
+                        ),
+                      ),
+
+                      const SizedBox(
+                        height: 8,
+                      ),
+
+                      const Text(
+                        'Admin, Courier & Vendor access',
+                        textAlign:
+                            TextAlign.center,
+                        style:
+                            TextStyle(
+                          color:
+                              Colors.grey,
+                        ),
+                      ),
+
+                      const SizedBox(
+                        height: 28,
+                      ),
+
+                      // ==================================================
+                      // EMAIL
+                      // ==================================================
+
+                      TextField(
+                        controller:
+                            _emailController,
+                        keyboardType:
+                            TextInputType
+                                .emailAddress,
+                        textInputAction:
+                            TextInputAction
+                                .next,
+                        decoration:
+                            const InputDecoration(
+                          labelText:
+                              'Email',
+                          hintText:
+                              'Enter staff email',
+                          prefixIcon:
+                              Icon(
+                            Icons
+                                .email_outlined,
+                          ),
+                          border:
+                              OutlineInputBorder(),
+                        ),
+                      ),
+
+                      const SizedBox(
+                        height: 16,
+                      ),
+
+                      // ==================================================
+                      // PASSWORD
+                      // ==================================================
+
+                      TextField(
+                        controller:
+                            _passwordController,
+                        obscureText:
+                            _obscurePassword,
+                        textInputAction:
+                            TextInputAction
+                                .done,
+                        onSubmitted:
+                            (_) {
+                          _login();
                         },
-                        icon: Icon(
-                          hidePassword
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
-                        ),
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(12),
-                      ),
-                    ),
-                    onSubmitted: (_) => login(),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  SizedBox(
-                    height: 52,
-                    child: FilledButton.icon(
-                      onPressed:
-                          loading ? null : login,
-                      icon: loading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child:
-                                  CircularProgressIndicator(
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Icon(
-                              Icons.login,
+                        decoration:
+                            InputDecoration(
+                          labelText:
+                              'Password',
+                          hintText:
+                              'Enter password',
+                          prefixIcon:
+                              const Icon(
+                            Icons
+                                .lock_outline,
+                          ),
+                          suffixIcon:
+                              IconButton(
+                            onPressed: () {
+                              setState(() {
+                                _obscurePassword =
+                                    !_obscurePassword;
+                              });
+                            },
+                            icon:
+                                Icon(
+                              _obscurePassword
+                                  ? Icons
+                                      .visibility_outlined
+                                  : Icons
+                                      .visibility_off_outlined,
                             ),
-                      label: Text(
-                        loading
-                            ? 'Logging in...'
-                            : 'Login',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+                          ),
+                          border:
+                              const OutlineInputBorder(),
                         ),
                       ),
-                    ),
+
+                      const SizedBox(
+                        height: 24,
+                      ),
+
+                      // ==================================================
+                      // LOGIN BUTTON
+                      // ==================================================
+
+                      SizedBox(
+                        height: 52,
+                        child:
+                            FilledButton(
+                          onPressed:
+                              _loading
+                                  ? null
+                                  : _login,
+                          child:
+                              _loading
+                                  ? const SizedBox(
+                                      width:
+                                          24,
+                                      height:
+                                          24,
+                                      child:
+                                          CircularProgressIndicator(
+                                        strokeWidth:
+                                            2.5,
+                                      ),
+                                    )
+                                  : const Text(
+                                      'Login',
+                                      style:
+                                          TextStyle(
+                                        fontSize:
+                                            16,
+                                        fontWeight:
+                                            FontWeight.bold,
+                                      ),
+                                    ),
+                        ),
+                      ),
+
+                      const SizedBox(
+                        height: 16,
+                      ),
+
+                      const Text(
+                        'Only authorized staff accounts can access this panel.',
+                        textAlign:
+                            TextAlign.center,
+                        style:
+                            TextStyle(
+                          fontSize: 12,
+                          color:
+                              Colors.grey,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
