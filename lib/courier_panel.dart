@@ -89,18 +89,21 @@ class _CourierPanelState extends State<CourierPanel> {
     final local = date.toLocal();
 
     final day = local.day.toString().padLeft(2, '0');
-    final month =
-        local.month.toString().padLeft(2, '0');
+    final month = local.month.toString().padLeft(2, '0');
     final year = local.year.toString();
 
     int hour = local.hour;
+
     final minute =
         local.minute.toString().padLeft(2, '0');
 
     final period = hour >= 12 ? 'PM' : 'AM';
 
     hour = hour % 12;
-    if (hour == 0) hour = 12;
+
+    if (hour == 0) {
+      hour = 12;
+    }
 
     return '$day/$month/$year  $hour:$minute $period';
   }
@@ -129,11 +132,11 @@ class _CourierPanelState extends State<CourierPanel> {
       return;
     }
 
+    final data = orderDoc.data() ?? {};
+
     final orderId =
-        _stringValue(orderDoc.data()?['orderId']).isNotEmpty
-            ? _stringValue(
-                orderDoc.data()?['orderId'],
-              )
+        _stringValue(data['orderId']).isNotEmpty
+            ? _stringValue(data['orderId'])
             : orderDoc.id;
 
     try {
@@ -141,9 +144,11 @@ class _CourierPanelState extends State<CourierPanel> {
         'updateCourierOrderStatus',
       );
 
+      // IMPORTANT:
+      // Backend expects "status", not "newStatus".
       await callable.call({
         'orderId': orderId,
-        'newStatus': requestedStatus,
+        'status': requestedStatus,
       });
 
       if (!mounted) return;
@@ -194,10 +199,11 @@ class _CourierPanelState extends State<CourierPanel> {
     String title,
     dynamic value,
   ) {
-    final text = value == null ||
-            value.toString().trim().isEmpty
-        ? 'Not available'
-        : value.toString();
+    final text =
+        value == null ||
+                value.toString().trim().isEmpty
+            ? 'Not available'
+            : value.toString();
 
     return Padding(
       padding: const EdgeInsets.only(
@@ -597,6 +603,9 @@ class _CourierPanelState extends State<CourierPanel> {
 
   @override
   Widget build(BuildContext context) {
+    final currentCourierId =
+        FirebaseAuth.instance.currentUser?.uid ?? '';
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -648,7 +657,16 @@ class _CourierPanelState extends State<CourierPanel> {
                   data['status'],
             );
 
-            return _isCourierOrder(status);
+            final assignedCourierId =
+                _stringValue(
+              data['courierId'],
+            );
+
+            // Only show orders assigned to
+            // the currently logged-in courier.
+            return _isCourierOrder(status) &&
+                assignedCourierId ==
+                    currentCourierId;
           }).toList();
 
           courierOrders.sort((a, b) {
@@ -708,7 +726,7 @@ class _CourierPanelState extends State<CourierPanel> {
                   Center(
                     child: Text(
                       'Orders will appear here after '
-                      'they are Shipped.',
+                      'they are assigned to you.',
                       textAlign:
                           TextAlign.center,
                       style: TextStyle(
