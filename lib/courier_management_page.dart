@@ -28,6 +28,59 @@ class _CourierManagementPageState
   bool saving = false;
   bool obscurePassword = true;
 
+  String _stringValue(dynamic value) {
+    if (value == null) return '';
+
+    final text = value.toString().trim();
+
+    if (text == 'null') return '';
+
+    return text;
+  }
+
+  String _normalizeOrderStatus(dynamic value) {
+    if (value == null) return 'Placed';
+
+    final status = value.toString().trim();
+
+    switch (status.toLowerCase()) {
+      case 'placed':
+        return 'Placed';
+
+      case 'confirmed':
+        return 'Confirmed';
+
+      case 'processing':
+        return 'Processing';
+
+      case 'packed':
+        return 'Packed';
+
+      case 'shipped':
+        return 'Shipped';
+
+      case 'picked by courier':
+      case 'picked_by_courier':
+      case 'picked':
+        return 'Picked by Courier';
+
+      case 'out for delivery':
+      case 'out_for_delivery':
+      case 'outfordelivery':
+        return 'Out for Delivery';
+
+      case 'delivered':
+        return 'Delivered';
+
+      case 'cancelled':
+      case 'canceled':
+        return 'Cancelled';
+
+      default:
+        return status;
+    }
+  }
+
   Future<void> _addCourier() async {
     final name = nameController.text.trim();
     final email =
@@ -581,91 +634,69 @@ class _CourierManagementPageState
     );
   }
 
-  // ------------------------------------------------------------
+  // ============================================================
   // ORDER ASSIGNMENT
-  // ------------------------------------------------------------
+  // ============================================================
 
   Future<void> _assignOrderToCourier(
     String orderId,
     String courierId,
-    Map<String, dynamic> courierData,
   ) async {
     try {
-      final orderRef =
-          _firestore.collection('orders').doc(orderId);
-
-      final courierName =
-          courierData['name']?.toString() ??
-              'Courier';
-
-      final courierPhone =
-          courierData['phone']?.toString() ??
-              '';
-
-      await _firestore.runTransaction(
-        (transaction) async {
-          final orderSnapshot =
-              await transaction.get(orderRef);
-
-          if (!orderSnapshot.exists) {
-            throw Exception(
-              'Order not found.',
-            );
-          }
-
-          final orderData =
-              orderSnapshot.data() ?? {};
-
-          final currentStatus =
-              _normalizeOrderStatus(
-            orderData['orderStatus'] ??
-                orderData['status'],
-          );
-
-          if (currentStatus != 'Shipped') {
-            throw Exception(
-              'Only Shipped orders can be assigned to a courier.',
-            );
-          }
-
-          final existingCourierId =
-              orderData['courierId']
-                      ?.toString()
-                      .trim() ??
-                  '';
-
-          if (existingCourierId.isNotEmpty &&
-              existingCourierId != courierId) {
-            throw Exception(
-              'This order is already assigned to another courier.',
-            );
-          }
-
-          final now = Timestamp.now();
-
-          transaction.update(
-            orderRef,
-            {
-              'courierId': courierId,
-              'courierPersonName':
-                  courierName,
-              'courierPhone':
-                  courierPhone,
-              'courierAssignedAt':
-                  orderData[
-                          'courierAssignedAt'] ??
-                      now,
-              'updatedAt': now,
-            },
-          );
-        },
+      final callable =
+          _functions.httpsCallable(
+        'assignOrderToCourier',
       );
+
+      await callable.call({
+        'orderId': orderId,
+        'courierId': courierId,
+      });
 
       if (mounted) {
         _showMessage(
-          'Order assigned to $courierName.',
+          'Order assigned to courier successfully.',
         );
       }
+    } on FirebaseFunctionsException catch (e) {
+      if (!mounted) return;
+
+      String message =
+          e.message ??
+              'Unable to assign order to courier.';
+
+      switch (e.code) {
+        case 'unauthenticated':
+          message =
+              'Please login again as Admin.';
+          break;
+
+        case 'permission-denied':
+          message =
+              e.message ??
+                  'Only Admin can assign courier.';
+          break;
+
+        case 'not-found':
+          message =
+              e.message ??
+                  'Order or courier not found.';
+          break;
+
+        case 'failed-precondition':
+          message =
+              e.message ??
+                  'This order is not eligible for courier assignment.';
+          break;
+
+        case 'invalid-argument':
+          message =
+              e.message ??
+                  'Invalid order or courier details.';
+          break;
+      }
+
+      _showMessage(message);
     } catch (e) {
       if (!mounted) return;
 
@@ -684,54 +715,6 @@ class _CourierManagementPageState
     }
   }
 
-  String _normalizeOrderStatus(
-    dynamic value,
-  ) {
-    if (value == null) {
-      return 'Placed';
-    }
-
-    final status =
-        value.toString().trim();
-
-    switch (status.toLowerCase()) {
-      case 'placed':
-        return 'Placed';
-
-      case 'confirmed':
-        return 'Confirmed';
-
-      case 'processing':
-        return 'Processing';
-
-      case 'packed':
-        return 'Packed';
-
-      case 'shipped':
-        return 'Shipped';
-
-      case 'picked by courier':
-      case 'picked_by_courier':
-      case 'picked':
-        return 'Picked by Courier';
-
-      case 'out for delivery':
-      case 'out_for_delivery':
-      case 'outfordelivery':
-        return 'Out for Delivery';
-
-      case 'delivered':
-        return 'Delivered';
-
-      case 'cancelled':
-      case 'canceled':
-        return 'Cancelled';
-
-      default:
-        return status;
-    }
-  }
-
   Future<void> _showAssignOrderDialog(
     DocumentSnapshot<Map<String, dynamic>>
         orderDoc,
@@ -740,147 +723,175 @@ class _CourierManagementPageState
         orderDoc.data() ?? {};
 
     final orderId =
-        orderData['orderId']
-                ?.toString() ??
-            orderDoc.id;
+        _stringValue(
+              orderData['orderId'],
+            ).isNotEmpty
+            ? _stringValue(
+                orderData['orderId'],
+              )
+            : orderDoc.id;
 
     final currentCourierId =
-        orderData['courierId']
-                ?.toString()
-                .trim() ??
-            '';
+        _stringValue(
+      orderData['courierId'],
+    );
 
-    final courierSnapshot =
-        await _firestore
-            .collection('couriers')
-            .where(
-              'active',
-              isEqualTo: true,
-            )
-            .get();
+    final currentStatus =
+        _normalizeOrderStatus(
+      orderData['orderStatus'] ??
+          orderData['status'],
+    );
 
-    if (!mounted) return;
-
-    final couriers =
-        courierSnapshot.docs;
-
-    if (couriers.isEmpty) {
+    if (currentStatus != 'Shipped') {
       _showMessage(
-        'No active couriers available.',
+        'Only Shipped orders can be assigned to a courier.',
       );
       return;
     }
 
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(
-            'Assign Courier\nOrder #$orderId',
-          ),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView.separated(
-              shrinkWrap: true,
-              itemCount:
-                  couriers.length,
-              separatorBuilder:
-                  (_, __) =>
-                      const Divider(),
-              itemBuilder:
-                  (context, index) {
-                final courier =
-                    couriers[index];
+    try {
+      final courierSnapshot =
+          await _firestore
+              .collection('couriers')
+              .where(
+                'active',
+                isEqualTo: true,
+              )
+              .get();
 
-                final data =
-                    courier.data();
+      if (!mounted) return;
 
-                final name =
-                    data['name']
-                            ?.toString() ??
-                        'Courier';
+      final couriers =
+          courierSnapshot.docs;
 
-                final email =
-                    data['email']
-                            ?.toString() ??
-                        '';
-
-                final phone =
-                    data['phone']
-                            ?.toString() ??
-                        '';
-
-                final selected =
-                    currentCourierId ==
-                        courier.id;
-
-                return ListTile(
-                  leading:
-                      CircleAvatar(
-                    child: Icon(
-                      Icons
-                          .local_shipping_outlined,
-                      color: selected
-                          ? Colors.green
-                          : null,
-                    ),
-                  ),
-                  title: Text(
-                    name,
-                    style:
-                        const TextStyle(
-                      fontWeight:
-                          FontWeight.bold,
-                    ),
-                  ),
-                  subtitle:
-                      Text(
-                    [
-                      if (email.isNotEmpty)
-                        email,
-                      if (phone.isNotEmpty)
-                        phone,
-                    ].join('\n'),
-                  ),
-                  trailing: selected
-                      ? const Icon(
-                          Icons
-                              .check_circle,
-                          color:
-                              Colors.green,
-                        )
-                      : const Icon(
-                          Icons
-                              .radio_button_unchecked,
-                        ),
-                  onTap: () async {
-                    Navigator.pop(
-                      context,
-                    );
-
-                    await _assignOrderToCourier(
-                      orderDoc.id,
-                      courier.id,
-                      data,
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () =>
-                  Navigator.pop(
-                context,
-              ),
-              child:
-                  const Text('Close'),
-            ),
-          ],
+      if (couriers.isEmpty) {
+        _showMessage(
+          'No active couriers available.',
         );
-      },
-    );
+        return;
+      }
+
+      showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: Text(
+              'Assign Courier\nOrder #$orderId',
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount:
+                    couriers.length,
+                separatorBuilder:
+                    (_, __) =>
+                        const Divider(),
+                itemBuilder:
+                    (context, index) {
+                  final courier =
+                      couriers[index];
+
+                  final data =
+                      courier.data();
+
+                  final name =
+                      _stringValue(
+                            data['name'],
+                          ).isNotEmpty
+                          ? _stringValue(
+                              data['name'],
+                            )
+                          : 'Courier';
+
+                  final email =
+                      _stringValue(
+                    data['email'],
+                  );
+
+                  final phone =
+                      _stringValue(
+                    data['phone'],
+                  );
+
+                  final selected =
+                      currentCourierId ==
+                          courier.id;
+
+                  return ListTile(
+                    leading:
+                        CircleAvatar(
+                      child: Icon(
+                        Icons
+                            .local_shipping_outlined,
+                        color: selected
+                            ? Colors.green
+                            : null,
+                      ),
+                    ),
+                    title: Text(
+                      name,
+                      style:
+                          const TextStyle(
+                        fontWeight:
+                            FontWeight.bold,
+                      ),
+                    ),
+                    subtitle:
+                        Text(
+                      [
+                        if (email.isNotEmpty)
+                          email,
+                        if (phone.isNotEmpty)
+                          phone,
+                      ].join('\n'),
+                    ),
+                    trailing:
+                        selected
+                            ? const Icon(
+                                Icons
+                                    .check_circle,
+                                color:
+                                    Colors.green,
+                              )
+                            : const Icon(
+                                Icons
+                                    .radio_button_unchecked,
+                              ),
+                    onTap: () async {
+                      Navigator.pop(
+                        context,
+                      );
+
+                      await _assignOrderToCourier(
+                        orderId,
+                        courier.id,
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () =>
+                    Navigator.pop(
+                  context,
+                ),
+                child:
+                    const Text('Close'),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      _showMessage(
+        'Unable to load active couriers.\n$e',
+      );
+    }
   }
 
   Widget _buildOrderAssignmentSection() {
@@ -1013,27 +1024,41 @@ class _CourierManagementPageState
                         doc.data();
 
                     final orderId =
-                        data['orderId']
-                                ?.toString() ??
-                            doc.id;
+                        _stringValue(
+                              data['orderId'],
+                            ).isNotEmpty
+                            ? _stringValue(
+                                data['orderId'],
+                              )
+                            : doc.id;
 
                     final customer =
-                        data['customerName']
-                                ?.toString() ??
-                            data['name']
-                                ?.toString() ??
-                            'Customer';
+                        _stringValue(
+                              data[
+                                  'customerName'],
+                            ).isNotEmpty
+                            ? _stringValue(
+                                data[
+                                    'customerName'],
+                              )
+                            : _stringValue(
+                                  data['name'],
+                                ).isNotEmpty
+                                ? _stringValue(
+                                    data['name'],
+                                  )
+                                : 'Customer';
 
                     final assignedCourierId =
-                        data['courierId']
-                                ?.toString()
-                                .trim() ??
-                            '';
+                        _stringValue(
+                      data['courierId'],
+                    );
 
                     final assignedName =
-                        data['courierPersonName']
-                                ?.toString() ??
-                            '';
+                        _stringValue(
+                      data[
+                          'courierPersonName'],
+                    );
 
                     return Container(
                       margin:
