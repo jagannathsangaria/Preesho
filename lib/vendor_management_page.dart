@@ -22,6 +22,24 @@ class _VendorManagementPageState
 
   bool _loading = false;
 
+  // Required documents for final vendor approval.
+  static const List<String> _requiredDocuments = [
+    'pan',
+    'aadhaar',
+    'gst',
+    'bank',
+    'addressProof',
+  ];
+
+  static const List<String> _allDocuments = [
+    'pan',
+    'aadhaar',
+    'gst',
+    'bank',
+    'addressProof',
+    'other',
+  ];
+
   Future<void> _authorizeVendor({
     required String uid,
     required String name,
@@ -48,7 +66,7 @@ class _VendorManagementPageState
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Vendor authorized successfully.',
+            'Vendor authorized successfully. Vendor is now pending document verification.',
           ),
         ),
       );
@@ -228,8 +246,26 @@ class _VendorManagementPageState
         return Colors.red;
       case 'suspended':
         return Colors.orange;
+      case 'pending':
+        return Colors.blueGrey;
       default:
         return Colors.grey;
+    }
+  }
+
+  IconData _statusIcon(String status) {
+    switch (status.toLowerCase()) {
+      case 'approved':
+      case 'verified':
+        return Icons.check_circle;
+      case 'rejected':
+        return Icons.cancel;
+      case 'suspended':
+        return Icons.pause_circle;
+      case 'pending':
+        return Icons.pending;
+      default:
+        return Icons.help_outline;
     }
   }
 
@@ -257,6 +293,62 @@ class _VendorManagementPageState
         ),
       ),
     );
+  }
+
+  bool _isDocumentVerified(
+    Map<String, dynamic> documents,
+    String documentType,
+  ) {
+    final document =
+        Map<String, dynamic>.from(
+      documents[documentType] ?? {},
+    );
+
+    return String(
+          document['status'] ?? 'pending',
+        ).toLowerCase() ==
+        'verified';
+  }
+
+  int _verifiedDocumentCount(
+    Map<String, dynamic> documents,
+  ) {
+    return _requiredDocuments
+        .where(
+          (type) => _isDocumentVerified(
+            documents,
+            type,
+          ),
+        )
+        .length;
+  }
+
+  bool _allRequiredDocumentsVerified(
+    Map<String, dynamic> documents,
+  ) {
+    return _requiredDocuments.every(
+      (type) => _isDocumentVerified(
+        documents,
+        type,
+      ),
+    );
+  }
+
+  List<String> _pendingDocuments(
+    Map<String, dynamic> documents,
+  ) {
+    return _requiredDocuments.where((type) {
+      final document =
+          Map<String, dynamic>.from(
+        documents[type] ?? {},
+      );
+
+      final status = String(
+        document['status'] ?? 'pending',
+      ).toLowerCase();
+
+      return status != 'verified';
+    }).toList();
   }
 
   Future<void> _showReasonDialog({
@@ -422,34 +514,143 @@ class _VendorManagementPageState
     final fileUrl =
         String(document['url'] ?? '');
 
+    final reason =
+        String(document['verificationReason'] ?? '');
+
+    final isRequired =
+        _requiredDocuments.contains(documentType);
+
+    final color = _statusColor(status);
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
+          color: color.withValues(alpha: 0.25),
+        ),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(10),
         child: Row(
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.description_outlined),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                _statusIcon(status),
+                color: color,
+                size: 22,
+              ),
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment:
                     CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    _documentTitle(documentType),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _documentTitle(documentType),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      if (isRequired)
+                        Container(
+                          padding:
+                              const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withValues(
+                              alpha: 0.08,
+                            ),
+                            borderRadius:
+                                BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'REQUIRED',
+                            style: TextStyle(
+                              color: Colors.red,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        )
+                      else
+                        Container(
+                          padding:
+                              const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.withValues(
+                              alpha: 0.10,
+                            ),
+                            borderRadius:
+                                BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'OPTIONAL',
+                            style: TextStyle(
+                              color: Colors.grey,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   _statusChip(status),
                   if (fileUrl.isNotEmpty) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 5),
+                    const Row(
+                      children: [
+                        Icon(
+                          Icons.attach_file,
+                          size: 14,
+                          color: Colors.grey,
+                        ),
+                        SizedBox(width: 3),
+                        Text(
+                          'Document uploaded',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 5),
                     const Text(
-                      'Document uploaded',
+                      'Document not uploaded',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.grey,
+                        color: Colors.red,
+                      ),
+                    ),
+                  ],
+                  if (reason.isNotEmpty) ...[
+                    const SizedBox(height: 5),
+                    Text(
+                      'Remark: $reason',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade700,
                       ),
                     ),
                   ],
@@ -459,7 +660,7 @@ class _VendorManagementPageState
             IconButton(
               tooltip: 'Verify / Reject',
               icon: const Icon(
-                Icons.verified_outlined,
+                Icons.edit_note,
               ),
               onPressed: _loading
                   ? null
@@ -472,6 +673,109 @@ class _VendorManagementPageState
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _approvalRequirementBox(
+    Map<String, dynamic> documents,
+  ) {
+    final verifiedCount =
+        _verifiedDocumentCount(documents);
+
+    final allVerified =
+        _allRequiredDocumentsVerified(documents);
+
+    final pending =
+        _pendingDocuments(documents);
+
+    if (allVerified) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          color: Colors.green.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: Colors.green.withValues(alpha: 0.25),
+          ),
+        ),
+        child: const Row(
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.verified,
+              color: Colors.green,
+            ),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'All 5 required documents are verified. Vendor is eligible for final approval.',
+                style: TextStyle(
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: Colors.orange.withValues(alpha: 0.30),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.warning_amber_rounded,
+                color: Colors.orange,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '$verifiedCount/5 Required Documents Verified',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Final approval is locked until PAN, Aadhaar, GST, Bank/Cancelled Cheque and Address Proof are all verified.',
+            style: TextStyle(
+              fontSize: 12,
+            ),
+          ),
+          if (pending.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Pending / rejected: ${pending.map(_documentTitle).join(', ')}',
+              style: const TextStyle(
+                fontSize: 12,
+                color: Colors.red,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -502,6 +806,14 @@ class _VendorManagementPageState
         Map<String, dynamic>.from(
       data['documents'] ?? {},
     );
+
+    final allDocumentsVerified =
+        _allRequiredDocumentsVerified(
+      documents,
+    );
+
+    final verifiedCount =
+        _verifiedDocumentCount(documents);
 
     return Card(
       margin: const EdgeInsets.only(
@@ -557,6 +869,17 @@ class _VendorManagementPageState
                     ),
                 ],
               ),
+              const SizedBox(height: 6),
+              Text(
+                'Documents: $verifiedCount/5 verified',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: allDocumentsVerified
+                      ? Colors.green
+                      : Colors.orange,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ),
         ),
@@ -586,22 +909,31 @@ class _VendorManagementPageState
 
           const SizedBox(height: 16),
 
+          _approvalRequirementBox(documents),
+
           Row(
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  icon: const Icon(
-                    Icons.check_circle_outline,
+                  icon: Icon(
+                    allDocumentsVerified
+                        ? Icons.check_circle_outline
+                        : Icons.lock_outline,
                   ),
-                  label: const Text('Approve'),
-                  onPressed: _loading
-                      ? null
-                      : () {
-                          _updateVendorStatus(
-                            uid: uid,
-                            status: 'approved',
-                          );
-                        },
+                  label: Text(
+                    allDocumentsVerified
+                        ? 'Approve'
+                        : 'Approve Locked',
+                  ),
+                  onPressed:
+                      _loading || !allDocumentsVerified
+                          ? null
+                          : () {
+                              _updateVendorStatus(
+                                uid: uid,
+                                status: 'approved',
+                              );
+                            },
                 ),
               ),
               const SizedBox(width: 8),
@@ -677,16 +1009,22 @@ class _VendorManagementPageState
             ),
           ),
 
+          const SizedBox(height: 6),
+
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'All 5 required documents must be VERIFIED before final approval.',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey,
+              ),
+            ),
+          ),
+
           const SizedBox(height: 10),
 
-          ...[
-            'pan',
-            'aadhaar',
-            'gst',
-            'bank',
-            'addressProof',
-            'other',
-          ].map(
+          ..._allDocuments.map(
             (type) {
               final document =
                   Map<String, dynamic>.from(
@@ -713,6 +1051,11 @@ class _VendorManagementPageState
                 ),
                 borderRadius:
                     BorderRadius.circular(10),
+                border: Border.all(
+                  color: Colors.green.withValues(
+                    alpha: 0.20,
+                  ),
+                ),
               ),
               child: const Row(
                 children: [
@@ -723,7 +1066,7 @@ class _VendorManagementPageState
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Vendor is approved by Admin.',
+                      'Vendor is approved and active. Vendor can proceed for login.',
                       style: TextStyle(
                         color: Colors.green,
                         fontWeight: FontWeight.bold,
@@ -930,7 +1273,7 @@ class _VendorManagementPageState
                       SizedBox(height: 8),
                       Center(
                         child: Text(
-                          'Tap + to authorize a vendor.',
+                          'Tap the add vendor button to authorize a vendor.',
                         ),
                       ),
                     ],
