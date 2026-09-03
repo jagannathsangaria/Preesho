@@ -217,6 +217,10 @@ exports.createCourierAccount = onCall(
 
 // ============================================================
 // AUTHORIZE VENDOR
+// IMPORTANT:
+// This does NOT approve the vendor.
+// It only creates/updates the vendor as PENDING.
+// Admin must verify required documents before approval.
 // ============================================================
 
 exports.authorizeVendor = onCall(
@@ -377,6 +381,9 @@ exports.authorizeVendor = onCall(
     try {
       const batch = db.batch();
 
+      // IMPORTANT:
+      // Vendor is only authorized for the vendor workflow.
+      // It is NOT approved here.
       batch.set(
         userRef,
         {
@@ -385,18 +392,18 @@ exports.authorizeVendor = onCall(
           email: vendorEmail,
           phone: vendorPhone,
           role: "vendor",
-          vendorStatus: "approved",
-          active: true,
+          vendorStatus: "pending",
+          active: false,
           vendorAuthorizedAt:
-            FieldValue.serverTimestamp(),
+              FieldValue.serverTimestamp(),
           vendorAuthorizedBy: adminUid,
           updatedAt:
-            FieldValue.serverTimestamp(),
+              FieldValue.serverTimestamp(),
           ...(userDoc.exists
             ? {}
             : {
                 createdAt:
-                  FieldValue.serverTimestamp(),
+                    FieldValue.serverTimestamp(),
               }),
         },
         {
@@ -412,18 +419,18 @@ exports.authorizeVendor = onCall(
           email: vendorEmail,
           phone: vendorPhone,
           role: "vendor",
-          status: "approved",
-          active: true,
+          status: "pending",
+          active: false,
           authorizedBy: adminUid,
           authorizedAt:
-            FieldValue.serverTimestamp(),
+              FieldValue.serverTimestamp(),
           updatedAt:
-            FieldValue.serverTimestamp(),
+              FieldValue.serverTimestamp(),
           ...(vendorDoc.exists
             ? {}
             : {
                 createdAt:
-                  FieldValue.serverTimestamp(),
+                    FieldValue.serverTimestamp(),
               }),
         },
         {
@@ -451,9 +458,10 @@ exports.authorizeVendor = onCall(
       email: vendorEmail,
       phone: vendorPhone,
       role: "vendor",
-      vendorStatus: "approved",
-      active: true,
-      message: "Vendor authorized successfully.",
+      vendorStatus: "pending",
+      active: false,
+      message:
+          "Vendor added successfully. Documents verification pending.",
     };
   }
 );
@@ -557,9 +565,72 @@ exports.updateVendorStatus = onCall(
       );
     }
 
+    const vendorData = vendorDoc.exists
+        ? vendorDoc.data() || {}
+        : {};
+
+    // ========================================================
+    // FINAL APPROVAL DOCUMENT CHECK
+    // ========================================================
+
+    if (status === "approved") {
+      const documents =
+          vendorData.documents || {};
+
+      const requiredDocuments = [
+        "pan",
+        "aadhaar",
+        "gst",
+        "bank",
+        "addressProof",
+      ];
+
+      const missingDocuments = [];
+      const rejectedDocuments = [];
+
+      for (const documentType of requiredDocuments) {
+        const document =
+            documents[documentType] || {};
+
+        const documentStatus =
+            String(
+              document.status || ""
+            ).toLowerCase();
+
+        if (documentStatus === "rejected") {
+          rejectedDocuments.push(
+            documentType
+          );
+        } else if (
+          documentStatus !== "verified"
+        ) {
+          missingDocuments.push(
+            documentType
+          );
+        }
+      }
+
+      if (rejectedDocuments.length > 0) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Vendor approval blocked. Rejected documents: " +
+              rejectedDocuments.join(", ")
+        );
+      }
+
+      if (missingDocuments.length > 0) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Vendor approval blocked. Required documents not verified: " +
+              missingDocuments.join(", ")
+        );
+      }
+    }
+
     const batch = db.batch();
 
-    const isApproved = status === "approved";
+    const isApproved =
+        status === "approved";
 
     batch.set(
       userRef,
@@ -568,11 +639,19 @@ exports.updateVendorStatus = onCall(
         vendorStatus: status,
         active: isApproved,
         vendorStatusUpdatedAt:
-          FieldValue.serverTimestamp(),
+            FieldValue.serverTimestamp(),
         vendorStatusUpdatedBy: adminUid,
         vendorStatusReason: reason,
         updatedAt:
-          FieldValue.serverTimestamp(),
+            FieldValue.serverTimestamp(),
+        ...(isApproved
+          ? {
+              vendorApprovedAt:
+                  FieldValue.serverTimestamp(),
+              vendorApprovedBy:
+                  adminUid,
+            }
+          : {}),
       },
       {
         merge: true,
@@ -586,11 +665,19 @@ exports.updateVendorStatus = onCall(
         status: status,
         active: isApproved,
         statusUpdatedAt:
-          FieldValue.serverTimestamp(),
+            FieldValue.serverTimestamp(),
         statusUpdatedBy: adminUid,
         statusReason: reason,
         updatedAt:
-          FieldValue.serverTimestamp(),
+            FieldValue.serverTimestamp(),
+        ...(isApproved
+          ? {
+              approvedAt:
+                  FieldValue.serverTimestamp(),
+              approvedBy:
+                  adminUid,
+            }
+          : {}),
       },
       {
         merge: true,
@@ -605,7 +692,10 @@ exports.updateVendorStatus = onCall(
       status: status,
       active: isApproved,
       updatedBy: adminUid,
-      message: "Vendor status updated successfully.",
+      message:
+          isApproved
+              ? "Vendor approved successfully."
+              : "Vendor status updated successfully.",
     };
   }
 );
@@ -712,7 +802,8 @@ exports.updateVendorDocumentStatus = onCall(
         .collection("vendors")
         .doc(vendorUid);
 
-    const vendorDoc = await vendorRef.get();
+    const vendorDoc =
+        await vendorRef.get();
 
     if (!vendorDoc.exists) {
       throw new HttpsError(
@@ -721,37 +812,41 @@ exports.updateVendorDocumentStatus = onCall(
       );
     }
 
-    const vendorData = vendorDoc.data() || {};
+    const vendorData =
+        vendorDoc.data() || {};
 
     const existingDocuments =
-      vendorData.documents || {};
+        vendorData.documents || {};
 
     const existingDocument =
-      existingDocuments[documentType] || {};
+        existingDocuments[documentType] || {};
 
     const updatedDocument = {
       ...existingDocument,
 
       status: status,
 
-      verificationReason: reason,
+      verificationReason:
+          reason,
 
-      verifiedBy: adminUid,
+      verifiedBy:
+          adminUid,
 
       verifiedAt:
-        FieldValue.serverTimestamp(),
+          FieldValue.serverTimestamp(),
 
       updatedAt:
-        FieldValue.serverTimestamp(),
+          FieldValue.serverTimestamp(),
     };
 
     await vendorRef.set(
       {
         documents: {
-          [documentType]: updatedDocument,
+          [documentType]:
+              updatedDocument,
         },
         updatedAt:
-          FieldValue.serverTimestamp(),
+            FieldValue.serverTimestamp(),
       },
       {
         merge: true,
@@ -765,7 +860,7 @@ exports.updateVendorDocumentStatus = onCall(
       status: status,
       verifiedBy: adminUid,
       message:
-        "Vendor document status updated successfully.",
+          "Vendor document status updated successfully.",
     };
   }
 );
