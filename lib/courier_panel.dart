@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 class CourierPanel extends StatefulWidget {
   const CourierPanel({super.key});
@@ -11,6 +12,9 @@ class CourierPanel extends StatefulWidget {
 
 class _CourierPanelState extends State<CourierPanel> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  final FirebaseFunctions _functions =
+      FirebaseFunctions.instanceFor(region: 'asia-south1');
 
   final List<String> _courierStatuses = const [
     'Shipped',
@@ -47,17 +51,22 @@ class _CourierPanelState extends State<CourierPanel> {
   }
 
   int _statusIndex(String status) {
-    return _courierStatuses.indexOf(_normalizeStatus(status));
+    return _courierStatuses.indexOf(
+      _normalizeStatus(status),
+    );
   }
 
   bool _isCourierOrder(String status) {
-    return _courierStatuses.contains(_normalizeStatus(status));
+    return _courierStatuses.contains(
+      _normalizeStatus(status),
+    );
   }
 
   String _nextStatus(String status) {
     final index = _statusIndex(status);
 
-    if (index < 0 || index >= _courierStatuses.length - 1) {
+    if (index < 0 ||
+        index >= _courierStatuses.length - 1) {
       return '';
     }
 
@@ -80,11 +89,13 @@ class _CourierPanelState extends State<CourierPanel> {
     final local = date.toLocal();
 
     final day = local.day.toString().padLeft(2, '0');
-    final month = local.month.toString().padLeft(2, '0');
+    final month =
+        local.month.toString().padLeft(2, '0');
     final year = local.year.toString();
 
     int hour = local.hour;
-    final minute = local.minute.toString().padLeft(2, '0');
+    final minute =
+        local.minute.toString().padLeft(2, '0');
 
     final period = hour >= 12 ? 'PM' : 'AM';
 
@@ -108,160 +119,31 @@ class _CourierPanelState extends State<CourierPanel> {
     DocumentSnapshot<Map<String, dynamic>> orderDoc,
     String requestedStatus,
   ) async {
-    final docRef = orderDoc.reference;
-    final courierUser = FirebaseAuth.instance.currentUser;
+    final courierUser =
+        FirebaseAuth.instance.currentUser;
 
     if (courierUser == null) {
-      _showError('Courier login session not found.');
+      _showError(
+        'Courier login session not found.',
+      );
       return;
     }
 
+    final orderId =
+        _stringValue(orderDoc.data()?['orderId']).isNotEmpty
+            ? _stringValue(
+                orderDoc.data()?['orderId'],
+              )
+            : orderDoc.id;
+
     try {
-      await _firestore.runTransaction((transaction) async {
-        final freshSnapshot = await transaction.get(docRef);
+      final callable = _functions.httpsCallable(
+        'updateCourierOrderStatus',
+      );
 
-        if (!freshSnapshot.exists) {
-          throw Exception('Order not found.');
-        }
-
-        final data = freshSnapshot.data() ?? {};
-
-        final roleSnapshot = await _firestore
-            .collection('users')
-            .doc(courierUser.uid)
-            .get();
-
-        final roleData = roleSnapshot.data() ?? {};
-
-        final role = _stringValue(
-          roleData['role'] ?? roleData['Role'],
-        ).toLowerCase();
-
-        final courierActive =
-            roleData['active'] == true ||
-            roleData['isActive'] == true;
-
-        if (role != 'courier') {
-          throw Exception(
-            'Only an authorized courier can update delivery status.',
-          );
-        }
-
-        if (!courierActive) {
-          throw Exception(
-            'Courier account is inactive.',
-          );
-        }
-
-        final currentStatus = _normalizeStatus(
-          data['orderStatus'] ?? data['status'],
-        );
-
-        final currentIndex = _statusIndex(currentStatus);
-        final requestedIndex = _statusIndex(requestedStatus);
-
-        if (currentIndex < 0) {
-          throw Exception(
-            'This order is not currently eligible for courier processing.',
-          );
-        }
-
-        if (requestedIndex != currentIndex + 1) {
-          final next = _nextStatus(currentStatus);
-
-          throw Exception(
-            next.isEmpty
-                ? 'No further courier status is available.'
-                : 'Wrong status jump. Order must move from '
-                    '$currentStatus to $next.',
-          );
-        }
-
-        /*
-         * If an order is already assigned to another courier,
-         * another courier cannot update it.
-         *
-         * If courierId is empty, this courier becomes the assigned
-         * courier. This provides groundwork for multiple couriers.
-         */
-        final existingCourierId =
-            _stringValue(data['courierId']);
-
-        if (existingCourierId.isNotEmpty &&
-            existingCourierId != courierUser.uid) {
-          throw Exception(
-            'This order is already assigned to another courier.',
-          );
-        }
-
-        final now = Timestamp.now();
-
-        final history = <Map<String, dynamic>>[];
-
-        final existingHistory = data['statusHistory'];
-
-        if (existingHistory is List) {
-          for (final item in existingHistory) {
-            if (item is Map) {
-              history.add(
-                Map<String, dynamic>.from(item),
-              );
-            }
-          }
-        }
-
-        history.add({
-          'status': requestedStatus,
-          'timestamp': now,
-          'updatedBy': 'Courier',
-          'updatedByUid': courierUser.uid,
-          'courierId': courierUser.uid,
-        });
-
-        final updateData = <String, dynamic>{
-          'orderStatus': requestedStatus,
-          'status': requestedStatus,
-          'trackingStatus': requestedStatus,
-          'trackingEnabled': requestedStatus != 'Delivered',
-          'statusHistory': history,
-          'updatedAt': now,
-
-          // Multiple courier groundwork.
-          'courierId': courierUser.uid,
-          'courierAssignedAt':
-              data['courierAssignedAt'] ?? now,
-        };
-
-        /*
-         * Courier details are stored without removing any existing
-         * courier partner/person information.
-         */
-        if (_stringValue(data['courierName']).isEmpty &&
-            _stringValue(data['courierPersonName']).isEmpty) {
-          updateData['courierPersonName'] =
-              courierUser.displayName ?? 'Courier';
-        }
-
-        if (requestedStatus == 'Picked by Courier') {
-          updateData['courierPickedAt'] = now;
-        }
-
-        if (requestedStatus == 'Out for Delivery') {
-          updateData['outForDeliveryAt'] = now;
-        }
-
-        if (requestedStatus == 'Delivered') {
-          updateData['deliveredAt'] = now;
-          updateData['trackingEnabled'] = false;
-          updateData['deliveryCompletedBy'] =
-              courierUser.uid;
-          updateData['deliveryCompletedAt'] = now;
-        }
-
-        transaction.update(
-          docRef,
-          updateData,
-        );
+      await callable.call({
+        'orderId': orderId,
+        'newStatus': requestedStatus,
       });
 
       if (!mounted) return;
@@ -274,6 +156,13 @@ class _CourierPanelState extends State<CourierPanel> {
           behavior: SnackBarBehavior.floating,
         ),
       );
+    } on FirebaseFunctionsException catch (e) {
+      if (!mounted) return;
+
+      String message =
+          e.message ?? 'Unable to update order status.';
+
+      _showError(message);
     } catch (e) {
       if (!mounted) return;
 
@@ -301,16 +190,22 @@ class _CourierPanelState extends State<CourierPanel> {
     );
   }
 
-  Widget _infoRow(String title, dynamic value) {
+  Widget _infoRow(
+    String title,
+    dynamic value,
+  ) {
     final text = value == null ||
             value.toString().trim().isEmpty
         ? 'Not available'
         : value.toString();
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 7),
+      padding: const EdgeInsets.only(
+        bottom: 7,
+      ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           SizedBox(
             width: 125,
@@ -342,7 +237,8 @@ class _CourierPanelState extends State<CourierPanel> {
     bool current,
   ) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
       children: [
         Column(
           children: [
@@ -446,8 +342,12 @@ class _CourierPanelState extends State<CourierPanel> {
                 : 'Not assigned';
 
     final courierPersonName =
-        _stringValue(data['courierPersonName']).isNotEmpty
-            ? _stringValue(data['courierPersonName'])
+        _stringValue(
+          data['courierPersonName'],
+        ).isNotEmpty
+            ? _stringValue(
+                data['courierPersonName'],
+              )
             : _stringValue(data['courierName']);
 
     final courierPhone =
@@ -476,10 +376,14 @@ class _CourierPanelState extends State<CourierPanel> {
     final customerAddress =
         _stringValue(data['address']).isNotEmpty
             ? _stringValue(data['address'])
-            : _stringValue(data['deliveryAddress']);
+            : _stringValue(
+                data['deliveryAddress'],
+              );
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(
+        bottom: 16,
+      ),
       elevation: 3,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
@@ -516,7 +420,8 @@ class _CourierPanelState extends State<CourierPanel> {
                     status,
                     style: TextStyle(
                       color: Colors.green.shade700,
-                      fontWeight: FontWeight.bold,
+                      fontWeight:
+                          FontWeight.bold,
                       fontSize: 12,
                     ),
                   ),
@@ -526,7 +431,10 @@ class _CourierPanelState extends State<CourierPanel> {
 
             const SizedBox(height: 16),
 
-            _infoRow('Customer', customerName),
+            _infoRow(
+              'Customer',
+              customerName,
+            ),
 
             if (customerPhone.isNotEmpty)
               _infoRow(
@@ -713,7 +621,8 @@ class _CourierPanelState extends State<CourierPanel> {
                 child: Text(
                   'Unable to load orders.\n\n'
                   '${snapshot.error}',
-                  textAlign: TextAlign.center,
+                  textAlign:
+                      TextAlign.center,
                 ),
               ),
             );
@@ -754,7 +663,9 @@ class _CourierPanelState extends State<CourierPanel> {
 
             if (aTime is Timestamp &&
                 bTime is Timestamp) {
-              return bTime.compareTo(aTime);
+              return bTime.compareTo(
+                aTime,
+              );
             }
 
             if (aTime is Timestamp) {
