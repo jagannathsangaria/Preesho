@@ -27,29 +27,31 @@ class _CourierPanelState extends State<CourierPanel> {
     switch (status.toLowerCase()) {
       case 'shipped':
         return 'Shipped';
+
       case 'picked by courier':
       case 'picked_by_courier':
       case 'picked':
         return 'Picked by Courier';
+
       case 'out for delivery':
       case 'out_for_delivery':
       case 'outfordelivery':
         return 'Out for Delivery';
+
       case 'delivered':
         return 'Delivered';
+
       default:
         return status;
     }
   }
 
   int _statusIndex(String status) {
-    final normalized = _normalizeStatus(status);
-    return _courierStatuses.indexOf(normalized);
+    return _courierStatuses.indexOf(_normalizeStatus(status));
   }
 
   bool _isCourierOrder(String status) {
-    final normalized = _normalizeStatus(status);
-    return _courierStatuses.contains(normalized);
+    return _courierStatuses.contains(_normalizeStatus(status));
   }
 
   String _nextStatus(String status) {
@@ -85,10 +87,21 @@ class _CourierPanelState extends State<CourierPanel> {
     final minute = local.minute.toString().padLeft(2, '0');
 
     final period = hour >= 12 ? 'PM' : 'AM';
+
     hour = hour % 12;
     if (hour == 0) hour = 12;
 
     return '$day/$month/$year  $hour:$minute $period';
+  }
+
+  String _stringValue(dynamic value) {
+    if (value == null) return '';
+
+    final text = value.toString().trim();
+
+    if (text == 'null') return '';
+
+    return text;
   }
 
   Future<void> _updateCourierStatus(
@@ -96,6 +109,12 @@ class _CourierPanelState extends State<CourierPanel> {
     String requestedStatus,
   ) async {
     final docRef = orderDoc.reference;
+    final courierUser = FirebaseAuth.instance.currentUser;
+
+    if (courierUser == null) {
+      _showError('Courier login session not found.');
+      return;
+    }
 
     try {
       await _firestore.runTransaction((transaction) async {
@@ -106,6 +125,33 @@ class _CourierPanelState extends State<CourierPanel> {
         }
 
         final data = freshSnapshot.data() ?? {};
+
+        final roleSnapshot = await _firestore
+            .collection('users')
+            .doc(courierUser.uid)
+            .get();
+
+        final roleData = roleSnapshot.data() ?? {};
+
+        final role = _stringValue(
+          roleData['role'] ?? roleData['Role'],
+        ).toLowerCase();
+
+        final courierActive =
+            roleData['active'] == true ||
+            roleData['isActive'] == true;
+
+        if (role != 'courier') {
+          throw Exception(
+            'Only an authorized courier can update delivery status.',
+          );
+        }
+
+        if (!courierActive) {
+          throw Exception(
+            'Courier account is inactive.',
+          );
+        }
 
         final currentStatus = _normalizeStatus(
           data['orderStatus'] ?? data['status'],
@@ -121,9 +167,30 @@ class _CourierPanelState extends State<CourierPanel> {
         }
 
         if (requestedIndex != currentIndex + 1) {
+          final next = _nextStatus(currentStatus);
+
           throw Exception(
-            'Wrong status jump. Order must move from '
-            '$currentStatus to ${_nextStatus(currentStatus)}.',
+            next.isEmpty
+                ? 'No further courier status is available.'
+                : 'Wrong status jump. Order must move from '
+                    '$currentStatus to $next.',
+          );
+        }
+
+        /*
+         * If an order is already assigned to another courier,
+         * another courier cannot update it.
+         *
+         * If courierId is empty, this courier becomes the assigned
+         * courier. This provides groundwork for multiple couriers.
+         */
+        final existingCourierId =
+            _stringValue(data['courierId']);
+
+        if (existingCourierId.isNotEmpty &&
+            existingCourierId != courierUser.uid) {
+          throw Exception(
+            'This order is already assigned to another courier.',
           );
         }
 
@@ -136,18 +203,19 @@ class _CourierPanelState extends State<CourierPanel> {
         if (existingHistory is List) {
           for (final item in existingHistory) {
             if (item is Map) {
-              history.add(Map<String, dynamic>.from(item));
+              history.add(
+                Map<String, dynamic>.from(item),
+              );
             }
           }
         }
-
-        final courierUser = FirebaseAuth.instance.currentUser;
 
         history.add({
           'status': requestedStatus,
           'timestamp': now,
           'updatedBy': 'Courier',
-          if (courierUser != null) 'updatedByUid': courierUser.uid,
+          'updatedByUid': courierUser.uid,
+          'courierId': courierUser.uid,
         });
 
         final updateData = <String, dynamic>{
@@ -157,7 +225,22 @@ class _CourierPanelState extends State<CourierPanel> {
           'trackingEnabled': requestedStatus != 'Delivered',
           'statusHistory': history,
           'updatedAt': now,
+
+          // Multiple courier groundwork.
+          'courierId': courierUser.uid,
+          'courierAssignedAt':
+              data['courierAssignedAt'] ?? now,
         };
+
+        /*
+         * Courier details are stored without removing any existing
+         * courier partner/person information.
+         */
+        if (_stringValue(data['courierName']).isEmpty &&
+            _stringValue(data['courierPersonName']).isEmpty) {
+          updateData['courierPersonName'] =
+              courierUser.displayName ?? 'Courier';
+        }
 
         if (requestedStatus == 'Picked by Courier') {
           updateData['courierPickedAt'] = now;
@@ -170,16 +253,24 @@ class _CourierPanelState extends State<CourierPanel> {
         if (requestedStatus == 'Delivered') {
           updateData['deliveredAt'] = now;
           updateData['trackingEnabled'] = false;
+          updateData['deliveryCompletedBy'] =
+              courierUser.uid;
+          updateData['deliveryCompletedAt'] = now;
         }
 
-        transaction.update(docRef, updateData);
+        transaction.update(
+          docRef,
+          updateData,
+        );
       });
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Order status updated to $requestedStatus'),
+          content: Text(
+            'Order status updated to $requestedStatus',
+          ),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -189,21 +280,30 @@ class _CourierPanelState extends State<CourierPanel> {
       String message = e.toString();
 
       if (message.startsWith('Exception: ')) {
-        message = message.substring('Exception: '.length);
+        message = message.substring(
+          'Exception: '.length,
+        );
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      _showError(message);
     }
   }
 
+  void _showError(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   Widget _infoRow(String title, dynamic value) {
-    final text = value == null || value.toString().trim().isEmpty
+    final text = value == null ||
+            value.toString().trim().isEmpty
         ? 'Not available'
         : value.toString();
 
@@ -276,16 +376,22 @@ class _CourierPanelState extends State<CourierPanel> {
         const SizedBox(width: 12),
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.only(bottom: 14),
+            padding: const EdgeInsets.only(
+              bottom: 14,
+            ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
                   style: TextStyle(
-                    fontWeight:
-                        current ? FontWeight.bold : FontWeight.w600,
-                    color: current ? Colors.green.shade700 : null,
+                    fontWeight: current
+                        ? FontWeight.bold
+                        : FontWeight.w600,
+                    color: current
+                        ? Colors.green.shade700
+                        : null,
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -325,42 +431,52 @@ class _CourierPanelState extends State<CourierPanel> {
     final currentIndex = _statusIndex(status);
 
     final orderId =
-        data['orderId']?.toString() ?? orderDoc.id;
+        _stringValue(data['orderId']).isNotEmpty
+            ? _stringValue(data['orderId'])
+            : orderDoc.id;
+
+    final courierId =
+        _stringValue(data['courierId']);
 
     final courierPartner =
-        data['courierPartner']?.toString() ??
-            data['courierName']?.toString() ??
-            'Not assigned';
+        _stringValue(data['courierPartner']).isNotEmpty
+            ? _stringValue(data['courierPartner'])
+            : _stringValue(data['courierName']).isNotEmpty
+                ? _stringValue(data['courierName'])
+                : 'Not assigned';
 
     final courierPersonName =
-        data['courierPersonName']?.toString() ??
-            '';
+        _stringValue(data['courierPersonName']).isNotEmpty
+            ? _stringValue(data['courierPersonName'])
+            : _stringValue(data['courierName']);
 
     final courierPhone =
-        data['courierPhone']?.toString() ??
-            data['courierMobile']?.toString() ??
-            '';
+        _stringValue(data['courierPhone']).isNotEmpty
+            ? _stringValue(data['courierPhone'])
+            : _stringValue(data['courierMobile']);
 
     final trackingNumber =
-        data['trackingNumber']?.toString() ?? '';
+        _stringValue(data['trackingNumber']);
 
     final trackingUrl =
-        data['trackingUrl']?.toString() ?? '';
+        _stringValue(data['trackingUrl']);
 
     final customerName =
-        data['customerName']?.toString() ??
-            data['name']?.toString() ??
-            'Customer';
+        _stringValue(data['customerName']).isNotEmpty
+            ? _stringValue(data['customerName'])
+            : _stringValue(data['name']).isNotEmpty
+                ? _stringValue(data['name'])
+                : 'Customer';
 
     final customerPhone =
-        data['customerPhone']?.toString() ??
-            data['phone']?.toString() ??
-            '';
+        _stringValue(data['customerPhone']).isNotEmpty
+            ? _stringValue(data['customerPhone'])
+            : _stringValue(data['phone']);
 
     final customerAddress =
-        data['address']?.toString() ??
-            data['deliveryAddress']?.toString() ??
-            '';
+        _stringValue(data['address']).isNotEmpty
+            ? _stringValue(data['address'])
+            : _stringValue(data['deliveryAddress']);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -371,7 +487,8 @@ class _CourierPanelState extends State<CourierPanel> {
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
           children: [
             Row(
               children: [
@@ -385,13 +502,15 @@ class _CourierPanelState extends State<CourierPanel> {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(
+                  padding:
+                      const EdgeInsets.symmetric(
                     horizontal: 10,
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
                     color: Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius:
+                        BorderRadius.circular(20),
                   ),
                   child: Text(
                     status,
@@ -408,26 +527,55 @@ class _CourierPanelState extends State<CourierPanel> {
             const SizedBox(height: 16),
 
             _infoRow('Customer', customerName),
+
             if (customerPhone.isNotEmpty)
-              _infoRow('Phone', customerPhone),
+              _infoRow(
+                'Phone',
+                customerPhone,
+              ),
+
             if (customerAddress.isNotEmpty)
-              _infoRow('Address', customerAddress),
+              _infoRow(
+                'Address',
+                customerAddress,
+              ),
 
             const Divider(height: 24),
 
-            _infoRow('Courier Partner', courierPartner),
+            _infoRow(
+              'Courier Partner',
+              courierPartner,
+            ),
 
             if (courierPersonName.isNotEmpty)
-              _infoRow('Courier Person', courierPersonName),
+              _infoRow(
+                'Courier Person',
+                courierPersonName,
+              ),
 
             if (courierPhone.isNotEmpty)
-              _infoRow('Courier Phone', courierPhone),
+              _infoRow(
+                'Courier Phone',
+                courierPhone,
+              ),
+
+            if (courierId.isNotEmpty)
+              _infoRow(
+                'Courier ID',
+                courierId,
+              ),
 
             if (trackingNumber.isNotEmpty)
-              _infoRow('Tracking No.', trackingNumber),
+              _infoRow(
+                'Tracking No.',
+                trackingNumber,
+              ),
 
             if (trackingUrl.isNotEmpty)
-              _infoRow('Tracking URL', trackingUrl),
+              _infoRow(
+                'Tracking URL',
+                trackingUrl,
+              ),
 
             const SizedBox(height: 14),
 
@@ -485,13 +633,19 @@ class _CourierPanelState extends State<CourierPanel> {
                         ? Icons.done_all
                         : Icons.arrow_forward,
                   ),
-                  label: Text('Mark as $nextStatus'),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
+                  label: Text(
+                    'Mark as $nextStatus',
+                  ),
+                  style:
+                      ElevatedButton.styleFrom(
+                    padding:
+                        const EdgeInsets.symmetric(
                       vertical: 13,
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                    shape:
+                        RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(12),
                     ),
                   ),
                 ),
@@ -499,13 +653,16 @@ class _CourierPanelState extends State<CourierPanel> {
             ] else ...[
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(13),
+                padding:
+                    const EdgeInsets.all(13),
                 decoration: BoxDecoration(
                   color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius:
+                      BorderRadius.circular(12),
                 ),
                 child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisAlignment:
+                      MainAxisAlignment.center,
                   children: [
                     Icon(
                       Icons.check_circle,
@@ -515,7 +672,8 @@ class _CourierPanelState extends State<CourierPanel> {
                     Text(
                       'Order Delivered',
                       style: TextStyle(
-                        fontWeight: FontWeight.bold,
+                        fontWeight:
+                            FontWeight.bold,
                         color: Colors.green,
                       ),
                     ),
@@ -541,7 +699,8 @@ class _CourierPanelState extends State<CourierPanel> {
         ),
         centerTitle: true,
       ),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      body: StreamBuilder<
+          QuerySnapshot<Map<String, dynamic>>>(
         stream: _firestore
             .collection('orders')
             .snapshots(),
@@ -549,9 +708,11 @@ class _CourierPanelState extends State<CourierPanel> {
           if (snapshot.hasError) {
             return Center(
               child: Padding(
-                padding: const EdgeInsets.all(20),
+                padding:
+                    const EdgeInsets.all(20),
                 child: Text(
-                  'Unable to load orders.\n\n${snapshot.error}',
+                  'Unable to load orders.\n\n'
+                  '${snapshot.error}',
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -565,13 +726,17 @@ class _CourierPanelState extends State<CourierPanel> {
             );
           }
 
-          final docs = snapshot.data?.docs ?? [];
+          final docs =
+              snapshot.data?.docs ?? [];
 
-          final courierOrders = docs.where((doc) {
+          final courierOrders =
+              docs.where((doc) {
             final data = doc.data();
 
-            final status = _normalizeStatus(
-              data['orderStatus'] ?? data['status'],
+            final status =
+                _normalizeStatus(
+              data['orderStatus'] ??
+                  data['status'],
             );
 
             return _isCourierOrder(status);
@@ -581,11 +746,23 @@ class _CourierPanelState extends State<CourierPanel> {
             final aData = a.data();
             final bData = b.data();
 
-            final aTime = aData['updatedAt'];
-            final bTime = bData['updatedAt'];
+            final aTime =
+                aData['updatedAt'];
 
-            if (aTime is Timestamp && bTime is Timestamp) {
+            final bTime =
+                bData['updatedAt'];
+
+            if (aTime is Timestamp &&
+                bTime is Timestamp) {
               return bTime.compareTo(aTime);
+            }
+
+            if (aTime is Timestamp) {
+              return -1;
+            }
+
+            if (bTime is Timestamp) {
+              return 1;
             }
 
             return 0;
@@ -610,7 +787,8 @@ class _CourierPanelState extends State<CourierPanel> {
                       'No courier orders available',
                       style: TextStyle(
                         fontSize: 18,
-                        fontWeight: FontWeight.w600,
+                        fontWeight:
+                            FontWeight.w600,
                         color: Colors.grey,
                       ),
                     ),
@@ -618,8 +796,10 @@ class _CourierPanelState extends State<CourierPanel> {
                   SizedBox(height: 8),
                   Center(
                     child: Text(
-                      'Orders will appear here after they are Shipped.',
-                      textAlign: TextAlign.center,
+                      'Orders will appear here after '
+                      'they are Shipped.',
+                      textAlign:
+                          TextAlign.center,
                       style: TextStyle(
                         color: Colors.grey,
                       ),
@@ -633,9 +813,12 @@ class _CourierPanelState extends State<CourierPanel> {
           return RefreshIndicator(
             onRefresh: () async {},
             child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: courierOrders.length,
-              itemBuilder: (context, index) {
+              padding:
+                  const EdgeInsets.all(16),
+              itemCount:
+                  courierOrders.length,
+              itemBuilder:
+                  (context, index) {
                 return _buildOrderCard(
                   courierOrders[index],
                 );
