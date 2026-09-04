@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_functions/firebase_functions.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 class CourierManagementPage extends StatefulWidget {
   const CourierManagementPage({super.key});
