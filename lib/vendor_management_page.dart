@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_functions/firebase_functions.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 
 class VendorManagementPage extends StatefulWidget {
@@ -22,7 +22,6 @@ class _VendorManagementPageState
 
   bool _loading = false;
 
-  // Required documents for final vendor approval.
   static const List<String> _requiredDocuments = [
     'pan',
     'aadhaar',
@@ -891,7 +890,6 @@ class _VendorManagementPageState
         ),
         children: [
           const Divider(),
-
           Align(
             alignment: Alignment.centerLeft,
             child: Text(
@@ -902,15 +900,10 @@ class _VendorManagementPageState
               ),
             ),
           ),
-
           const SizedBox(height: 4),
-
           SelectableText(uid),
-
           const SizedBox(height: 16),
-
           _approvalRequirementBox(documents),
-
           Row(
             children: [
               Expanded(
@@ -955,9 +948,7 @@ class _VendorManagementPageState
               ),
             ],
           ),
-
           const SizedBox(height: 8),
-
           Row(
             children: [
               Expanded(
@@ -995,9 +986,7 @@ class _VendorManagementPageState
               ),
             ],
           ),
-
           const SizedBox(height: 20),
-
           const Align(
             alignment: Alignment.centerLeft,
             child: Text(
@@ -1008,9 +997,7 @@ class _VendorManagementPageState
               ),
             ),
           ),
-
           const SizedBox(height: 6),
-
           const Align(
             alignment: Alignment.centerLeft,
             child: Text(
@@ -1021,9 +1008,7 @@ class _VendorManagementPageState
               ),
             ),
           ),
-
           const SizedBox(height: 10),
-
           ..._allDocuments.map(
             (type) {
               final document =
@@ -1038,9 +1023,7 @@ class _VendorManagementPageState
               );
             },
           ),
-
           const SizedBox(height: 8),
-
           if (status == 'approved')
             Container(
               width: double.infinity,
@@ -1290,7 +1273,6 @@ class _VendorManagementPageState
               );
             },
           ),
-
           if (_loading)
             Positioned.fill(
               child: Container(
