@@ -32,8 +32,6 @@ class Product {
     required this.active,
     this.mrp,
     this.discountPercent,
-
-    // Vendor fields
     this.vendorUid,
     this.vendorName,
   });
@@ -48,10 +46,7 @@ class Product {
     }
 
     return double.tryParse(
-          price
-              .toString()
-              .replaceAll(',', '')
-              .trim(),
+          price.toString().replaceAll(',', '').trim(),
         ) ??
         0.0;
   }
@@ -74,10 +69,7 @@ class Product {
     }
 
     return double.tryParse(
-          mrp
-              .toString()
-              .replaceAll(',', '')
-              .trim(),
+          mrp.toString().replaceAll(',', '').trim(),
         ) ??
         numericPrice;
   }
@@ -91,7 +83,7 @@ class Product {
   }
 
   // ============================================================
-  // VENDOR UID
+  // SAFE VENDOR UID
   // ============================================================
 
   String get safeVendorUid {
@@ -99,7 +91,7 @@ class Product {
   }
 
   // ============================================================
-  // VENDOR NAME
+  // SAFE VENDOR NAME
   // ============================================================
 
   String get safeVendorName {
@@ -198,16 +190,13 @@ class Product {
       price: price ?? this.price,
       stock: stock ?? this.stock,
       imageUrl: imageUrl ?? this.imageUrl,
-      description:
-          description ?? this.description,
+      description: description ?? this.description,
       active: active ?? this.active,
       mrp: mrp ?? this.mrp,
       discountPercent:
           discountPercent ?? this.discountPercent,
-      vendorUid:
-          vendorUid ?? this.vendorUid,
-      vendorName:
-          vendorName ?? this.vendorName,
+      vendorUid: vendorUid ?? this.vendorUid,
+      vendorName: vendorName ?? this.vendorName,
     );
   }
 
@@ -261,5 +250,124 @@ class Product {
           value?.toString() ?? '',
         ) ??
         0;
+  }
+}
+
+// ============================================================
+// CUSTOMER ADDRESS MODEL
+// ============================================================
+
+class CustomerAddress {
+  final String addressId;
+  final String name;
+  final String phone;
+  final String house;
+  final String street;
+  final String city;
+  final String state;
+  final String pincode;
+  final String landmark;
+  final bool isDefault;
+
+  const CustomerAddress({
+    required this.addressId,
+    required this.name,
+    required this.phone,
+    required this.house,
+    required this.street,
+    required this.city,
+    required this.state,
+    required this.pincode,
+    required this.landmark,
+    required this.isDefault,
+  });
+
+  // ============================================================
+  // FIRESTORE → CUSTOMER ADDRESS
+  // ============================================================
+
+  factory CustomerAddress.fromMap(
+    Map<String, dynamic> map,
+  ) {
+    return CustomerAddress(
+      addressId:
+          (map['addressId'] ?? '').toString().trim(),
+
+      name:
+          (map['name'] ?? '').toString().trim(),
+
+      phone:
+          (map['phone'] ?? '').toString().trim(),
+
+      house:
+          (map['house'] ?? '').toString().trim(),
+
+      street:
+          (map['street'] ?? '').toString().trim(),
+
+      city:
+          (map['city'] ?? '').toString().trim(),
+
+      state:
+          (map['state'] ?? 'Rajasthan').toString().trim(),
+
+      pincode:
+          (map['pincode'] ?? '').toString().trim(),
+
+      landmark:
+          (map['landmark'] ?? '').toString().trim(),
+
+      isDefault:
+          map['isDefault'] == true,
+    );
+  }
+
+  // ============================================================
+  // CUSTOMER ADDRESS → FIRESTORE
+  // ============================================================
+
+  Map<String, dynamic> toMap() {
+    return {
+      'addressId': addressId,
+      'name': name,
+      'phone': phone,
+      'house': house,
+      'street': street,
+      'city': city,
+      'state': state,
+      'pincode': pincode,
+      'landmark': landmark,
+      'isDefault': isDefault,
+    };
+  }
+
+  // ============================================================
+  // COPY WITH
+  // ============================================================
+
+  CustomerAddress copyWith({
+    String? addressId,
+    String? name,
+    String? phone,
+    String? house,
+    String? street,
+    String? city,
+    String? state,
+    String? pincode,
+    String? landmark,
+    bool? isDefault,
+  }) {
+    return CustomerAddress(
+      addressId: addressId ?? this.addressId,
+      name: name ?? this.name,
+      phone: phone ?? this.phone,
+      house: house ?? this.house,
+      street: street ?? this.street,
+      city: city ?? this.city,
+      state: state ?? this.state,
+      pincode: pincode ?? this.pincode,
+      landmark: landmark ?? this.landmark,
+      isDefault: isDefault ?? this.isDefault,
+    );
   }
 }
