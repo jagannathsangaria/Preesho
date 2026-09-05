@@ -5,6 +5,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:excel/excel.dart' hide Border;
 import 'package:file_picker/file_picker.dart';
 import 'package:file_saver/file_saver.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'courier_management_page.dart';
@@ -26,8 +27,17 @@ class _AdminPanelState extends State<AdminPanel>
 
   late final TabController tabController;
 
+  // Cloud Functions are still used for shipment,
+  // cancellation and courier assignment.
   final FirebaseFunctions functions =
       FirebaseFunctions.instanceFor(region: 'asia-south1');
+
+  // ==========================================================
+  // ADMIN UID
+  // ==========================================================
+
+  static const String adminUid =
+      'RkjeRGOd1xdCNFjVR7bB7GXtmAG2';
 
   // ==========================================================
   // PRODUCT CONTROLLERS
@@ -852,7 +862,7 @@ class _AdminPanelState extends State<AdminPanel>
   }
 
   // ==========================================================
-  // ADMIN ORDER STATUS - BACKEND
+  // ADMIN ORDER STATUS - DIRECT FIRESTORE
   // ==========================================================
 
   Future<void> updateOrderStatus(
@@ -860,19 +870,140 @@ class _AdminPanelState extends State<AdminPanel>
     String newStatus,
   ) async {
     try {
-      final callable = functions.httpsCallable(
-        'updateOrderStatus',
-      );
+      // ------------------------------------------------------
+      // 1. Check logged-in Firebase user
+      // ------------------------------------------------------
 
-      await callable.call({
-        'orderId': orderId,
-        'newStatus': newStatus,
+      final user = FirebaseAuth.instance.currentUser;
+
+      if (user == null) {
+        showMessage('Admin login required.');
+        return;
+      }
+
+      // ------------------------------------------------------
+      // 2. Check Admin UID
+      // ------------------------------------------------------
+
+      if (user.uid != adminUid) {
+        showMessage('Admin permission denied.');
+        return;
+      }
+
+      // ------------------------------------------------------
+      // 3. Get order
+      // ------------------------------------------------------
+
+      final orderRef = ordersRef.doc(orderId);
+
+      final orderSnapshot = await orderRef.get();
+
+      if (!orderSnapshot.exists) {
+        showMessage('Order nahi mila.');
+        return;
+      }
+
+      final data =
+          orderSnapshot.data() ?? <String, dynamic>{};
+
+      final oldStatus = normalizedOrderStatus(data);
+
+      // ------------------------------------------------------
+      // 4. Prevent invalid status
+      // ------------------------------------------------------
+
+      if (!lifecycleStatuses.contains(newStatus)) {
+        showMessage('Invalid order status.');
+        return;
+      }
+
+      // ------------------------------------------------------
+      // 5. Prepare status update
+      // ------------------------------------------------------
+
+      final updateData = <String, dynamic>{
+        'orderStatus': newStatus,
+        'status': newStatus,
+        'updatedAt': FieldValue.serverTimestamp(),
+        'updatedBy': user.uid,
+      };
+
+      // ------------------------------------------------------
+      // 6. Add stage timestamp
+      // ------------------------------------------------------
+
+      switch (newStatus) {
+        case 'Confirmed':
+          updateData['confirmedAt'] =
+              FieldValue.serverTimestamp();
+          break;
+
+        case 'Processing':
+          updateData['processingAt'] =
+              FieldValue.serverTimestamp();
+          break;
+
+        case 'Packed':
+          updateData['packedAt'] =
+              FieldValue.serverTimestamp();
+          break;
+
+        case 'Shipped':
+          updateData['shippedAt'] =
+              FieldValue.serverTimestamp();
+          break;
+
+        case 'Picked by Courier':
+          updateData['courierPickedAt'] =
+              FieldValue.serverTimestamp();
+          break;
+
+        case 'Out for Delivery':
+          updateData['outForDeliveryAt'] =
+              FieldValue.serverTimestamp();
+          break;
+
+        case 'Delivered':
+          updateData['deliveredAt'] =
+              FieldValue.serverTimestamp();
+          break;
+      }
+
+      // ------------------------------------------------------
+      // 7. Existing status history
+      // ------------------------------------------------------
+
+      final history = data['statusHistory'] is List
+          ? List<dynamic>.from(
+              data['statusHistory'],
+            )
+          : <dynamic>[];
+
+      history.add({
+        'status': newStatus,
+        'updatedBy': user.uid,
+        'timestamp': Timestamp.now(),
       });
 
-      showMessage('Order $newStatus successfully.');
-    } on FirebaseFunctionsException catch (e) {
+      updateData['statusHistory'] = history;
+
+      // ------------------------------------------------------
+      // 8. Update Firestore directly
+      // ------------------------------------------------------
+
+      await orderRef.update(updateData);
+
+      // ------------------------------------------------------
+      // 9. Success
+      // ------------------------------------------------------
+
       showMessage(
-        e.message ?? 'Order status update failed.',
+        'Order $oldStatus → $newStatus successfully.',
+      );
+    } on FirebaseException catch (e) {
+      showMessage(
+        'Order status update failed: '
+        '${e.message ?? e.code}',
       );
     } catch (e) {
       showMessage(
@@ -1258,11 +1389,8 @@ class _AdminPanelState extends State<AdminPanel>
           final bd =
               b.data() as Map<String, dynamic>;
 
-          final at =
-              ad['createdAt'];
-
-          final bt =
-              bd['createdAt'];
+          final at = ad['createdAt'];
+          final bt = bd['createdAt'];
 
           final adate =
               at is Timestamp
