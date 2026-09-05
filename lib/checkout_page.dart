@@ -1,18 +1,34 @@
 Future<void> placeOrder() async {
   final user = currentUser;
 
+  // ============================================================
+  // LOGIN CHECK
+  // ============================================================
+
   if (user == null) {
     await goToLogin();
     return;
   }
 
+  // ============================================================
+  // DUPLICATE ORDER PREVENTION
+  // ============================================================
+
   if (placingOrder) {
     return;
   }
 
+  // ============================================================
+  // ADDRESS VALIDATION
+  // ============================================================
+
   if (!validateAddress()) {
     return;
   }
+
+  // ============================================================
+  // CART CHECK
+  // ============================================================
 
   final cartItems = CartController.items;
 
@@ -26,20 +42,32 @@ Future<void> placeOrder() async {
   });
 
   try {
-    // ========================================================
-    // SAVE CUSTOMER + ADDRESS
-    // ========================================================
+    // ==========================================================
+    // SAVE CUSTOMER DETAILS
+    // ==========================================================
 
     await saveCustomerDetails(user.uid);
 
+    // ==========================================================
+    // SELECT ADDRESS
+    // ==========================================================
+
     CustomerAddress selectedAddress;
 
-    if (selectedAddressId != null &&
+    final hasSelectedSavedAddress =
+        selectedAddressId != null &&
         savedAddresses.any(
-          (a) => a.addressId == selectedAddressId,
-        )) {
-      selectedAddress = savedAddresses.firstWhere(
-        (a) => a.addressId == selectedAddressId,
+          (address) =>
+              address.addressId ==
+              selectedAddressId,
+        );
+
+    if (hasSelectedSavedAddress) {
+      selectedAddress =
+          savedAddresses.firstWhere(
+        (address) =>
+            address.addressId ==
+            selectedAddressId,
       );
     } else {
       selectedAddress = _addressFromForm(
@@ -48,9 +76,9 @@ Future<void> placeOrder() async {
       );
     }
 
-    // ========================================================
-    // VENDOR MAPPING
-    // ========================================================
+    // ==========================================================
+    // VENDOR HELPERS
+    // ==========================================================
 
     String getVendorUid(dynamic product) {
       try {
@@ -96,9 +124,9 @@ Future<void> placeOrder() async {
       return '';
     }
 
-    // ========================================================
-    // CREATE ORDER ITEMS
-    // ========================================================
+    // ==========================================================
+    // BUILD ORDER ITEMS
+    // ==========================================================
 
     double total = 0;
 
@@ -108,61 +136,79 @@ Future<void> placeOrder() async {
     final Set<String> vendorNameSet = {};
 
     for (final cartItem in cartItems) {
-      final dynamic product = cartItem.product;
+      final dynamic product =
+          cartItem.product;
 
-      final int quantity = cartItem.quantity;
-      final double price = cartItem.numericPrice;
-      final double itemTotal = price * quantity;
+      final int quantity =
+          cartItem.quantity;
+
+      final double price =
+          cartItem.numericPrice;
+
+      final double itemTotal =
+          price * quantity;
 
       total += itemTotal;
 
-      final String vendorUid = getVendorUid(product);
-      final String vendorName = getVendorName(product);
+      final String vendorUid =
+          getVendorUid(product);
+
+      final String vendorName =
+          getVendorName(product);
 
       if (vendorUid.isNotEmpty) {
-        vendorUidSet.add(vendorUid);
+        vendorUidSet.add(
+          vendorUid,
+        );
       }
 
       if (vendorName.isNotEmpty) {
-        vendorNameSet.add(vendorName);
+        vendorNameSet.add(
+          vendorName,
+        );
       }
 
-      // ======================================================
-      // ORDER ITEM
-      // ======================================================
-
       items.add({
-        'productId': product.id,
+        // Product
+        'productId':
+            product.id,
 
-        'name': product.name,
+        'name':
+            product.name,
 
-        'category': product.category,
+        'category':
+            product.category,
 
-        'price': price,
+        // Pricing
+        'price':
+            price,
 
-        'quantity': quantity,
+        'quantity':
+            quantity,
 
-        'total': itemTotal,
+        'total':
+            itemTotal,
 
-        'imageUrl': product.imageUrl,
+        // Image
+        'imageUrl':
+            product.imageUrl,
 
-        // ====================================================
-        // VENDOR INFORMATION
-        // ====================================================
+        // Vendor
+        'vendorUid':
+            vendorUid.isNotEmpty
+                ? vendorUid
+                : null,
 
-        'vendorUid': vendorUid.isNotEmpty
-            ? vendorUid
-            : null,
-
-        'vendorName': vendorName.isNotEmpty
-            ? vendorName
-            : null,
+        'vendorName':
+            vendorName.isNotEmpty
+                ? vendorName
+                : null,
       });
     }
 
-    // ========================================================
-    // VENDOR LIST
-    // ========================================================
+    // ==========================================================
+    // VENDOR INFORMATION
+    // ==========================================================
 
     final List<String> vendorUids =
         vendorUidSet.toList();
@@ -170,48 +216,51 @@ Future<void> placeOrder() async {
     final List<String> vendorNames =
         vendorNameSet.toList();
 
-    // ========================================================
-    // SINGLE / MULTI VENDOR
-    // ========================================================
-
     final bool isMultiVendor =
         vendorUids.length > 1;
 
     String? primaryVendorUid;
+
     String? primaryVendorName;
 
     if (vendorUids.length == 1) {
-      primaryVendorUid = vendorUids.first;
+      primaryVendorUid =
+          vendorUids.first;
     }
 
     if (vendorNames.length == 1) {
-      primaryVendorName = vendorNames.first;
+      primaryVendorName =
+          vendorNames.first;
     }
 
-    // ========================================================
-    // CREATE ORDER REFERENCE
-    // ========================================================
+    // ==========================================================
+    // CREATE FIRESTORE ORDER REFERENCE
+    // ==========================================================
 
-    final orderRef = FirebaseFirestore.instance
-        .collection('orders')
-        .doc();
+    final FirebaseFirestore db =
+        FirebaseFirestore.instance;
 
-    // ========================================================
+    final orderRef =
+        db.collection('orders').doc();
+
+    // ==========================================================
     // ORDER DATA
-    // ========================================================
+    // ==========================================================
 
     final Map<String, dynamic> orderData = {
-      // ======================================================
-      // ORDER ID
-      // ======================================================
+      // --------------------------------------------------------
+      // ORDER IDENTIFICATION
+      // --------------------------------------------------------
 
-      'orderId': orderRef.id,
+      'orderId':
+          orderRef.id,
 
-      // ======================================================
+      // --------------------------------------------------------
       // CUSTOMER
-      // ======================================================
+      // --------------------------------------------------------
 
-      'userId': user.uid,
+      'userId':
+          user.uid,
 
       'customerName':
           nameController.text.trim(),
@@ -224,9 +273,9 @@ Future<void> placeOrder() async {
       'customerEmail':
           emailController.text.trim(),
 
-      // ======================================================
+      // --------------------------------------------------------
       // DELIVERY ADDRESS SNAPSHOT
-      // ======================================================
+      // --------------------------------------------------------
 
       'deliveryAddress':
           selectedAddress.toMap(),
@@ -243,107 +292,159 @@ Future<void> placeOrder() async {
       'pincode':
           selectedAddress.pincode,
 
-      // ======================================================
+      // --------------------------------------------------------
       // ORDER ITEMS
-      // ======================================================
+      // --------------------------------------------------------
 
-      'items': items,
+      'items':
+          items,
 
-      'totalAmount': total,
+      'itemCount':
+          cartItems.fold<int>(
+        0,
+        (sum, item) =>
+            sum + item.quantity,
+      ),
 
-      // ======================================================
-      // VENDOR MAPPING
-      // ======================================================
+      // --------------------------------------------------------
+      // TOTAL
+      // --------------------------------------------------------
 
-      // Single vendor:
-      // vendorUid contains the vendor UID.
-      //
-      // Multi vendor:
-      // vendorUid remains null and vendorUids contains
-      // all participating vendors.
+      'totalAmount':
+          total,
 
-      'vendorUid': primaryVendorUid,
+      // Also save total for compatibility
+      // with existing ActiveOrderTracking.
 
-      'vendorName': primaryVendorName,
+      'total':
+          total,
 
-      'vendorUids': vendorUids,
+      // --------------------------------------------------------
+      // VENDOR
+      // --------------------------------------------------------
 
-      'vendorNames': vendorNames,
+      'vendorUid':
+          primaryVendorUid,
 
-      'isMultiVendor': isMultiVendor,
+      'vendorName':
+          primaryVendorName,
 
-      'vendorCount': vendorUids.length,
+      'vendorUids':
+          vendorUids,
 
-      // ======================================================
+      'vendorNames':
+          vendorNames,
+
+      'isMultiVendor':
+          isMultiVendor,
+
+      'vendorCount':
+          vendorUids.length,
+
+      // --------------------------------------------------------
       // PAYMENT
-      // ======================================================
+      // --------------------------------------------------------
 
-      'paymentMethod': 'COD',
+      'paymentMethod':
+          'COD',
 
-      'paymentStatus': 'Pending',
+      'paymentStatus':
+          'Pending',
 
-      // ======================================================
+      // --------------------------------------------------------
       // ORDER STATUS
-      // ======================================================
+      // --------------------------------------------------------
 
-      'orderStatus': 'Placed',
+      'orderStatus':
+          'Placed',
 
-      // ======================================================
+      // Compatibility with older code
+      'status':
+          'Placed',
+
+      // --------------------------------------------------------
       // STATUS HISTORY
-      // ======================================================
+      // --------------------------------------------------------
 
       'statusHistory': [
         {
-          'status': 'Placed',
-          'timestamp': Timestamp.now(),
-          'updatedBy': 'Customer',
+          'status':
+              'Placed',
+
+          'timestamp':
+              Timestamp.now(),
+
+          'updatedBy':
+              'Customer',
+
+          'updatedByUid':
+              user.uid,
         },
       ],
 
-      // ======================================================
+      // --------------------------------------------------------
       // STATUS TIMESTAMPS
-      // ======================================================
+      // --------------------------------------------------------
 
       'placedAt':
           FieldValue.serverTimestamp(),
 
-      'confirmedAt': null,
+      'confirmedAt':
+          null,
 
-      'processingAt': null,
+      'processingAt':
+          null,
 
-      'packedAt': null,
+      'packedAt':
+          null,
 
-      'shippedAt': null,
+      'shippedAt':
+          null,
 
-      'courierPickedAt': null,
+      'courierPickedAt':
+          null,
 
-      'outForDeliveryAt': null,
+      'outForDeliveryAt':
+          null,
 
-      'deliveredAt': null,
+      'deliveredAt':
+          null,
 
-      'cancelledAt': null,
+      'cancelledAt':
+          null,
 
-      // ======================================================
+      // --------------------------------------------------------
       // CANCELLATION
-      // ======================================================
+      // --------------------------------------------------------
 
-      'cancelled': false,
+      'cancelled':
+          false,
 
-      'cancellationReason': null,
+      'cancellationReason':
+          null,
 
-      // ======================================================
+      'cancelledBy':
+          null,
+
+      'cancelledByUid':
+          null,
+
+      // --------------------------------------------------------
       // CUSTOMER LOCATION
-      // ======================================================
+      // --------------------------------------------------------
 
-      'latitude': latitude,
+      'latitude':
+          latitude,
 
-      'longitude': longitude,
+      'longitude':
+          longitude,
 
-      // ======================================================
+      // --------------------------------------------------------
       // GIFT ORDER
-      // ======================================================
+      // --------------------------------------------------------
 
-      'isGift': isGift,
+      'isGift':
+          isGift,
 
       'giftDetails': isGift
           ? {
@@ -366,37 +467,59 @@ Future<void> placeOrder() async {
             }
           : null,
 
-      // ======================================================
+      // --------------------------------------------------------
       // COURIER
-      // ======================================================
+      // --------------------------------------------------------
 
-      'courierId': null,
+      'courierId':
+          null,
 
-      'courierName': null,
+      'courierName':
+          null,
 
-      'courierMobile': null,
+      'courierMobile':
+          null,
 
-      'courierAssignedAt': null,
+      'courierPartner':
+          null,
 
-      'courierPickedAt': null,
+      'courierPersonName':
+          null,
 
-      // ======================================================
-      // LIVE TRACKING
-      // ======================================================
+      'courierPhone':
+          null,
 
-      'trackingEnabled': false,
+      'courierAssignedAt':
+          null,
 
-      'trackingStatus': 'Not Started',
+      // --------------------------------------------------------
+      // TRACKING
+      // --------------------------------------------------------
 
-      'courierLatitude': null,
+      'trackingNumber':
+          null,
 
-      'courierLongitude': null,
+      'trackingUrl':
+          null,
 
-      'lastLocationUpdate': null,
+      'trackingEnabled':
+          false,
 
-      // ======================================================
+      'trackingStatus':
+          'Not Started',
+
+      'courierLatitude':
+          null,
+
+      'courierLongitude':
+          null,
+
+      'lastLocationUpdate':
+          null,
+
+      // --------------------------------------------------------
       // CREATED / UPDATED
-      // ======================================================
+      // --------------------------------------------------------
 
       'createdAt':
           FieldValue.serverTimestamp(),
@@ -405,15 +528,17 @@ Future<void> placeOrder() async {
           FieldValue.serverTimestamp(),
     };
 
-    // ========================================================
-    // SAVE ORDER TO FIRESTORE
-    // ========================================================
+    // ==========================================================
+    // SAVE ORDER
+    // ==========================================================
 
-    await orderRef.set(orderData);
+    await orderRef.set(
+      orderData,
+    );
 
-    // ========================================================
-    // CLEAR CART
-    // ========================================================
+    // ==========================================================
+    // CLEAR CART ONLY AFTER SUCCESSFUL ORDER CREATION
+    // ==========================================================
 
     await CartController.clear();
 
@@ -421,22 +546,23 @@ Future<void> placeOrder() async {
       return;
     }
 
-    // ========================================================
-    // SUCCESS MESSAGE
-    // ========================================================
+    // ==========================================================
+    // SUCCESS
+    // ==========================================================
 
     showMessage(
       'Order placed successfully.',
     );
 
-    // ========================================================
-    // OPEN MY ORDERS
-    // ========================================================
+    // ==========================================================
+    // OPEN ORDERS PAGE
+    // ==========================================================
 
-    Navigator.pushReplacement(
+    await Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) => const OrdersPage(),
+        builder: (_) =>
+            const OrdersPage(),
       ),
     );
   } catch (e) {
@@ -445,6 +571,10 @@ Future<void> placeOrder() async {
         'Could not place order. Please try again.',
       );
     }
+
+    debugPrint(
+      'PLACE ORDER ERROR: $e',
+    );
   } finally {
     if (mounted) {
       setState(() {
