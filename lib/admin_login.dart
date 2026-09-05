@@ -14,11 +14,8 @@ class AdminLogin extends StatefulWidget {
 }
 
 class _AdminLoginState extends State<AdminLogin> {
-  final FirebaseAuth _auth =
-      FirebaseAuth.instance;
-
-  final FirebaseFirestore _firestore =
-      FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   final TextEditingController _emailController =
       TextEditingController();
@@ -45,23 +42,16 @@ class _AdminLoginState extends State<AdminLogin> {
       return;
     }
 
-    final email =
-        _emailController.text.trim();
-
-    final password =
-        _passwordController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
 
     if (email.isEmpty) {
-      _showMessage(
-        'Please enter email.',
-      );
+      _showMessage('Please enter email.');
       return;
     }
 
     if (password.isEmpty) {
-      _showMessage(
-        'Please enter password.',
-      );
+      _showMessage('Please enter password.');
       return;
     }
 
@@ -80,38 +70,29 @@ class _AdminLoginState extends State<AdminLogin> {
         password: password,
       );
 
-      final user =
-          credential.user;
+      final user = credential.user;
 
       if (user == null) {
-        throw Exception(
-          'Unable to login.',
-        );
+        throw Exception('Unable to login.');
       }
 
       // ========================================================
       // ADMIN CHECK
       // ========================================================
 
-      final adminDoc =
-          await _firestore
-              .collection('Admins')
-              .doc(user.uid)
-              .get();
+      final adminDoc = await _firestore
+          .collection('Admins')
+          .doc(user.uid)
+          .get();
 
       if (adminDoc.exists) {
-        final adminData =
-            adminDoc.data() ?? {};
+        final adminData = adminDoc.data() ?? {};
 
         final roleValue =
-            adminData['role'] ??
-                adminData['Role'];
+            adminData['role'] ?? adminData['Role'];
 
         final role =
-            roleValue
-                ?.toString()
-                .trim()
-                .toLowerCase();
+            roleValue?.toString().trim().toLowerCase();
 
         if (role == 'admin') {
           if (!mounted) return;
@@ -119,8 +100,7 @@ class _AdminLoginState extends State<AdminLogin> {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (_) =>
-                  const AdminPanel(),
+              builder: (_) => const AdminPanel(),
             ),
           );
 
@@ -132,32 +112,25 @@ class _AdminLoginState extends State<AdminLogin> {
       // USERS DOCUMENT
       // ========================================================
 
-      final userDoc =
-          await _firestore
-              .collection('users')
-              .doc(user.uid)
-              .get();
+      final userDoc = await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .get();
 
-      final userData =
-          userDoc.data() ?? {};
+      final userData = userDoc.data() ?? {};
 
       final roleValue =
-          userData['role'] ??
-              userData['Role'];
+          userData['role'] ?? userData['Role'];
 
       final role =
-          roleValue
-              ?.toString()
-              .trim()
-              .toLowerCase();
+          roleValue?.toString().trim().toLowerCase();
 
       // ========================================================
       // COURIER CHECK
       // ========================================================
 
       if (role == 'courier') {
-        final active =
-            userData['active'] != false;
+        final active = userData['active'] != false;
 
         if (!active) {
           await _auth.signOut();
@@ -174,8 +147,7 @@ class _AdminLoginState extends State<AdminLogin> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) =>
-                const CourierPanel(),
+            builder: (_) => const CourierPanel(),
           ),
         );
 
@@ -187,11 +159,10 @@ class _AdminLoginState extends State<AdminLogin> {
       // ========================================================
 
       if (role == 'vendor') {
-        final vendorDoc =
-            await _firestore
-                .collection('vendors')
-                .doc(user.uid)
-                .get();
+        final vendorDoc = await _firestore
+            .collection('vendors')
+            .doc(user.uid)
+            .get();
 
         final vendorData =
             vendorDoc.data() ?? {};
@@ -200,20 +171,22 @@ class _AdminLoginState extends State<AdminLogin> {
         // VENDOR STATUS
         // ======================================================
 
-        final userStatus =
-            userData['vendorStatus']
-                ?.toString()
-                .trim()
-                .toLowerCase();
+        final userStatus = userData['vendorStatus']
+            ?.toString()
+            .trim()
+            .toLowerCase();
 
-        final vendorStatus =
-            vendorData['status']
-                ?.toString()
-                .trim()
-                .toLowerCase();
+        final vendorStatus = vendorData['status']
+            ?.toString()
+            .trim()
+            .toLowerCase();
+
+        // FIX:
+        // vendorStatus is String?, so .isNotEmpty
+        // cannot be called directly.
 
         final status =
-            vendorStatus.isNotEmpty
+            vendorStatus?.isNotEmpty == true
                 ? vendorStatus
                 : userStatus;
 
@@ -228,8 +201,7 @@ class _AdminLoginState extends State<AdminLogin> {
             vendorData['active'] == true;
 
         final active =
-            userActive ||
-                vendorActive;
+            userActive || vendorActive;
 
         // ======================================================
         // ONLY APPROVED + ACTIVE VENDOR
@@ -270,8 +242,7 @@ class _AdminLoginState extends State<AdminLogin> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) =>
-                const VendorPanel(),
+            builder: (_) => const VendorPanel(),
           ),
         );
 
@@ -292,28 +263,23 @@ class _AdminLoginState extends State<AdminLogin> {
 
       switch (e.code) {
         case 'invalid-credential':
-          message =
-              'Invalid email or password.';
+          message = 'Invalid email or password.';
           break;
 
         case 'invalid-email':
-          message =
-              'Please enter a valid email.';
+          message = 'Please enter a valid email.';
           break;
 
         case 'user-disabled':
-          message =
-              'This account has been disabled.';
+          message = 'This account has been disabled.';
           break;
 
         case 'user-not-found':
-          message =
-              'Account not found.';
+          message = 'Account not found.';
           break;
 
         case 'wrong-password':
-          message =
-              'Incorrect password.';
+          message = 'Incorrect password.';
           break;
 
         case 'too-many-requests':
@@ -330,6 +296,8 @@ class _AdminLoginState extends State<AdminLogin> {
         _showMessage(message);
       }
     } catch (e) {
+      debugPrint('Staff login error: $e');
+
       if (mounted) {
         _showMessage(
           'Unable to login. Please try again.',
@@ -348,17 +316,13 @@ class _AdminLoginState extends State<AdminLogin> {
   // MESSAGE
   // ============================================================
 
-  void _showMessage(
-    String message,
-  ) {
+  void _showMessage(String message) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context)
-        .showSnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        behavior:
-            SnackBarBehavior.floating,
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -368,41 +332,31 @@ class _AdminLoginState extends State<AdminLogin> {
   // ============================================================
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
           'Staff Login',
           style: TextStyle(
-            fontWeight:
-                FontWeight.bold,
+            fontWeight: FontWeight.bold,
           ),
         ),
       ),
-
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding:
-                const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
-              constraints:
-                  const BoxConstraints(
+              constraints: const BoxConstraints(
                 maxWidth: 450,
               ),
               child: Card(
                 elevation: 3,
                 child: Padding(
-                  padding:
-                      const EdgeInsets.all(
-                    24,
-                  ),
+                  padding: const EdgeInsets.all(24),
                   child: Column(
                     crossAxisAlignment:
-                        CrossAxisAlignment
-                            .stretch,
+                        CrossAxisAlignment.stretch,
                     children: [
                       // ==================================================
                       // ICON
@@ -411,79 +365,58 @@ class _AdminLoginState extends State<AdminLogin> {
                       const CircleAvatar(
                         radius: 38,
                         child: Icon(
-                          Icons
-                              .admin_panel_settings_outlined,
+                          Icons.admin_panel_settings_outlined,
                           size: 42,
                         ),
                       ),
 
-                      const SizedBox(
-                        height: 18,
-                      ),
+                      const SizedBox(height: 18),
 
                       const Text(
                         'Staff Login',
-                        textAlign:
-                            TextAlign.center,
-                        style:
-                            TextStyle(
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
                           fontSize: 24,
-                          fontWeight:
-                              FontWeight.bold,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
 
-                      const SizedBox(
-                        height: 8,
-                      ),
+                      const SizedBox(height: 8),
 
                       const Text(
                         'Admin, Courier & Vendor access',
-                        textAlign:
-                            TextAlign.center,
-                        style:
-                            TextStyle(
-                          color:
-                              Colors.grey,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.grey,
                         ),
                       ),
 
-                      const SizedBox(
-                        height: 28,
-                      ),
+                      const SizedBox(height: 28),
 
                       // ==================================================
                       // EMAIL
                       // ==================================================
 
                       TextField(
-                        controller:
-                            _emailController,
+                        controller: _emailController,
                         keyboardType:
-                            TextInputType
-                                .emailAddress,
+                            TextInputType.emailAddress,
                         textInputAction:
-                            TextInputAction
-                                .next,
+                            TextInputAction.next,
                         decoration:
                             const InputDecoration(
-                          labelText:
-                              'Email',
+                          labelText: 'Email',
                           hintText:
                               'Enter staff email',
-                          prefixIcon:
-                              Icon(
-                            Icons
-                                .email_outlined,
+                          prefixIcon: Icon(
+                            Icons.email_outlined,
                           ),
                           border:
                               OutlineInputBorder(),
                         ),
                       ),
 
-                      const SizedBox(
-                        height: 16,
-                      ),
+                      const SizedBox(height: 16),
 
                       // ==================================================
                       // PASSWORD
@@ -495,22 +428,18 @@ class _AdminLoginState extends State<AdminLogin> {
                         obscureText:
                             _obscurePassword,
                         textInputAction:
-                            TextInputAction
-                                .done,
-                        onSubmitted:
-                            (_) {
+                            TextInputAction.done,
+                        onSubmitted: (_) {
                           _login();
                         },
                         decoration:
                             InputDecoration(
-                          labelText:
-                              'Password',
+                          labelText: 'Password',
                           hintText:
                               'Enter password',
                           prefixIcon:
                               const Icon(
-                            Icons
-                                .lock_outline,
+                            Icons.lock_outline,
                           ),
                           suffixIcon:
                               IconButton(
@@ -520,8 +449,7 @@ class _AdminLoginState extends State<AdminLogin> {
                                     !_obscurePassword;
                               });
                             },
-                            icon:
-                                Icon(
+                            icon: Icon(
                               _obscurePassword
                                   ? Icons
                                       .visibility_outlined
@@ -534,9 +462,7 @@ class _AdminLoginState extends State<AdminLogin> {
                         ),
                       ),
 
-                      const SizedBox(
-                        height: 24,
-                      ),
+                      const SizedBox(height: 24),
 
                       // ==================================================
                       // LOGIN BUTTON
@@ -544,51 +470,37 @@ class _AdminLoginState extends State<AdminLogin> {
 
                       SizedBox(
                         height: 52,
-                        child:
-                            FilledButton(
+                        child: FilledButton(
                           onPressed:
-                              _loading
-                                  ? null
-                                  : _login,
-                          child:
-                              _loading
-                                  ? const SizedBox(
-                                      width:
-                                          24,
-                                      height:
-                                          24,
-                                      child:
-                                          CircularProgressIndicator(
-                                        strokeWidth:
-                                            2.5,
-                                      ),
-                                    )
-                                  : const Text(
-                                      'Login',
-                                      style:
-                                          TextStyle(
-                                        fontSize:
-                                            16,
-                                        fontWeight:
-                                            FontWeight.bold,
-                                      ),
-                                    ),
+                              _loading ? null : _login,
+                          child: _loading
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child:
+                                      CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                  ),
+                                )
+                              : const Text(
+                                  'Login',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight:
+                                        FontWeight.bold,
+                                  ),
+                                ),
                         ),
                       ),
 
-                      const SizedBox(
-                        height: 16,
-                      ),
+                      const SizedBox(height: 16),
 
                       const Text(
                         'Only authorized staff accounts can access this panel.',
-                        textAlign:
-                            TextAlign.center,
-                        style:
-                            TextStyle(
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
                           fontSize: 12,
-                          color:
-                              Colors.grey,
+                          color: Colors.grey,
                         ),
                       ),
                     ],
