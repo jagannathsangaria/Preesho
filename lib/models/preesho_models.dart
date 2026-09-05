@@ -1,171 +1,3 @@
-class CustomerAddress {
-  final String addressId;
-  final String name;
-  final String phone;
-  final String house;
-  final String street;
-  final String city;
-  final String state;
-  final String pincode;
-  final String landmark;
-  final bool isDefault;
-
-  const CustomerAddress({
-    required this.addressId,
-    required this.name,
-    required this.phone,
-    this.house = '',
-    required this.street,
-    required this.city,
-    required this.state,
-    required this.pincode,
-    this.landmark = '',
-    this.isDefault = false,
-  });
-
-  // ============================================================
-  // COMPLETE ADDRESS
-  // ============================================================
-
-  String get fullAddress {
-    final parts = <String>[];
-
-    if (house.trim().isNotEmpty) {
-      parts.add(house.trim());
-    }
-
-    if (street.trim().isNotEmpty) {
-      parts.add(street.trim());
-    }
-
-    if (landmark.trim().isNotEmpty) {
-      parts.add('Near ${landmark.trim()}');
-    }
-
-    if (city.trim().isNotEmpty) {
-      parts.add(city.trim());
-    }
-
-    if (state.trim().isNotEmpty) {
-      parts.add(state.trim());
-    }
-
-    if (pincode.trim().isNotEmpty) {
-      parts.add(pincode.trim());
-    }
-
-    return parts.join(', ');
-  }
-
-  // ============================================================
-  // FIRESTORE → MODEL
-  // ============================================================
-
-  factory CustomerAddress.fromMap(
-    Map<String, dynamic> map,
-  ) {
-    return CustomerAddress(
-      addressId: _stringValue(
-        map['addressId'],
-      ),
-      name: _stringValue(
-        map['name'],
-      ),
-      phone: _stringValue(
-        map['phone'] ?? map['mobile'],
-      ),
-      house: _stringValue(
-        map['house'],
-      ),
-      street: _stringValue(
-        map['street'] ?? map['address'],
-      ),
-      city: _stringValue(
-        map['city'],
-      ),
-      state: _stringValue(
-        map['state'],
-        fallback: 'Rajasthan',
-      ),
-      pincode: _stringValue(
-        map['pincode'] ?? map['pin'],
-      ),
-      landmark: _stringValue(
-        map['landmark'],
-      ),
-      isDefault: map['isDefault'] == true,
-    );
-  }
-
-  // ============================================================
-  // SAFE STRING CONVERSION
-  // ============================================================
-
-  static String _stringValue(
-    dynamic value, {
-    String fallback = '',
-  }) {
-    if (value == null) {
-      return fallback;
-    }
-
-    final result = value.toString().trim();
-
-    return result.isEmpty ? fallback : result;
-  }
-
-  // ============================================================
-  // MODEL → FIRESTORE
-  // ============================================================
-
-  Map<String, dynamic> toMap() {
-    return {
-      'addressId': addressId.trim(),
-      'name': name.trim(),
-      'phone': phone.trim(),
-      'house': house.trim(),
-      'street': street.trim(),
-      'city': city.trim(),
-      'state': state.trim().isEmpty
-          ? 'Rajasthan'
-          : state.trim(),
-      'pincode': pincode.trim(),
-      'landmark': landmark.trim(),
-      'isDefault': isDefault,
-    };
-  }
-
-  // ============================================================
-  // COPY WITH
-  // ============================================================
-
-  CustomerAddress copyWith({
-    String? addressId,
-    String? name,
-    String? phone,
-    String? house,
-    String? street,
-    String? city,
-    String? state,
-    String? pincode,
-    String? landmark,
-    bool? isDefault,
-  }) {
-    return CustomerAddress(
-      addressId: addressId ?? this.addressId,
-      name: name ?? this.name,
-      phone: phone ?? this.phone,
-      house: house ?? this.house,
-      street: street ?? this.street,
-      city: city ?? this.city,
-      state: state ?? this.state,
-      pincode: pincode ?? this.pincode,
-      landmark: landmark ?? this.landmark,
-      isDefault: isDefault ?? this.isDefault,
-    );
-  }
-}
-
 // ============================================================
 // PRODUCT MODEL
 // ============================================================
@@ -182,6 +14,13 @@ class Product {
   final dynamic mrp;
   final dynamic discountPercent;
 
+  // ============================================================
+  // VENDOR DETAILS
+  // ============================================================
+
+  final String? vendorUid;
+  final String? vendorName;
+
   const Product({
     required this.id,
     required this.name,
@@ -193,6 +32,10 @@ class Product {
     required this.active,
     this.mrp,
     this.discountPercent,
+
+    // Vendor fields
+    this.vendorUid,
+    this.vendorName,
   });
 
   // ============================================================
@@ -205,7 +48,10 @@ class Product {
     }
 
     return double.tryParse(
-          price.toString().replaceAll(',', '').trim(),
+          price
+              .toString()
+              .replaceAll(',', '')
+              .trim(),
         ) ??
         0.0;
   }
@@ -228,7 +74,10 @@ class Product {
     }
 
     return double.tryParse(
-          mrp.toString().replaceAll(',', '').trim(),
+          mrp
+              .toString()
+              .replaceAll(',', '')
+              .trim(),
         ) ??
         numericPrice;
   }
@@ -239,5 +88,178 @@ class Product {
 
   bool get hasDiscount {
     return originalPrice > sellingPrice;
+  }
+
+  // ============================================================
+  // VENDOR UID
+  // ============================================================
+
+  String get safeVendorUid {
+    return vendorUid?.trim() ?? '';
+  }
+
+  // ============================================================
+  // VENDOR NAME
+  // ============================================================
+
+  String get safeVendorName {
+    return vendorName?.trim() ?? '';
+  }
+
+  // ============================================================
+  // FIRESTORE → PRODUCT
+  // ============================================================
+
+  factory Product.fromMap(
+    Map<String, dynamic> map,
+  ) {
+    return Product(
+      id: _stringValue(map['id']),
+      name: _stringValue(map['name']),
+      category: _stringValue(map['category']),
+      price: map['price'] ?? 0,
+      stock: _toInt(map['stock']),
+      imageUrl: _stringValue(
+        map['imageUrl'] ?? map['image'],
+      ),
+      description: _stringValue(
+        map['description'],
+      ),
+      active: map['active'] != false,
+      mrp: map['mrp'] ?? map['originalPrice'] ?? 0,
+      discountPercent:
+          map['discountPercent'] ?? 0,
+
+      vendorUid: _nullableString(
+        map['vendorUid'] ??
+            map['vendorId'] ??
+            map['sellerUid'] ??
+            map['sellerId'],
+      ),
+
+      vendorName: _nullableString(
+        map['vendorName'] ??
+            map['vendor'] ??
+            map['sellerName'] ??
+            map['seller'],
+      ),
+    );
+  }
+
+  // ============================================================
+  // PRODUCT → FIRESTORE
+  // ============================================================
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id.trim(),
+      'name': name.trim(),
+      'category': category.trim(),
+      'price': numericPrice,
+      'stock': stock,
+      'imageUrl': imageUrl.trim(),
+      'description': description.trim(),
+      'active': active,
+      'mrp': originalPrice,
+      'discountPercent': discountPercent,
+
+      'vendorUid': safeVendorUid.isEmpty
+          ? null
+          : safeVendorUid,
+
+      'vendorName': safeVendorName.isEmpty
+          ? null
+          : safeVendorName,
+    };
+  }
+
+  // ============================================================
+  // COPY WITH
+  // ============================================================
+
+  Product copyWith({
+    String? id,
+    String? name,
+    String? category,
+    dynamic price,
+    int? stock,
+    String? imageUrl,
+    String? description,
+    bool? active,
+    dynamic mrp,
+    dynamic discountPercent,
+    String? vendorUid,
+    String? vendorName,
+  }) {
+    return Product(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      category: category ?? this.category,
+      price: price ?? this.price,
+      stock: stock ?? this.stock,
+      imageUrl: imageUrl ?? this.imageUrl,
+      description:
+          description ?? this.description,
+      active: active ?? this.active,
+      mrp: mrp ?? this.mrp,
+      discountPercent:
+          discountPercent ?? this.discountPercent,
+      vendorUid:
+          vendorUid ?? this.vendorUid,
+      vendorName:
+          vendorName ?? this.vendorName,
+    );
+  }
+
+  // ============================================================
+  // SAFE STRING
+  // ============================================================
+
+  static String _stringValue(
+    dynamic value,
+  ) {
+    if (value == null) {
+      return '';
+    }
+
+    return value.toString().trim();
+  }
+
+  // ============================================================
+  // NULLABLE STRING
+  // ============================================================
+
+  static String? _nullableString(
+    dynamic value,
+  ) {
+    if (value == null) {
+      return null;
+    }
+
+    final String result =
+        value.toString().trim();
+
+    return result.isEmpty ? null : result;
+  }
+
+  // ============================================================
+  // SAFE INT
+  // ============================================================
+
+  static int _toInt(
+    dynamic value,
+  ) {
+    if (value is int) {
+      return value;
+    }
+
+    if (value is num) {
+      return value.toInt();
+    }
+
+    return int.tryParse(
+          value?.toString() ?? '',
+        ) ??
+        0;
   }
 }
