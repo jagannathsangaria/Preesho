@@ -7,7 +7,12 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 class VendorDocumentsPage extends StatefulWidget {
-  const VendorDocumentsPage({super.key});
+  final String? vendorUid;
+
+  const VendorDocumentsPage({
+    super.key,
+    this.vendorUid,
+  });
 
   @override
   State<VendorDocumentsPage> createState() =>
@@ -71,8 +76,31 @@ class _VendorDocumentsPageState
     ),
   ];
 
-  String get _uid =>
-      FirebaseAuth.instance.currentUser?.uid ?? '';
+  String get _uid {
+    final passedUid = widget.vendorUid?.trim();
+
+    if (passedUid != null && passedUid.isNotEmpty) {
+      return passedUid;
+    }
+
+    return FirebaseAuth.instance.currentUser?.uid ?? '';
+  }
+
+  Map<String, dynamic> _documentsMap(dynamic value) {
+    if (value is Map) {
+      return Map<String, dynamic>.from(value);
+    }
+
+    return <String, dynamic>{};
+  }
+
+  Map<String, dynamic> _documentData(dynamic value) {
+    if (value is Map) {
+      return Map<String, dynamic>.from(value);
+    }
+
+    return <String, dynamic>{};
+  }
 
   Future<void> _uploadDocument(
     _DocumentType document,
@@ -81,6 +109,8 @@ class _VendorDocumentsPageState
       _showMessage('Vendor account not found.');
       return;
     }
+
+    if (_loading) return;
 
     try {
       final XFile? picked = await _picker.pickImage(
@@ -125,36 +155,40 @@ class _VendorDocumentsPageState
               .collection('vendors')
               .doc(_uid);
 
-      final vendorSnapshot =
-          await vendorRef.get();
+      final DocumentSnapshot<Map<String, dynamic>>
+          vendorSnapshot = await vendorRef.get();
 
-      final vendorData =
-          vendorSnapshot.data() ?? {};
+      final Map<String, dynamic> vendorData =
+          vendorSnapshot.data() ??
+              <String, dynamic>{};
 
       final Map<String, dynamic> documents =
-          Map<String, dynamic>.from(
-        vendorData['documents'] ?? {},
+          _documentsMap(
+        vendorData['documents'],
       );
 
       /*
-       * Vendor upload always resets this particular
+       * Every new upload resets the particular
        * document to PENDING.
        *
-       * Admin verification/rejection is therefore
-       * performed only after the latest upload.
+       * Admin must verify the latest uploaded file.
        */
       documents[document.key] = {
         'status': 'pending',
         'url': downloadUrl,
         'fileName': fileName,
-        'uploadedAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
+        'uploadedAt':
+            FieldValue.serverTimestamp(),
+        'updatedAt':
+            FieldValue.serverTimestamp(),
+        'rejectionReason': '',
       };
 
       await vendorRef.set(
         {
           'documents': documents,
-          'updatedAt': FieldValue.serverTimestamp(),
+          'updatedAt':
+              FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),
       );
@@ -162,7 +196,8 @@ class _VendorDocumentsPageState
       if (!mounted) return;
 
       _showMessage(
-        '${document.title} uploaded successfully. Waiting for Admin verification.',
+        '${document.title} uploaded successfully. '
+        'Waiting for Admin verification.',
       );
     } catch (e) {
       if (mounted) {
@@ -182,48 +217,60 @@ class _VendorDocumentsPageState
   Future<void> _deleteDocument(
     _DocumentType document,
   ) async {
-    if (_uid.isEmpty) return;
+    if (_uid.isEmpty) {
+      _showMessage('Vendor account not found.');
+      return;
+    }
+
+    if (_loading) return;
 
     try {
       setState(() {
         _loading = true;
       });
 
-      final vendorRef =
-          _firestore.collection('vendors').doc(_uid);
+      final DocumentReference<Map<String, dynamic>>
+          vendorRef = _firestore
+              .collection('vendors')
+              .doc(_uid);
 
-      final vendorSnapshot =
-          await vendorRef.get();
+      final DocumentSnapshot<Map<String, dynamic>>
+          vendorSnapshot = await vendorRef.get();
 
-      final data =
-          vendorSnapshot.data() ?? {};
+      final Map<String, dynamic> data =
+          vendorSnapshot.data() ??
+              <String, dynamic>{};
 
       final Map<String, dynamic> documents =
-          Map<String, dynamic>.from(
-        data['documents'] ?? {},
+          _documentsMap(
+        data['documents'],
       );
 
       final Map<String, dynamic> documentData =
-          Map<String, dynamic>.from(
-        documents[document.key] ?? {},
+          _documentData(
+        documents[document.key],
       );
 
       final String status =
-          documentData['status']?.toString() ??
-              'pending';
+          (documentData['status'] ?? 'pending')
+              .toString()
+              .trim()
+              .toLowerCase();
 
       // Verified document cannot be deleted.
       if (status == 'verified') {
-        _showMessage(
-          'Verified document cannot be removed.',
-        );
+        if (mounted) {
+          _showMessage(
+            'Verified document cannot be removed.',
+          );
+        }
         return;
       }
 
-      final String? url =
-          documentData['url']?.toString();
+      final String url =
+          (documentData['url'] ?? '').toString();
 
-      if (url != null && url.isNotEmpty) {
+      if (url.isNotEmpty) {
         try {
           await _storage
               .refFromURL(url)
@@ -235,12 +282,14 @@ class _VendorDocumentsPageState
 
       documents[document.key] = {
         'status': 'pending',
-        'updatedAt': FieldValue.serverTimestamp(),
+        'updatedAt':
+            FieldValue.serverTimestamp(),
       };
 
       await vendorRef.update({
         'documents': documents,
-        'updatedAt': FieldValue.serverTimestamp(),
+        'updatedAt':
+            FieldValue.serverTimestamp(),
       });
 
       if (!mounted) return;
@@ -275,7 +324,7 @@ class _VendorDocumentsPageState
   }
 
   Color _statusColor(String status) {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case 'verified':
         return Colors.green;
 
@@ -289,7 +338,7 @@ class _VendorDocumentsPageState
   }
 
   String _statusText(String status) {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case 'verified':
         return 'VERIFIED';
 
@@ -307,7 +356,9 @@ class _VendorDocumentsPageState
     if (_uid.isEmpty) {
       return Scaffold(
         appBar: AppBar(
-          title: const Text('Vendor Documents'),
+          title: const Text(
+            'Vendor Documents',
+          ),
         ),
         body: const Center(
           child: Text(
@@ -340,12 +391,13 @@ class _VendorDocumentsPageState
             );
           }
 
-          final vendorData =
-              snapshot.data?.data() ?? {};
+          final Map<String, dynamic> vendorData =
+              snapshot.data?.data() ??
+                  <String, dynamic>{};
 
           final Map<String, dynamic> documents =
-              Map<String, dynamic>.from(
-            vendorData['documents'] ?? {},
+              _documentsMap(
+            vendorData['documents'],
           );
 
           int verifiedCount = 0;
@@ -354,12 +406,17 @@ class _VendorDocumentsPageState
             if (!document.required) continue;
 
             final Map<String, dynamic> documentData =
-                Map<String, dynamic>.from(
-              documents[document.key] ?? {},
+                _documentData(
+              documents[document.key],
             );
 
-            if (documentData['status'] ==
-                'verified') {
+            final String status =
+                (documentData['status'] ?? '')
+                    .toString()
+                    .trim()
+                    .toLowerCase();
+
+            if (status == 'verified') {
               verifiedCount++;
             }
           }
@@ -370,7 +427,8 @@ class _VendorDocumentsPageState
           return Stack(
             children: [
               ListView(
-                padding: const EdgeInsets.all(16),
+                padding:
+                    const EdgeInsets.all(16),
                 children: [
                   _buildProgressCard(
                     verifiedCount,
@@ -402,8 +460,8 @@ class _VendorDocumentsPageState
                     (document) {
                       final Map<String, dynamic>
                           documentData =
-                          Map<String, dynamic>.from(
-                        documents[document.key] ?? {},
+                          _documentData(
+                        documents[document.key],
                       );
 
                       return _buildDocumentCard(
@@ -418,12 +476,16 @@ class _VendorDocumentsPageState
                   Container(
                     padding:
                         const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(
+                    decoration:
+                        BoxDecoration(
+                      color:
+                          Colors.blue.withOpacity(
                         0.08,
                       ),
                       borderRadius:
-                          BorderRadius.circular(12),
+                          BorderRadius.circular(
+                        12,
+                      ),
                     ),
                     child: const Row(
                       crossAxisAlignment:
@@ -456,7 +518,8 @@ class _VendorDocumentsPageState
                   child: const Center(
                     child: Card(
                       child: Padding(
-                        padding: EdgeInsets.all(24),
+                        padding:
+                            EdgeInsets.all(24),
                         child: Column(
                           mainAxisSize:
                               MainAxisSize.min,
@@ -539,13 +602,17 @@ class _VendorDocumentsPageState
 
             Text(
               allVerified
-                  ? 'All required documents are verified. Admin can now approve your vendor account.'
-                  : '${5 - verifiedCount} required document${5 - verifiedCount == 1 ? '' : 's'} pending verification.',
+                  ? 'All required documents are verified. '
+                      'Admin can now approve your vendor account.'
+                  : '${5 - verifiedCount} required document'
+                      '${5 - verifiedCount == 1 ? '' : 's'} '
+                      'pending verification.',
               style: TextStyle(
                 color: allVerified
                     ? Colors.green
                     : Colors.orange.shade800,
-                fontWeight: FontWeight.w600,
+                fontWeight:
+                    FontWeight.w600,
               ),
             ),
           ],
@@ -559,13 +626,17 @@ class _VendorDocumentsPageState
     Map<String, dynamic> data,
   ) {
     final String status =
-        data['status']?.toString() ?? 'pending';
+        (data['status'] ?? 'pending')
+            .toString()
+            .trim()
+            .toLowerCase();
 
     final String url =
-        data['url']?.toString() ?? '';
+        (data['url'] ?? '').toString();
 
     final String rejectionReason =
-        data['rejectionReason']?.toString() ?? '';
+        (data['rejectionReason'] ?? '')
+            .toString();
 
     final bool uploaded =
         url.isNotEmpty;
@@ -587,6 +658,7 @@ class _VendorDocumentsPageState
                 CircleAvatar(
                   child: Icon(document.icon),
                 ),
+
                 const SizedBox(width: 12),
 
                 Expanded(
@@ -639,10 +711,10 @@ class _VendorDocumentsPageState
                                 fontSize: 10,
                                 fontWeight:
                                     FontWeight.bold,
-                                color: document
-                                        .required
-                                    ? Colors.red
-                                    : Colors.blue,
+                                color:
+                                    document.required
+                                        ? Colors.red
+                                        : Colors.blue,
                               ),
                             ),
                           ),
@@ -653,7 +725,8 @@ class _VendorDocumentsPageState
 
                       Text(
                         document.subtitle,
-                        style: const TextStyle(
+                        style:
+                            const TextStyle(
                           color: Colors.grey,
                           fontSize: 13,
                         ),
@@ -758,11 +831,13 @@ class _VendorDocumentsPageState
                       ],
                     ),
 
-                    if (rejectionReason.isNotEmpty) ...[
+                    if (rejectionReason
+                        .isNotEmpty) ...[
                       const SizedBox(height: 6),
                       Text(
                         'Reason: $rejectionReason',
-                        style: const TextStyle(
+                        style:
+                            const TextStyle(
                           color: Colors.red,
                           fontSize: 12,
                         ),
@@ -806,7 +881,8 @@ class _VendorDocumentsPageState
                     SizedBox(width: 7),
                     Expanded(
                       child: Text(
-                        'Verified by Preesho Admin. This document is locked.',
+                        'Verified by Preesho Admin. '
+                        'This document is locked.',
                         style: TextStyle(
                           color: Colors.green,
                           fontSize: 12,
@@ -825,7 +901,8 @@ class _VendorDocumentsPageState
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton.icon(
+                  child:
+                      OutlinedButton.icon(
                     onPressed:
                         verified || _loading
                             ? null
