@@ -1,7 +1,3 @@
-// ============================================================
-// PRODUCT MODEL
-// ============================================================
-
 class Product {
   final String id;
   final String name;
@@ -13,11 +9,6 @@ class Product {
   final bool active;
   final dynamic mrp;
   final dynamic discountPercent;
-
-  // ============================================================
-  // VENDOR DETAILS
-  // ============================================================
-
   final String? vendorUid;
   final String? vendorName;
 
@@ -36,10 +27,6 @@ class Product {
     this.vendorName,
   });
 
-  // ============================================================
-  // NUMERIC PRICE
-  // ============================================================
-
   double get numericPrice {
     if (price is num) {
       return (price as num).toDouble();
@@ -51,17 +38,7 @@ class Product {
         0.0;
   }
 
-  // ============================================================
-  // SELLING PRICE
-  // ============================================================
-
-  double get sellingPrice {
-    return numericPrice;
-  }
-
-  // ============================================================
-  // ORIGINAL / MRP PRICE
-  // ============================================================
+  double get sellingPrice => numericPrice;
 
   double get originalPrice {
     if (mrp is num) {
@@ -74,37 +51,13 @@ class Product {
         numericPrice;
   }
 
-  // ============================================================
-  // DISCOUNT CHECK
-  // ============================================================
+  bool get hasDiscount => originalPrice > sellingPrice;
 
-  bool get hasDiscount {
-    return originalPrice > sellingPrice;
-  }
+  String get safeVendorUid => vendorUid?.trim() ?? '';
 
-  // ============================================================
-  // SAFE VENDOR UID
-  // ============================================================
+  String get safeVendorName => vendorName?.trim() ?? '';
 
-  String get safeVendorUid {
-    return vendorUid?.trim() ?? '';
-  }
-
-  // ============================================================
-  // SAFE VENDOR NAME
-  // ============================================================
-
-  String get safeVendorName {
-    return vendorName?.trim() ?? '';
-  }
-
-  // ============================================================
-  // FIRESTORE → PRODUCT
-  // ============================================================
-
-  factory Product.fromMap(
-    Map<String, dynamic> map,
-  ) {
+  factory Product.fromMap(Map<String, dynamic> map) {
     return Product(
       id: _stringValue(map['id']),
       name: _stringValue(map['name']),
@@ -114,21 +67,16 @@ class Product {
       imageUrl: _stringValue(
         map['imageUrl'] ?? map['image'],
       ),
-      description: _stringValue(
-        map['description'],
-      ),
+      description: _stringValue(map['description']),
       active: map['active'] != false,
       mrp: map['mrp'] ?? map['originalPrice'] ?? 0,
-      discountPercent:
-          map['discountPercent'] ?? 0,
-
+      discountPercent: map['discountPercent'] ?? 0,
       vendorUid: _nullableString(
         map['vendorUid'] ??
             map['vendorId'] ??
             map['sellerUid'] ??
             map['sellerId'],
       ),
-
       vendorName: _nullableString(
         map['vendorName'] ??
             map['vendor'] ??
@@ -137,10 +85,6 @@ class Product {
       ),
     );
   }
-
-  // ============================================================
-  // PRODUCT → FIRESTORE
-  // ============================================================
 
   Map<String, dynamic> toMap() {
     return {
@@ -154,20 +98,12 @@ class Product {
       'active': active,
       'mrp': originalPrice,
       'discountPercent': discountPercent,
-
-      'vendorUid': safeVendorUid.isEmpty
-          ? null
-          : safeVendorUid,
-
-      'vendorName': safeVendorName.isEmpty
-          ? null
-          : safeVendorName,
+      'vendorUid':
+          safeVendorUid.isEmpty ? null : safeVendorUid,
+      'vendorName':
+          safeVendorName.isEmpty ? null : safeVendorName,
     };
   }
-
-  // ============================================================
-  // COPY WITH
-  // ============================================================
 
   Product copyWith({
     String? id,
@@ -200,47 +136,21 @@ class Product {
     );
   }
 
-  // ============================================================
-  // SAFE STRING
-  // ============================================================
-
-  static String _stringValue(
-    dynamic value,
-  ) {
-    if (value == null) {
-      return '';
-    }
-
+  static String _stringValue(dynamic value) {
+    if (value == null) return '';
     return value.toString().trim();
   }
 
-  // ============================================================
-  // NULLABLE STRING
-  // ============================================================
+  static String? _nullableString(dynamic value) {
+    if (value == null) return null;
 
-  static String? _nullableString(
-    dynamic value,
-  ) {
-    if (value == null) {
-      return null;
-    }
-
-    final String result =
-        value.toString().trim();
+    final String result = value.toString().trim();
 
     return result.isEmpty ? null : result;
   }
 
-  // ============================================================
-  // SAFE INT
-  // ============================================================
-
-  static int _toInt(
-    dynamic value,
-  ) {
-    if (value is int) {
-      return value;
-    }
+  static int _toInt(dynamic value) {
+    if (value is int) return value;
 
     if (value is num) {
       return value.toInt();
@@ -253,8 +163,9 @@ class Product {
   }
 }
 
+
 // ============================================================
-// CUSTOMER ADDRESS MODEL
+// CUSTOMER ADDRESS
 // ============================================================
 
 class CustomerAddress {
@@ -281,10 +192,6 @@ class CustomerAddress {
     required this.landmark,
     required this.isDefault,
   });
-
-  // ============================================================
-  // FIRESTORE → CUSTOMER ADDRESS
-  // ============================================================
 
   factory CustomerAddress.fromMap(
     Map<String, dynamic> map,
@@ -322,10 +229,6 @@ class CustomerAddress {
     );
   }
 
-  // ============================================================
-  // CUSTOMER ADDRESS → FIRESTORE
-  // ============================================================
-
   Map<String, dynamic> toMap() {
     return {
       'addressId': addressId,
@@ -340,10 +243,6 @@ class CustomerAddress {
       'isDefault': isDefault,
     };
   }
-
-  // ============================================================
-  // COPY WITH
-  // ============================================================
 
   CustomerAddress copyWith({
     String? addressId,
