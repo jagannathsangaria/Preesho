@@ -33,7 +33,8 @@ class CartItem {
 
   double get originalPrice => product.originalPrice;
 
-  dynamic get discountPercent => product.discountPercent;
+  dynamic get discountPercent =>
+      product.discountPercent;
 
   // ============================================================
   // TOTAL PRICE
@@ -56,47 +57,11 @@ class CartItem {
   // ============================================================
 
   String get vendorUid {
-    try {
-      final value = product.vendorUid;
-
-      if (value != null &&
-          value.toString().trim().isNotEmpty) {
-        return value.toString().trim();
-      }
-    } catch (_) {}
-
-    try {
-      final value = product.vendorId;
-
-      if (value != null &&
-          value.toString().trim().isNotEmpty) {
-        return value.toString().trim();
-      }
-    } catch (_) {}
-
-    return '';
+    return product.vendorUid?.trim() ?? '';
   }
 
   String get vendorName {
-    try {
-      final value = product.vendorName;
-
-      if (value != null &&
-          value.toString().trim().isNotEmpty) {
-        return value.toString().trim();
-      }
-    } catch (_) {}
-
-    try {
-      final value = product.vendor;
-
-      if (value != null &&
-          value.toString().trim().isNotEmpty) {
-        return value.toString().trim();
-      }
-    } catch (_) {}
-
-    return '';
+    return product.vendorName?.trim() ?? '';
   }
 }
 
@@ -105,7 +70,8 @@ class CartItem {
 // ============================================================
 
 class CartController {
-  static const String _storageKey = 'preesho_cart_v2';
+  static const String _storageKey =
+      'preesho_cart_v2';
 
   static final List<CartItem> items = [];
 
@@ -114,7 +80,7 @@ class CartController {
   static bool _initialized = false;
 
   // ============================================================
-  // INITIALIZE
+  // INITIALIZE CART
   // ============================================================
 
   static Future<void> initialize() async {
@@ -156,7 +122,9 @@ class CartController {
 
     try {
       final String? savedCart =
-          _preferences!.getString(_storageKey);
+          _preferences!.getString(
+        _storageKey,
+      );
 
       if (savedCart == null ||
           savedCart.trim().isEmpty) {
@@ -189,16 +157,19 @@ class CartController {
                   )
                 : data;
 
-        final Product product = _productFromMap(
-          productData,
-        );
+        final Product product =
+            _productFromMap(productData);
+
+        // --------------------------------------------------------
+        // INVALID PRODUCT
+        // --------------------------------------------------------
 
         if (product.id.trim().isEmpty) {
           continue;
         }
 
         // --------------------------------------------------------
-        // PRODUCT MUST BE ACTIVE
+        // INACTIVE PRODUCT
         // --------------------------------------------------------
 
         if (!product.active) {
@@ -206,12 +177,16 @@ class CartController {
         }
 
         // --------------------------------------------------------
-        // PRODUCT MUST HAVE STOCK
+        // OUT OF STOCK
         // --------------------------------------------------------
 
         if (product.stock <= 0) {
           continue;
         }
+
+        // --------------------------------------------------------
+        // QUANTITY
+        // --------------------------------------------------------
 
         int quantity =
             _toInt(data['quantity']);
@@ -234,6 +209,8 @@ class CartController {
 
       await _saveCart();
     } catch (_) {
+      // Corrupted cart data should never
+      // crash the application.
       items.clear();
     }
   }
@@ -261,11 +238,25 @@ class CartController {
       discountPercent:
           data['discountPercent'] ?? 0,
 
-      // These fields are important for Checkout.
+      // --------------------------------------------------------
+      // VENDOR
+      // --------------------------------------------------------
+
       vendorUid:
-          data['vendorUid']?.toString(),
+          _nullableString(
+        data['vendorUid'] ??
+            data['vendorId'] ??
+            data['sellerUid'] ??
+            data['sellerId'],
+      ),
+
       vendorName:
-          data['vendorName']?.toString(),
+          _nullableString(
+        data['vendorName'] ??
+            data['vendor'] ??
+            data['sellerName'] ??
+            data['seller'],
+      ),
     );
   }
 
@@ -276,27 +267,6 @@ class CartController {
   static Map<String, dynamic> _productToMap(
     Product product,
   ) {
-    String? vendorUid;
-    String? vendorName;
-
-    try {
-      final value = product.vendorUid;
-
-      if (value != null &&
-          value.toString().trim().isNotEmpty) {
-        vendorUid = value.toString().trim();
-      }
-    } catch (_) {}
-
-    try {
-      final value = product.vendorName;
-
-      if (value != null &&
-          value.toString().trim().isNotEmpty) {
-        vendorName = value.toString().trim();
-      }
-    } catch (_) {}
-
     return {
       'id': product.id,
       'name': product.name,
@@ -309,8 +279,12 @@ class CartController {
       'mrp': product.mrp,
       'discountPercent':
           product.discountPercent,
-      'vendorUid': vendorUid,
-      'vendorName': vendorName,
+
+      'vendorUid':
+          product.vendorUid?.trim(),
+
+      'vendorName':
+          product.vendorName?.trim(),
     };
   }
 
@@ -338,7 +312,7 @@ class CartController {
         jsonEncode(data),
       );
     } catch (_) {
-      // Do not crash the UI because of local storage.
+      // Storage errors should not crash UI.
     }
   }
 
@@ -443,6 +417,10 @@ class CartController {
     final CartItem? existing =
         findItem(product.id);
 
+    // ----------------------------------------------------------
+    // PRODUCT ALREADY EXISTS
+    // ----------------------------------------------------------
+
     if (existing != null) {
       final int newQuantity =
           existing.quantity + quantity;
@@ -459,6 +437,10 @@ class CartController {
 
       return true;
     }
+
+    // ----------------------------------------------------------
+    // NEW PRODUCT
+    // ----------------------------------------------------------
 
     final int safeQuantity =
         quantity > product.stock
@@ -608,7 +590,7 @@ class CartController {
   }
 
   // ============================================================
-  // HAS ITEM
+  // CHECK ITEM
   // ============================================================
 
   static bool contains(
@@ -633,13 +615,22 @@ class CartController {
       return;
     }
 
+    // ----------------------------------------------------------
+    // PRODUCT NO LONGER AVAILABLE
+    // ----------------------------------------------------------
+
     if (!updatedProduct.active ||
         updatedProduct.stock <= 0) {
       await removeProduct(
         updatedProduct.id,
       );
+
       return;
     }
+
+    // ----------------------------------------------------------
+    // REDUCE QUANTITY IF STOCK REDUCED
+    // ----------------------------------------------------------
 
     if (item.quantity >
         updatedProduct.stock) {
@@ -651,7 +642,7 @@ class CartController {
   }
 
   // ============================================================
-  // CLEAR INVALID ITEMS
+  // REMOVE INVALID ITEMS
   // ============================================================
 
   static Future<void>
@@ -681,6 +672,21 @@ class CartController {
   }
 
   // ============================================================
+  // CLEAR STORAGE COMPLETELY
+  // ============================================================
+
+  static Future<void>
+      clearStorage() async {
+    await _ensureInitialized();
+
+    items.clear();
+
+    await _preferences?.remove(
+      _storageKey,
+    );
+  }
+
+  // ============================================================
   // SAFE INT
   // ============================================================
 
@@ -697,5 +703,26 @@ class CartController {
           value?.toString() ?? '',
         ) ??
         0;
+  }
+
+  // ============================================================
+  // NULLABLE STRING
+  // ============================================================
+
+  static String? _nullableString(
+    dynamic value,
+  ) {
+    if (value == null) {
+      return null;
+    }
+
+    final String result =
+        value.toString().trim();
+
+    if (result.isEmpty) {
+      return null;
+    }
+
+    return result;
   }
 }
