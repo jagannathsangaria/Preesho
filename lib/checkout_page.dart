@@ -1,8 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-
-import 'model/model.dart' show CustomerAddress;
 import 'models/preesho_models.dart';
 import 'orders_page.dart';
 import 'cart/cart_controller.dart';
