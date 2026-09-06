@@ -20,24 +20,21 @@ class AdminPanel extends StatefulWidget {
 
 class _AdminPanelState extends State<AdminPanel>
     with SingleTickerProviderStateMixin {
-  final _formKey = GlobalKey<FormState>();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  final productsRef =
+  final CollectionReference<Map<String, dynamic>> productsRef =
       FirebaseFirestore.instance.collection('products');
 
-  final ordersRef =
+  final CollectionReference<Map<String, dynamic>> ordersRef =
       FirebaseFirestore.instance.collection('orders');
+
+  final FirebaseFunctions functions =
+      FirebaseFunctions.instanceFor(region: 'asia-south1');
+
+  final String adminUid = 'RkjeRGOd1xdCNFjVR7bB7GXtmAG2';
 
   late TabController tabController;
 
-  final functions = FirebaseFunctions.instanceFor(
-    region: 'asia-south1',
-  );
-
-  static const String adminUid =
-      'RkjeRGOd1xdCNFjVR7bB7GXtmAG2';
-
-  // Product controllers
   final nameController = TextEditingController();
   final categoryController = TextEditingController();
   final priceController = TextEditingController();
@@ -60,7 +57,7 @@ class _AdminPanelState extends State<AdminPanel>
   bool uploadingExcel = false;
   bool downloadingTemplate = false;
 
-  final List<String> lifecycleStatuses = [
+  final List<String> lifecycleStatuses = const [
     'Placed',
     'Confirmed',
     'Processing',
@@ -69,15 +66,27 @@ class _AdminPanelState extends State<AdminPanel>
     'Picked by Courier',
     'Out for Delivery',
     'Delivered',
-    'Cancelled',
   ];
 
-  final Map<String, String> nextAdminStatus = {
-    'Placed': 'Confirmed',
-    'Confirmed': 'Processing',
-    'Processing': 'Packed',
-    'Packed': 'Shipped',
-  };
+  String? nextAdminStatus(String current) {
+    final normalized = normalizedOrderStatus(current);
+
+    const adminFlow = [
+      'Placed',
+      'Confirmed',
+      'Processing',
+      'Packed',
+      'Shipped',
+    ];
+
+    final index = adminFlow.indexOf(normalized);
+
+    if (index == -1 || index >= adminFlow.length - 1) {
+      return null;
+    }
+
+    return adminFlow[index + 1];
+  }
 
   @override
   void initState() {
@@ -113,6 +122,10 @@ class _AdminPanelState extends State<AdminPanel>
     super.dispose();
   }
 
+  // ============================================================
+  // HELPERS
+  // ============================================================
+
   List<String> parseImageUrls(String value) {
     return value
         .split(RegExp(r'[\n,]+'))
@@ -121,140 +134,218 @@ class _AdminPanelState extends State<AdminPanel>
         .toList();
   }
 
-  String normalizedOrderStatus(
-    Map<String, dynamic> data,
-  ) {
-    final value =
-        data['orderStatus'] ??
-        data['status'] ??
-        'Placed';
+  String normalizedOrderStatus(dynamic value) {
+    if (value == null) return 'Placed';
 
-    return value.toString().trim();
+    final status = value.toString().trim();
+
+    switch (status.toLowerCase()) {
+      case 'placed':
+        return 'Placed';
+
+      case 'confirmed':
+        return 'Confirmed';
+
+      case 'processing':
+        return 'Processing';
+
+      case 'packed':
+        return 'Packed';
+
+      case 'shipped':
+        return 'Shipped';
+
+      case 'picked by courier':
+      case 'picked_by_courier':
+      case 'picked':
+        return 'Picked by Courier';
+
+      case 'out for delivery':
+      case 'out_for_delivery':
+      case 'outfordelivery':
+        return 'Out for Delivery';
+
+      case 'delivered':
+        return 'Delivered';
+
+      case 'cancelled':
+      case 'canceled':
+        return 'Cancelled';
+
+      default:
+        return status;
+    }
   }
 
   String money(dynamic value) {
-    final number =
-        value is num
-            ? value
-            : num.tryParse(value?.toString() ?? '') ?? 0;
+    if (value == null) return '₹0';
 
-    return '₹${number.toStringAsFixed(0)}';
+    if (value is num) {
+      return '₹${value.toStringAsFixed(0)}';
+    }
+
+    final parsed = double.tryParse(
+      value.toString().replaceAll(',', '').trim(),
+    );
+
+    if (parsed == null) {
+      return '₹${value.toString()}';
+    }
+
+    return '₹${parsed.toStringAsFixed(0)}';
   }
 
   String formatDate(dynamic value) {
-    DateTime? date;
-
     if (value is Timestamp) {
-      date = value.toDate();
-    } else if (value is DateTime) {
-      date = value;
+      final date = value.toDate().toLocal();
+
+      final day = date.day.toString().padLeft(2, '0');
+      final month = date.month.toString().padLeft(2, '0');
+      final year = date.year.toString();
+
+      final hour = date.hour.toString().padLeft(2, '0');
+      final minute = date.minute.toString().padLeft(2, '0');
+
+      return '$day/$month/$year $hour:$minute';
     }
 
-    if (date == null) {
-      return '-';
+    if (value is DateTime) {
+      final date = value.toLocal();
+
+      final day = date.day.toString().padLeft(2, '0');
+      final month = date.month.toString().padLeft(2, '0');
+      final year = date.year.toString();
+
+      return '$day/$month/$year';
     }
 
-    return '${date.day.toString().padLeft(2, '0')}/'
-        '${date.month.toString().padLeft(2, '0')}/'
-        '${date.year} '
-        '${date.hour.toString().padLeft(2, '0')}:'
-        '${date.minute.toString().padLeft(2, '0')}';
+    return '';
   }
 
   Color statusColor(String status) {
-    switch (status) {
+    switch (normalizedOrderStatus(status)) {
       case 'Placed':
         return Colors.orange;
+
       case 'Confirmed':
         return Colors.blue;
+
       case 'Processing':
         return Colors.indigo;
+
       case 'Packed':
         return Colors.deepPurple;
+
       case 'Shipped':
         return Colors.teal;
+
       case 'Picked by Courier':
         return Colors.cyan;
+
       case 'Out for Delivery':
-        return Colors.amber.shade800;
+        return Colors.deepOrange;
+
       case 'Delivered':
         return Colors.green;
+
       case 'Cancelled':
         return Colors.red;
+
       default:
         return Colors.grey;
     }
   }
 
   IconData statusIcon(String status) {
-    switch (status) {
+    switch (normalizedOrderStatus(status)) {
       case 'Placed':
-        return Icons.shopping_bag_outlined;
+        return Icons.receipt_long_outlined;
+
       case 'Confirmed':
         return Icons.check_circle_outline;
+
       case 'Processing':
         return Icons.settings_outlined;
+
       case 'Packed':
         return Icons.inventory_2_outlined;
+
       case 'Shipped':
         return Icons.local_shipping_outlined;
+
       case 'Picked by Courier':
-        return Icons.delivery_dining;
+        return Icons.delivery_dining_outlined;
+
       case 'Out for Delivery':
-        return Icons.directions_bike;
+        return Icons.directions_bike_outlined;
+
       case 'Delivered':
         return Icons.done_all;
+
       case 'Cancelled':
         return Icons.cancel_outlined;
+
       default:
         return Icons.circle_outlined;
     }
   }
 
   void showMessage(String message) {
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
 
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          duration: const Duration(seconds: 4),
-        ),
-      );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
+  // ============================================================
+  // PRODUCT
+  // ============================================================
+
   Future<void> saveProduct() async {
-    if (!_formKey.currentState!.validate()) {
+    final name = nameController.text.trim();
+
+    if (name.isEmpty) {
+      showMessage('Product name is required.');
       return;
     }
+
+    final price = double.tryParse(
+      priceController.text.trim(),
+    );
+
+    if (price == null) {
+      showMessage('Enter a valid price.');
+      return;
+    }
+
+    final mrp = double.tryParse(
+      mrpController.text.trim(),
+    );
+
+    final discount = double.tryParse(
+      discountController.text.trim(),
+    );
+
+    final stock = int.tryParse(
+      stockController.text.trim(),
+    );
 
     setState(() {
       saving = true;
     });
 
     try {
-      final price =
-          double.tryParse(priceController.text.trim()) ?? 0;
-
-      final mrp =
-          double.tryParse(mrpController.text.trim()) ?? 0;
-
-      final discount =
-          double.tryParse(discountController.text.trim()) ?? 0;
-
-      final stock =
-          int.tryParse(stockController.text.trim()) ?? 0;
-
       await productsRef.add({
-        'name': nameController.text.trim(),
+        'name': name,
         'category': categoryController.text.trim(),
         'price': price,
-        'mrp': mrp,
-        'discount': discount,
-        'stock': stock,
+        'mrp': mrp ?? price,
+        'discount': discount ?? 0,
+        'stock': stock ?? 0,
         'imageUrls': parseImageUrls(
           imageUrlsController.text,
         ),
@@ -266,21 +357,17 @@ class _AdminPanelState extends State<AdminPanel>
         'size': sizeController.text.trim(),
         'weight': weightController.text.trim(),
         'warranty': warrantyController.text.trim(),
-        'highlights': highlightsController.text
-            .split(RegExp(r'[\n,]+'))
-            .map((e) => e.trim())
-            .where((e) => e.isNotEmpty)
-            .toList(),
+        'highlights': highlightsController.text.trim(),
         'active': active,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
-      _clearProductForm();
+      clearProductForm();
 
-      showMessage('Product saved successfully.');
+      showMessage('Product added successfully.');
     } catch (e) {
-      showMessage('Product save failed.\n$e');
+      showMessage('Unable to save product.\n$e');
     } finally {
       if (mounted) {
         setState(() {
@@ -290,7 +377,7 @@ class _AdminPanelState extends State<AdminPanel>
     }
   }
 
-  void _clearProductForm() {
+  void clearProductForm() {
     nameController.clear();
     categoryController.clear();
     priceController.clear();
@@ -313,25 +400,19 @@ class _AdminPanelState extends State<AdminPanel>
     });
   }
 
-  Future<void> editProduct(
-    String id,
+  void editProduct(
+    String productId,
     Map<String, dynamic> data,
-  ) async {
-    nameController.text =
-        data['name']?.toString() ?? '';
-
+  ) {
+    nameController.text = data['name']?.toString() ?? '';
     categoryController.text =
         data['category']?.toString() ?? '';
-
     priceController.text =
         data['price']?.toString() ?? '';
-
     mrpController.text =
         data['mrp']?.toString() ?? '';
-
     discountController.text =
         data['discount']?.toString() ?? '';
-
     stockController.text =
         data['stock']?.toString() ?? '';
 
@@ -347,151 +428,186 @@ class _AdminPanelState extends State<AdminPanel>
 
     descriptionController.text =
         data['description']?.toString() ?? '';
-
     remarkController.text =
         data['remark']?.toString() ?? '';
-
     brandController.text =
         data['brand']?.toString() ?? '';
-
     materialController.text =
         data['material']?.toString() ?? '';
-
     colorController.text =
         data['color']?.toString() ?? '';
-
     sizeController.text =
         data['size']?.toString() ?? '';
-
     weightController.text =
         data['weight']?.toString() ?? '';
-
     warrantyController.text =
         data['warranty']?.toString() ?? '';
+    highlightsController.text =
+        data['highlights']?.toString() ?? '';
 
-    final highlights = data['highlights'];
+    setState(() {
+      active = data['active'] != false;
+    });
 
-    if (highlights is List) {
-      highlightsController.text =
-          highlights.map((e) => e.toString()).join('\n');
-    } else {
-      highlightsController.text =
-          data['highlights']?.toString() ?? '';
-    }
-
-    active = data['active'] != false;
-
-    await showDialog(
+    showDialog(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Edit Product'),
-          content: SizedBox(
-            width: 600,
-            child: SingleChildScrollView(
-              child: Form(
-                key: _formKey,
-                child: productForm(),
+      builder: (context) {
+        bool updating = false;
+
+        return StatefulBuilder(
+          builder: (
+            context,
+            setDialogState,
+          ) {
+            return AlertDialog(
+              title: const Text(
+                'Edit Product',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-              },
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (!_formKey.currentState!.validate()) {
-                  return;
-                }
+              content: SizedBox(
+                width: 600,
+                child: SingleChildScrollView(
+                  child: productForm(
+                    includeButton: false,
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: updating
+                      ? null
+                      : () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: updating
+                      ? null
+                      : () async {
+                          final name =
+                              nameController.text.trim();
 
-                try {
-                  await productsRef.doc(id).update({
-                    'name': nameController.text.trim(),
-                    'category': categoryController.text.trim(),
-                    'price':
-                        double.tryParse(
-                              priceController.text.trim(),
-                            ) ??
-                            0,
-                    'mrp':
-                        double.tryParse(
-                              mrpController.text.trim(),
-                            ) ??
-                            0,
-                    'discount':
-                        double.tryParse(
-                              discountController.text.trim(),
-                            ) ??
-                            0,
-                    'stock':
-                        int.tryParse(
-                              stockController.text.trim(),
-                            ) ??
-                            0,
-                    'imageUrls': parseImageUrls(
-                      imageUrlsController.text,
-                    ),
-                    'description':
-                        descriptionController.text.trim(),
-                    'remark':
-                        remarkController.text.trim(),
-                    'brand':
-                        brandController.text.trim(),
-                    'material':
-                        materialController.text.trim(),
-                    'color':
-                        colorController.text.trim(),
-                    'size':
-                        sizeController.text.trim(),
-                    'weight':
-                        weightController.text.trim(),
-                    'warranty':
-                        warrantyController.text.trim(),
-                    'highlights': highlightsController.text
-                        .split(RegExp(r'[\n,]+'))
-                        .map((e) => e.trim())
-                        .where((e) => e.isNotEmpty)
-                        .toList(),
-                    'active': active,
-                    'updatedAt':
-                        FieldValue.serverTimestamp(),
-                  });
+                          final price =
+                              double.tryParse(
+                            priceController.text.trim(),
+                          );
 
-                  if (mounted) {
-                    Navigator.pop(dialogContext);
-                  }
+                          if (name.isEmpty ||
+                              price == null) {
+                            showMessage(
+                              'Product name and valid price are required.',
+                            );
+                            return;
+                          }
 
-                  showMessage(
-                    'Product updated successfully.',
-                  );
-                } catch (e) {
-                  showMessage(
-                    'Product update failed.\n$e',
-                  );
-                }
-              },
-              child: const Text('Update'),
-            ),
-          ],
+                          setDialogState(() {
+                            updating = true;
+                          });
+
+                          try {
+                            await productsRef
+                                .doc(productId)
+                                .update({
+                              'name': name,
+                              'category':
+                                  categoryController.text.trim(),
+                              'price': price,
+                              'mrp': double.tryParse(
+                                    mrpController.text.trim(),
+                                  ) ??
+                                  price,
+                              'discount':
+                                  double.tryParse(
+                                        discountController
+                                            .text
+                                            .trim(),
+                                      ) ??
+                                      0,
+                              'stock':
+                                  int.tryParse(
+                                        stockController
+                                            .text
+                                            .trim(),
+                                      ) ??
+                                      0,
+                              'imageUrls':
+                                  parseImageUrls(
+                                imageUrlsController.text,
+                              ),
+                              'description':
+                                  descriptionController.text.trim(),
+                              'remark':
+                                  remarkController.text.trim(),
+                              'brand':
+                                  brandController.text.trim(),
+                              'material':
+                                  materialController.text.trim(),
+                              'color':
+                                  colorController.text.trim(),
+                              'size':
+                                  sizeController.text.trim(),
+                              'weight':
+                                  weightController.text.trim(),
+                              'warranty':
+                                  warrantyController.text.trim(),
+                              'highlights':
+                                  highlightsController.text.trim(),
+                              'active': active,
+                              'updatedAt':
+                                  FieldValue.serverTimestamp(),
+                            });
+
+                            if (context.mounted) {
+                              Navigator.pop(context);
+                            }
+
+                            showMessage(
+                              'Product updated successfully.',
+                            );
+                          } catch (e) {
+                            showMessage(
+                              'Unable to update product.\n$e',
+                            );
+                          } finally {
+                            if (context.mounted) {
+                              setDialogState(() {
+                                updating = false;
+                              });
+                            }
+                          }
+                        },
+                  child: updating
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child:
+                              CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text('Save Changes'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
   }
 
   Widget _editField(
-    String label,
-    TextEditingController controller, {
+    TextEditingController controller,
+    String label, {
     TextInputType? keyboardType,
+    int maxLines = 1,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: TextFormField(
+      child: TextField(
         controller: controller,
         keyboardType: keyboardType,
+        maxLines: maxLines,
         decoration: InputDecoration(
           labelText: label,
           border: const OutlineInputBorder(),
@@ -500,26 +616,22 @@ class _AdminPanelState extends State<AdminPanel>
     );
   }
 
-  Future<void> deleteProduct(String id) async {
+  Future<void> deleteProduct(String productId) async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) {
+      builder: (context) {
         return AlertDialog(
-          title: const Text('Delete Product'),
+          title: const Text('Delete Product?'),
           content: const Text(
-            'Are you sure you want to delete this product?',
+            'This product will be permanently removed.',
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext, false);
-              },
+              onPressed: () => Navigator.pop(context, false),
               child: const Text('Cancel'),
             ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(dialogContext, true);
-              },
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
               child: const Text('Delete'),
             ),
           ],
@@ -527,42 +639,41 @@ class _AdminPanelState extends State<AdminPanel>
       },
     );
 
-    if (confirm != true) {
-      return;
-    }
+    if (confirm != true) return;
 
     try {
-      await productsRef.doc(id).delete();
+      await productsRef.doc(productId).delete();
+
       showMessage('Product deleted.');
     } catch (e) {
-      showMessage('Delete failed.\n$e');
+      showMessage('Unable to delete product.\n$e');
     }
   }
 
-  Future<void> uploadExcel() async {
-    if (uploadingExcel) {
-      return;
-    }
+  // ============================================================
+  // EXCEL
+  // ============================================================
 
-    setState(() {
-      uploadingExcel = true;
-    });
+  Future<void> uploadExcel() async {
+    if (uploadingExcel) return;
 
     try {
+      setState(() {
+        uploadingExcel = true;
+      });
+
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['xlsx'],
         withData: true,
       );
 
-      if (result == null) {
-        return;
-      }
+      if (result == null) return;
 
       final bytes = result.files.single.bytes;
 
       if (bytes == null) {
-        showMessage('Excel file read nahi ho saki.');
+        showMessage('Unable to read Excel file.');
         return;
       }
 
@@ -579,8 +690,11 @@ class _AdminPanelState extends State<AdminPanel>
 
         final headers = sheet.rows.first
             .map(
-              (cell) =>
-                  cell?.value?.toString().trim().toLowerCase() ?? '',
+              (cell) => cell?.value
+                      ?.toString()
+                      .trim()
+                      .toLowerCase() ??
+                  '',
             )
             .toList();
 
@@ -599,26 +713,29 @@ class _AdminPanelState extends State<AdminPanel>
 
           final name = value('name');
 
-          if (name.isEmpty) {
-            continue;
-          }
+          if (name.isEmpty) continue;
+
+          final price =
+              double.tryParse(value('price')) ?? 0;
+
+          final mrp =
+              double.tryParse(value('mrp')) ?? price;
+
+          final stock =
+              int.tryParse(value('stock')) ?? 0;
+
+          final imageUrls =
+              parseImageUrls(value('imageurls'));
 
           await productsRef.add({
             'name': name,
             'category': value('category'),
-            'price':
-                double.tryParse(value('price')) ?? 0,
-            'mrp':
-                double.tryParse(value('mrp')) ?? 0,
+            'price': price,
+            'mrp': mrp,
             'discount':
                 double.tryParse(value('discount')) ?? 0,
-            'stock':
-                int.tryParse(value('stock')) ?? 0,
-            'imageUrls': parseImageUrls(
-              value('imageurls').isNotEmpty
-                  ? value('imageurls')
-                  : value('imageurls'),
-            ),
+            'stock': stock,
+            'imageUrls': imageUrls,
             'description': value('description'),
             'remark': value('remark'),
             'brand': value('brand'),
@@ -627,11 +744,7 @@ class _AdminPanelState extends State<AdminPanel>
             'size': value('size'),
             'weight': value('weight'),
             'warranty': value('warranty'),
-            'highlights': value('highlights')
-                .split(RegExp(r'[\n,]+'))
-                .map((e) => e.trim())
-                .where((e) => e.isNotEmpty)
-                .toList(),
+            'highlights': value('highlights'),
             'active': true,
             'createdAt': FieldValue.serverTimestamp(),
             'updatedAt': FieldValue.serverTimestamp(),
@@ -641,13 +754,9 @@ class _AdminPanelState extends State<AdminPanel>
         }
       }
 
-      showMessage(
-        '$count products Excel se upload ho gaye.',
-      );
+      showMessage('$count product(s) uploaded successfully.');
     } catch (e) {
-      showMessage(
-        'Excel upload failed.\n$e',
-      );
+      showMessage('Excel upload failed.\n$e');
     } finally {
       if (mounted) {
         setState(() {
@@ -658,62 +767,64 @@ class _AdminPanelState extends State<AdminPanel>
   }
 
   Future<void> downloadTemplate() async {
-    if (downloadingTemplate) {
-      return;
-    }
-
-    setState(() {
-      downloadingTemplate = true;
-    });
+    if (downloadingTemplate) return;
 
     try {
+      setState(() {
+        downloadingTemplate = true;
+      });
+
       final excel = Excel.createExcel();
+      final sheet = excel['Sheet1'];
 
-      final sheet =
-          excel['Products'];
+      final headers = [
+        'name',
+        'category',
+        'price',
+        'mrp',
+        'discount',
+        'stock',
+        'imageurls',
+        'description',
+        'remark',
+        'brand',
+        'material',
+        'color',
+        'size',
+        'weight',
+        'warranty',
+        'highlights',
+      ];
 
-      sheet.appendRow([
-        TextCellValue('name'),
-        TextCellValue('category'),
-        TextCellValue('price'),
-        TextCellValue('mrp'),
-        TextCellValue('discount'),
-        TextCellValue('stock'),
-        TextCellValue('imageUrls'),
-        TextCellValue('description'),
-        TextCellValue('remark'),
-        TextCellValue('brand'),
-        TextCellValue('material'),
-        TextCellValue('color'),
-        TextCellValue('size'),
-        TextCellValue('weight'),
-        TextCellValue('warranty'),
-        TextCellValue('highlights'),
-      ]);
+      sheet.appendRow(
+        headers.map((e) => TextCellValue(e)).toList(),
+      );
 
-      sheet.appendRow([
-        TextCellValue('Sample Product'),
-        TextCellValue('Fashion'),
-        TextCellValue('499'),
-        TextCellValue('799'),
-        TextCellValue('300'),
-        IntCellValue(20),
-        TextCellValue('https://example.com/image.jpg'),
-        TextCellValue('Sample product description'),
-        TextCellValue('New'),
-        TextCellValue('Preesho'),
-        TextCellValue('Cotton'),
-        TextCellValue('Black'),
-        TextCellValue('M'),
-        TextCellValue('500g'),
-        TextCellValue('1 Year'),
-        TextCellValue('Premium\nBest Seller'),
-      ]);
+      sheet.appendRow(
+        [
+          'Sample Product',
+          'Fashion',
+          '499',
+          '699',
+          '28',
+          '10',
+          'https://example.com/image.jpg',
+          'Product description',
+          'Best Seller',
+          'Brand',
+          'Cotton',
+          'Black',
+          'M',
+          '500g',
+          '1 Year',
+          'Comfortable, Durable',
+        ].map((e) => TextCellValue(e)).toList(),
+      );
 
       final bytes = excel.encode();
 
       if (bytes == null) {
-        showMessage('Template create nahi hua.');
+        showMessage('Unable to create template.');
         return;
       }
 
@@ -726,9 +837,7 @@ class _AdminPanelState extends State<AdminPanel>
 
       showMessage('Excel template downloaded.');
     } catch (e) {
-      showMessage(
-        'Template download failed.\n$e',
-      );
+      showMessage('Unable to download template.\n$e');
     } finally {
       if (mounted) {
         setState(() {
@@ -738,521 +847,718 @@ class _AdminPanelState extends State<AdminPanel>
     }
   }
 
+  // ============================================================
+  // ORDER STATUS
+  // ============================================================
+
   Future<void> updateOrderStatus(
     String orderId,
-    String nextStatus,
+    String newStatus,
   ) async {
-    final user =
-        FirebaseAuth.instance.currentUser;
-
-    if (user == null) {
-      showMessage('Admin login required.');
-      return;
-    }
-
-    if (user.uid != adminUid) {
-      showMessage('Admin permission denied.');
-      return;
-    }
-
     try {
-      final orderRef =
-          ordersRef.doc(orderId.trim());
+      final user = FirebaseAuth.instance.currentUser;
 
-      await FirebaseFirestore.instance
-          .runTransaction(
+      if (user == null) {
+        showMessage('Please login again as Admin.');
+        return;
+      }
+
+      if (user.uid != adminUid) {
+        showMessage('Only Admin can update order status.');
+        return;
+      }
+
+      final orderRef = ordersRef.doc(orderId);
+
+      await _firestore.runTransaction(
         (transaction) async {
-          final snapshot =
-              await transaction.get(orderRef);
+          final snapshot = await transaction.get(orderRef);
 
           if (!snapshot.exists) {
-            throw Exception(
-              'Order not found: $orderId',
-            );
+            throw Exception('Order not found.');
           }
 
-          final data =
-              snapshot.data() ??
-                  <String, dynamic>{};
+          final data = snapshot.data() ?? {};
 
-          final currentStatus =
-              normalizedOrderStatus(data);
+          final oldStatus = normalizedOrderStatus(
+            data['orderStatus'] ?? data['status'],
+          );
 
           final history =
-              data['statusHistory'] is List
-                  ? List<dynamic>.from(
-                      data['statusHistory'],
-                    )
-                  : <dynamic>[];
+              List<Map<String, dynamic>>.from(
+            (data['statusHistory'] as List? ?? [])
+                .map(
+                  (item) => Map<String, dynamic>.from(
+                    item as Map,
+                  ),
+                ),
+          );
 
           history.add({
-            'status': nextStatus,
-            'updatedBy': user.uid,
+            'status': newStatus,
             'timestamp': Timestamp.now(),
+            'updatedBy': user.uid,
           });
 
-          transaction.update(
-            orderRef,
-            {
-              'orderStatus': nextStatus,
-              'status': nextStatus,
-              'updatedAt':
-                  FieldValue.serverTimestamp(),
-              'updatedBy': user.uid,
-              'statusHistory': history,
-            },
-          );
-
-          debugPrint(
-            'Order $orderId: '
-            '$currentStatus -> $nextStatus',
-          );
+          transaction.update(orderRef, {
+            'orderStatus': newStatus,
+            'status': newStatus,
+            'updatedAt': FieldValue.serverTimestamp(),
+            'updatedBy': user.uid,
+            'statusHistory': history,
+            'previousStatus': oldStatus,
+          });
         },
       );
 
       showMessage(
-        'Order status updated to $nextStatus.',
+        'Order status updated to $newStatus.',
       );
     } catch (e) {
       showMessage(
-        'Status update failed.\n$e',
+        'Unable to update order status.\n$e',
       );
     }
   }
 
   // ============================================================
-  // SHIP ORDER
-  // Packed -> Shipped is handled DIRECTLY through Firestore.
-  // No shipOrder Cloud Function is required.
+  // SHIPMENT
   // ============================================================
 
   Future<void> showShipmentDialog(
     String orderId,
   ) async {
-    final partnerController =
+    final courierPartnerController =
         TextEditingController();
 
-    final trackingController =
+    final trackingNumberController =
         TextEditingController();
 
     final trackingUrlController =
         TextEditingController();
 
-    final personNameController =
+    final courierPersonNameController =
         TextEditingController();
 
-    final phoneController =
+    final courierPhoneController =
         TextEditingController();
 
-    final formKey =
-        GlobalKey<FormState>();
+    bool submitting = false;
 
-    try {
-      final confirmed =
-          await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) {
-          return AlertDialog(
-            title: const Row(
-              children: [
-                Icon(
-                  Icons.local_shipping,
+    await showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (
+            context,
+            setDialogState,
+          ) {
+            return AlertDialog(
+              title: const Text(
+                'Ship Order',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
                 ),
-                SizedBox(width: 8),
-                Text('Ship Order'),
-              ],
-            ),
-            content: SizedBox(
-              width: 500,
-              child:
-                  SingleChildScrollView(
-                child: Form(
-                  key: formKey,
+              ),
+              content: SizedBox(
+                width: 500,
+                child: SingleChildScrollView(
                   child: Column(
                     children: [
-                      TextFormField(
-                        controller:
-                            partnerController,
-                        decoration:
-                            const InputDecoration(
-                          labelText:
-                              'Courier Partner *',
-                          hintText:
-                              'Delhivery / Blue Dart / DTDC',
-                          border:
-                              OutlineInputBorder(),
-                        ),
-                        validator:
-                            (value) {
-                          if (value ==
-                                  null ||
-                              value
-                                  .trim()
-                                  .isEmpty) {
-                            return 'Courier Partner required';
-                          }
-                          return null;
-                        },
+                      _editField(
+                        courierPartnerController,
+                        'Courier Partner *',
                       ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller:
-                            trackingController,
-                        decoration:
-                            const InputDecoration(
-                          labelText:
-                              'Tracking / AWB Number *',
-                          hintText:
-                              'Enter AWB / Tracking Number',
-                          border:
-                              OutlineInputBorder(),
-                        ),
-                        validator:
-                            (value) {
-                          if (value ==
-                                  null ||
-                              value
-                                  .trim()
-                                  .isEmpty) {
-                            return 'Tracking number required';
-                          }
-                          return null;
-                        },
+                      _editField(
+                        trackingNumberController,
+                        'Tracking / AWB Number *',
                       ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller:
-                            trackingUrlController,
-                        keyboardType:
-                            TextInputType.url,
-                        decoration:
-                            const InputDecoration(
-                          labelText:
-                              'Tracking URL',
-                          hintText:
-                              'https://...',
-                          border:
-                              OutlineInputBorder(),
-                        ),
+                      _editField(
+                        trackingUrlController,
+                        'Tracking URL',
                       ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller:
-                            personNameController,
-                        decoration:
-                            const InputDecoration(
-                          labelText:
-                              'Courier Person Name',
-                          hintText:
-                              'Courier delivery person',
-                          border:
-                              OutlineInputBorder(),
-                        ),
+                      _editField(
+                        courierPersonNameController,
+                        'Courier Person Name',
                       ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller:
-                            phoneController,
+                      _editField(
+                        courierPhoneController,
+                        'Courier Phone',
                         keyboardType:
                             TextInputType.phone,
-                        decoration:
-                            const InputDecoration(
-                          labelText:
-                              'Courier Phone',
-                          hintText:
-                              'Courier phone number',
-                          border:
-                              OutlineInputBorder(),
-                        ),
                       ),
                     ],
                   ),
                 ),
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(
-                    dialogContext,
-                    false,
-                  );
-                },
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton.icon(
-                onPressed: () {
-                  if (!formKey
-                      .currentState!
-                      .validate()) {
-                    return;
-                  }
-
-                  Navigator.pop(
-                    dialogContext,
-                    true,
-                  );
-                },
-                icon: const Icon(
-                  Icons.local_shipping,
+              actions: [
+                TextButton(
+                  onPressed: submitting
+                      ? null
+                      : () => Navigator.pop(
+                            dialogContext,
+                          ),
+                  child: const Text('Cancel'),
                 ),
-                label: const Text(
-                  'Ship Order',
+                FilledButton.icon(
+                  onPressed: submitting
+                      ? null
+                      : () async {
+                          final partner =
+                              courierPartnerController
+                                  .text
+                                  .trim();
+
+                          final tracking =
+                              trackingNumberController
+                                  .text
+                                  .trim();
+
+                          if (partner.isEmpty ||
+                              tracking.isEmpty) {
+                            showMessage(
+                              'Courier Partner and Tracking Number are required.',
+                            );
+                            return;
+                          }
+
+                          setDialogState(() {
+                            submitting = true;
+                          });
+
+                          try {
+                            final user =
+                                FirebaseAuth.instance.currentUser;
+
+                            if (user == null ||
+                                user.uid != adminUid) {
+                              throw Exception(
+                                'Only Admin can ship orders.',
+                              );
+                            }
+
+                            final orderRef =
+                                ordersRef.doc(orderId);
+
+                            await _firestore.runTransaction(
+                              (transaction) async {
+                                final snapshot =
+                                    await transaction.get(
+                                  orderRef,
+                                );
+
+                                if (!snapshot.exists) {
+                                  throw Exception(
+                                    'Order not found.',
+                                  );
+                                }
+
+                                final data =
+                                    snapshot.data() ?? {};
+
+                                final currentStatus =
+                                    normalizedOrderStatus(
+                                  data['orderStatus'] ??
+                                      data['status'],
+                                );
+
+                                if (currentStatus !=
+                                    'Packed') {
+                                  throw Exception(
+                                    'Only Packed orders can be shipped.',
+                                  );
+                                }
+
+                                final history =
+                                    List<Map<String, dynamic>>.from(
+                                  (data['statusHistory']
+                                              as List? ??
+                                          [])
+                                      .map(
+                                    (item) =>
+                                        Map<String, dynamic>.from(
+                                      item as Map,
+                                    ),
+                                  ),
+                                );
+
+                                history.add({
+                                  'status': 'Shipped',
+                                  'timestamp':
+                                      Timestamp.now(),
+                                  'updatedBy':
+                                      user.uid,
+                                });
+
+                                transaction.update(
+                                  orderRef,
+                                  {
+                                    'orderStatus':
+                                        'Shipped',
+                                    'status': 'Shipped',
+                                    'previousStatus':
+                                        'Packed',
+                                    'updatedAt':
+                                        FieldValue.serverTimestamp(),
+                                    'updatedBy':
+                                        user.uid,
+                                    'shippedAt':
+                                        FieldValue.serverTimestamp(),
+                                    'courierPartner':
+                                        partner,
+                                    'trackingNumber':
+                                        tracking,
+                                    'trackingUrl':
+                                        trackingUrlController
+                                            .text
+                                            .trim(),
+                                    'courierPersonName':
+                                        courierPersonNameController
+                                            .text
+                                            .trim(),
+                                    'courierPhone':
+                                        courierPhoneController
+                                            .text
+                                            .trim(),
+                                    'trackingStatus':
+                                        'Shipped',
+                                    'shippedBy':
+                                        user.uid,
+                                    'statusHistory':
+                                        history,
+                                  },
+                                );
+                              },
+                            );
+
+                            if (dialogContext.mounted) {
+                              Navigator.pop(
+                                dialogContext,
+                              );
+                            }
+
+                            showMessage(
+                              'Order shipped successfully.',
+                            );
+                          } catch (e) {
+                            showMessage(
+                              'Unable to ship order.\n$e',
+                            );
+                          } finally {
+                            if (dialogContext.mounted) {
+                              setDialogState(() {
+                                submitting = false;
+                              });
+                            }
+                          }
+                        },
+                  icon: submitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child:
+                              CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.local_shipping_outlined,
+                        ),
+                  label: Text(
+                    submitting
+                        ? 'Shipping...'
+                        : 'Ship Order',
+                  ),
                 ),
-              ),
-            ],
-          );
-        },
-      );
-
-      if (confirmed != true) {
-        return;
-      }
-
-      final cleanOrderId =
-          orderId.trim();
-
-      if (cleanOrderId.isEmpty) {
-        showMessage(
-          'Order ID empty hai.',
+              ],
+            );
+          },
         );
-        return;
-      }
+      },
+    );
 
-      final user =
+    courierPartnerController.dispose();
+    trackingNumberController.dispose();
+    trackingUrlController.dispose();
+    courierPersonNameController.dispose();
+    courierPhoneController.dispose();
+  }
+
+  // ============================================================
+  // DIRECT COURIER ASSIGNMENT
+  // ============================================================
+
+  Future<void> assignCourier(
+    String orderId,
+    String courierId,
+  ) async {
+    try {
+      final adminUser =
           FirebaseAuth.instance.currentUser;
 
-      if (user == null) {
+      if (adminUser == null) {
         showMessage(
-          'Admin login required.',
+          'Please login again as Admin.',
         );
         return;
       }
 
-      if (user.uid != adminUid) {
+      if (adminUser.uid != adminUid) {
         showMessage(
-          'Admin permission denied.',
+          'Only Admin can assign courier.',
         );
         return;
       }
 
       final orderRef =
-          FirebaseFirestore.instance
-              .collection('orders')
-              .doc(cleanOrderId);
+          ordersRef.doc(orderId);
 
-      await FirebaseFirestore.instance
-          .runTransaction(
+      final courierRef =
+          _firestore.collection('couriers').doc(courierId);
+
+      final courierSnapshot =
+          await courierRef.get();
+
+      if (!courierSnapshot.exists) {
+        showMessage('Courier not found.');
+        return;
+      }
+
+      final courierData =
+          courierSnapshot.data() ?? {};
+
+      final courierActive =
+          courierData['active'] == true;
+
+      if (!courierActive) {
+        showMessage(
+          'This courier is inactive.',
+        );
+        return;
+      }
+
+      final courierName =
+          courierData['name']
+                  ?.toString()
+                  .trim() ??
+              '';
+
+      final courierEmail =
+          courierData['email']
+                  ?.toString()
+                  .trim() ??
+              '';
+
+      final courierPhone =
+          courierData['phone']
+                  ?.toString()
+                  .trim() ??
+              '';
+
+      if (courierName.isEmpty) {
+        showMessage(
+          'Courier name is missing.',
+        );
+        return;
+      }
+
+      await _firestore.runTransaction(
         (transaction) async {
-          final snapshot =
-              await transaction.get(
-            orderRef,
-          );
+          final orderSnapshot =
+              await transaction.get(orderRef);
 
-          if (!snapshot.exists) {
+          if (!orderSnapshot.exists) {
             throw Exception(
-              'ORDER_NOT_FOUND:$cleanOrderId',
+              'Order not found.',
             );
           }
 
-          final data =
-              snapshot.data() ??
-                  <String, dynamic>{};
+          final orderData =
+              orderSnapshot.data() ?? {};
 
           final currentStatus =
               normalizedOrderStatus(
-            data,
+            orderData['orderStatus'] ??
+                orderData['status'],
           );
 
-          if (currentStatus !=
-              'Packed') {
+          if (currentStatus != 'Shipped') {
             throw Exception(
-              'INVALID_SHIP_STATUS:$currentStatus',
+              'Only Shipped orders can be assigned to courier.',
             );
           }
-
-          final history =
-              data['statusHistory']
-                      is List
-                  ? List<dynamic>.from(
-                      data[
-                          'statusHistory'],
-                    )
-                  : <dynamic>[];
-
-          history.add({
-            'status':
-                'Shipped',
-            'updatedBy':
-                user.uid,
-            'timestamp':
-                Timestamp.now(),
-          });
 
           transaction.update(
             orderRef,
             {
-              'orderStatus':
-                  'Shipped',
-              'status':
-                  'Shipped',
-              'updatedAt':
-                  FieldValue
-                      .serverTimestamp(),
-              'updatedBy':
-                  user.uid,
-              'shippedAt':
-                  FieldValue
-                      .serverTimestamp(),
-              'courierPartner':
-                  partnerController
-                      .text
-                      .trim(),
-              'trackingNumber':
-                  trackingController
-                      .text
-                      .trim(),
-              'trackingUrl':
-                  trackingUrlController
-                      .text
-                      .trim(),
+              'courierId': courierId,
               'courierPersonName':
-                  personNameController
-                      .text
-                      .trim(),
+                  courierName,
+              'courierEmail':
+                  courierEmail,
               'courierPhone':
-                  phoneController
-                      .text
-                      .trim(),
+                  courierPhone,
+              'courierAssignedAt':
+                  FieldValue.serverTimestamp(),
+              'courierAssignedBy':
+                  adminUser.uid,
+
+              // Keep shipment status unchanged.
               'trackingStatus':
                   'Shipped',
-              'shippedBy':
-                  user.uid,
-              'statusHistory':
-                  history,
+
+              'updatedAt':
+                  FieldValue.serverTimestamp(),
+              'updatedBy':
+                  adminUser.uid,
             },
           );
         },
       );
 
       showMessage(
-        'Order successfully Shipped.',
-      );
-    } on FirebaseException catch (e) {
-      showMessage(
-        'Firebase error\n'
-        'Code: ${e.code}\n'
-        'Message: ${e.message ?? 'Unknown error'}',
+        'Courier assigned successfully.\n$courierName',
       );
     } catch (e) {
-      final error =
-          e.toString();
+      String message = e.toString();
 
-      if (error.startsWith(
-        'Exception: ORDER_NOT_FOUND:',
-      )) {
-        final id =
-            error.replaceFirst(
-          'Exception: ORDER_NOT_FOUND:',
-          '',
+      if (message.startsWith('Exception: ')) {
+        message = message.substring(
+          'Exception: '.length,
         );
-
-        showMessage(
-          'Order Firestore mein nahi mila.\n'
-          'ID: $id',
-        );
-
-        return;
-      }
-
-      if (error.startsWith(
-        'Exception: INVALID_SHIP_STATUS:',
-      )) {
-        final currentStatus =
-            error.replaceFirst(
-          'Exception: INVALID_SHIP_STATUS:',
-          '',
-        );
-
-        showMessage(
-          'Order ko Shipped karne ke liye '
-          'current status Packed hona chahiye.\n'
-          'Current status: $currentStatus',
-        );
-
-        return;
       }
 
       showMessage(
-        'Ship order failed.\n$error',
+        'Courier assignment failed.\n$message',
       );
-    } finally {
-      partnerController.dispose();
-      trackingController.dispose();
-      trackingUrlController.dispose();
-      personNameController.dispose();
-      phoneController.dispose();
     }
   }
 
-  Future<void> confirmCancellation(
-    String orderId,
+  Future<void> showAssignCourierDialog(
+    DocumentSnapshot<Map<String, dynamic>> orderDoc,
   ) async {
-    final reasonController =
-        TextEditingController();
+    final orderData =
+        orderDoc.data() ?? {};
+
+    final orderId =
+        orderData['orderId']
+                ?.toString()
+                .trim()
+                .isNotEmpty ==
+            true
+        ? orderData['orderId'].toString()
+        : orderDoc.id;
+
+    final currentCourierId =
+        orderData['courierId']
+                ?.toString()
+                .trim() ??
+            '';
+
+    final currentStatus =
+        normalizedOrderStatus(
+      orderData['orderStatus'] ??
+          orderData['status'],
+    );
+
+    if (currentStatus != 'Shipped') {
+      showMessage(
+        'Only Shipped orders can be assigned to a courier.',
+      );
+      return;
+    }
 
     try {
-      final reason =
-          await showDialog<String>(
+      final courierSnapshot =
+          await _firestore
+              .collection('couriers')
+              .where(
+                'active',
+                isEqualTo: true,
+              )
+              .get();
+
+      if (!mounted) return;
+
+      final couriers =
+          courierSnapshot.docs;
+
+      if (couriers.isEmpty) {
+        showMessage(
+          'No active couriers available.',
+        );
+        return;
+      }
+
+      await showDialog(
         context: context,
         builder: (dialogContext) {
           return AlertDialog(
-            title: const Text(
-              'Cancel Order',
+            title: Text(
+              'Courier Assignment\nOrder #$orderId',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+              ),
             ),
-            content: TextField(
-              controller: reasonController,
-              maxLines: 3,
-              decoration:
-                  const InputDecoration(
-                labelText:
-                    'Cancellation reason',
-                border:
-                    OutlineInputBorder(),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: couriers.length,
+                separatorBuilder:
+                    (_, __) =>
+                        const Divider(),
+                itemBuilder:
+                    (context, index) {
+                  final courier =
+                      couriers[index];
+
+                  final data =
+                      courier.data();
+
+                  final name =
+                      data['name']
+                              ?.toString()
+                              .trim()
+                              .isNotEmpty ==
+                          true
+                      ? data['name'].toString()
+                      : 'Courier';
+
+                  final email =
+                      data['email']
+                              ?.toString()
+                              .trim() ??
+                          '';
+
+                  final phone =
+                      data['phone']
+                              ?.toString()
+                              .trim() ??
+                          '';
+
+                  final selected =
+                      currentCourierId ==
+                          courier.id;
+
+                  return ListTile(
+                    leading:
+                        CircleAvatar(
+                      child: Icon(
+                        Icons
+                            .local_shipping_outlined,
+                        color: selected
+                            ? Colors.green
+                            : null,
+                      ),
+                    ),
+                    title: Text(
+                      name,
+                      style:
+                          const TextStyle(
+                        fontWeight:
+                            FontWeight.bold,
+                      ),
+                    ),
+                    subtitle: Text(
+                      [
+                        if (email.isNotEmpty)
+                          email,
+                        if (phone.isNotEmpty)
+                          phone,
+                        'Courier ID: ${courier.id}',
+                      ].join('\n'),
+                    ),
+                    trailing:
+                        selected
+                            ? const Icon(
+                                Icons
+                                    .check_circle,
+                                color:
+                                    Colors.green,
+                              )
+                            : const Icon(
+                                Icons
+                                    .radio_button_unchecked,
+                              ),
+                    onTap: () async {
+                      Navigator.pop(
+                        dialogContext,
+                      );
+
+                      await assignCourier(
+                        orderId,
+                        courier.id,
+                      );
+                    },
+                  );
+                },
               ),
             ),
             actions: [
               TextButton(
-                onPressed: () {
-                  Navigator.pop(
-                    dialogContext,
-                  );
-                },
-                child: const Text(
-                  'Close',
+                onPressed: () =>
+                    Navigator.pop(
+                  dialogContext,
                 ),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(
-                    dialogContext,
-                    reasonController.text
-                        .trim(),
-                  );
-                },
-                child: const Text(
-                  'Cancel Order',
-                ),
+                child:
+                    const Text('Close'),
               ),
             ],
           );
         },
       );
+    } catch (e) {
+      showMessage(
+        'Unable to load active couriers.\n$e',
+      );
+    }
+  }
 
-      if (reason == null) {
-        return;
-      }
+  // ============================================================
+  // CANCELLATION
+  // ============================================================
 
+  Future<void> confirmCancellation(
+    String orderId,
+  ) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text(
+            'Cancel Order?',
+          ),
+          content: const Text(
+            'Are you sure you want to cancel this order?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () =>
+                  Navigator.pop(
+                context,
+                false,
+              ),
+              child:
+                  const Text('No'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.pop(
+                context,
+                true,
+              ),
+              child:
+                  const Text('Cancel Order'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    try {
       final callable =
           functions.httpsCallable(
         'cancelOrder',
@@ -1260,7 +1566,6 @@ class _AdminPanelState extends State<AdminPanel>
 
       await callable.call({
         'orderId': orderId,
-        'reason': reason,
       });
 
       showMessage(
@@ -1268,49 +1573,29 @@ class _AdminPanelState extends State<AdminPanel>
       );
     } on FirebaseFunctionsException catch (e) {
       showMessage(
-        'Cancel failed\n'
-        'Code: ${e.code}\n'
-        'Message: ${e.message ?? 'Unknown error'}',
+        e.message ??
+            'Unable to cancel order.',
       );
     } catch (e) {
       showMessage(
-        'Cancel failed.\n$e',
+        'Unable to cancel order.\n$e',
       );
-    } finally {
-      reasonController.dispose();
     }
   }
 
-  Future<void> assignCourier(
+  Future<void> assignOrderToCourier(
     String orderId,
+    String courierId,
   ) async {
-    try {
-      final callable =
-          functions.httpsCallable(
-        'assignOrderToCourier',
-      );
-
-      final result =
-          await callable.call({
-        'orderId': orderId,
-      });
-
-      showMessage(
-        result.data?.toString() ??
-            'Courier assigned successfully.',
-      );
-    } on FirebaseFunctionsException catch (e) {
-      showMessage(
-        'Courier assignment failed\n'
-        'Code: ${e.code}\n'
-        'Message: ${e.message ?? 'Unknown error'}',
-      );
-    } catch (e) {
-      showMessage(
-        'Courier assignment failed.\n$e',
-      );
-    }
+    await assignCourier(
+      orderId,
+      courierId,
+    );
   }
+
+  // ============================================================
+  // ORDER LIST
+  // ============================================================
 
   Widget orderList() {
     return StreamBuilder<
@@ -1321,25 +1606,30 @@ class _AdminPanelState extends State<AdminPanel>
             descending: true,
           )
           .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState ==
-            ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(),
-          );
-        }
-
+      builder: (
+        context,
+        snapshot,
+      ) {
         if (snapshot.hasError) {
           return Center(
             child: Padding(
               padding:
-                  const EdgeInsets.all(16),
+                  const EdgeInsets.all(20),
               child: Text(
-                'Orders load failed.\n'
+                'Unable to load orders.\n\n'
                 '${snapshot.error}',
-                textAlign: TextAlign.center,
+                textAlign:
+                    TextAlign.center,
               ),
             ),
+          );
+        }
+
+        if (snapshot.connectionState ==
+            ConnectionState.waiting) {
+          return const Center(
+            child:
+                CircularProgressIndicator(),
           );
         }
 
@@ -1350,21 +1640,22 @@ class _AdminPanelState extends State<AdminPanel>
           return const Center(
             child: Text(
               'No orders found.',
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: 16,
+              ),
             ),
           );
         }
 
         return ListView.builder(
           padding:
-              const EdgeInsets.all(12),
+              const EdgeInsets.all(16),
           itemCount: docs.length,
           itemBuilder:
               (context, index) {
-            final doc = docs[index];
-
             return orderCard(
-              doc.id,
-              doc.data(),
+              docs[index],
             );
           },
         );
@@ -1373,32 +1664,68 @@ class _AdminPanelState extends State<AdminPanel>
   }
 
   Widget orderCard(
-    String orderId,
-    Map<String, dynamic> data,
+    DocumentSnapshot<Map<String, dynamic>> doc,
   ) {
-    final status =
-        normalizedOrderStatus(data);
+    final data =
+        doc.data() ?? {};
 
-    final next =
-        nextAdminStatus[status];
+    final orderId =
+        data['orderId']
+                ?.toString()
+                .trim()
+                .isNotEmpty ==
+            true
+        ? data['orderId'].toString()
+        : doc.id;
 
     final customerName =
-        data['customerName']?.toString() ??
-            data['name']?.toString() ??
-            'Customer';
+        data['customerName']
+                ?.toString()
+                .trim()
+                .isNotEmpty ==
+            true
+        ? data['customerName'].toString()
+        : data['name']
+                ?.toString()
+                .trim()
+                .isNotEmpty ==
+            true
+        ? data['name'].toString()
+        : 'Customer';
 
-    final total =
-        data['totalAmount'] ??
-        data['total'] ??
-        data['amount'] ??
-        0;
+    final currentStatus =
+        normalizedOrderStatus(
+      data['orderStatus'] ??
+          data['status'],
+    );
+
+    final next =
+        nextAdminStatus(
+      currentStatus,
+    );
+
+    final assignedCourier =
+        data['courierPersonName']
+                ?.toString()
+                .trim() ??
+            '';
 
     return Card(
       margin:
-          const EdgeInsets.only(bottom: 12),
+          const EdgeInsets.only(
+        bottom: 14,
+      ),
+      elevation: 2,
+      shape:
+          RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.circular(
+          16,
+        ),
+      ),
       child: Padding(
         padding:
-            const EdgeInsets.all(14),
+            const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment:
               CrossAxisAlignment.start,
@@ -1407,100 +1734,132 @@ class _AdminPanelState extends State<AdminPanel>
               children: [
                 Expanded(
                   child: Text(
-                    'Order ID: $orderId',
-                    style: const TextStyle(
+                    'Order #$orderId',
+                    style:
+                        const TextStyle(
+                      fontSize: 17,
                       fontWeight:
                           FontWeight.bold,
-                      fontSize: 16,
                     ),
                   ),
                 ),
-                statusChip(status),
+                statusChip(
+                  currentStatus,
+                ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
-              'Customer: $customerName',
+              customerName,
+              style:
+                  const TextStyle(
+                color: Colors.black54,
+              ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              'Total: ${money(total)}',
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Created: ${formatDate(data['createdAt'])}',
-            ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             orderItemsSection(data),
             const SizedBox(height: 12),
-            orderTimeline(status),
-            const SizedBox(height: 12),
-            statusHistorySection(data),
+            orderTimeline(
+              currentStatus,
+            ),
             const SizedBox(height: 12),
             courierInfoSection(data),
             const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+            statusHistorySection(data),
+            const SizedBox(height: 14),
+            Row(
               children: [
-                if (next != null)
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      if (next ==
-                          'Shipped') {
-                        showShipmentDialog(
-                          orderId,
-                        );
-                      } else {
-                        updateOrderStatus(
-                          orderId,
+                if (next != null &&
+                    currentStatus != 'Shipped')
+                  Expanded(
+                    child:
+                        FilledButton.icon(
+                      onPressed: () {
+                        if (next ==
+                            'Shipped') {
+                          showShipmentDialog(
+                            orderId,
+                          );
+                        } else {
+                          updateOrderStatus(
+                            orderId,
+                            next,
+                          );
+                        }
+                      },
+                      icon: Icon(
+                        statusIcon(
                           next,
-                        );
-                      }
-                    },
-                    icon: Icon(
-                      statusIcon(next),
-                    ),
-                    label: Text(
-                      next == 'Shipped'
-                          ? 'Ship Order'
-                          : 'Mark $next',
+                        ),
+                      ),
+                      label: Text(
+                        next ==
+                                'Shipped'
+                            ? 'Ship Order'
+                            : 'Mark $next',
+                      ),
                     ),
                   ),
-                if (status ==
+                if (currentStatus ==
                     'Shipped')
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      assignCourier(
-                        orderId,
-                      );
-                    },
-                    icon: const Icon(
-                      Icons.person_add_alt_1,
-                    ),
-                    label: const Text(
-                      'Assign Courier',
+                  Expanded(
+                    child:
+                        OutlinedButton.icon(
+                      onPressed: () {
+                        showAssignCourierDialog(
+                          doc,
+                        );
+                      },
+                      icon: const Icon(
+                        Icons
+                            .local_shipping_outlined,
+                      ),
+                      label: Text(
+                        assignedCourier.isEmpty
+                            ? 'Assign Courier'
+                            : 'Change Courier',
+                      ),
                     ),
                   ),
-                if (status !=
-                        'Delivered' &&
-                    status !=
-                        'Cancelled')
-                  OutlinedButton.icon(
+              ],
+            ),
+            if (currentStatus !=
+                    'Delivered' &&
+                currentStatus !=
+                    'Cancelled' &&
+                currentStatus !=
+                    'Shipped')
+              Padding(
+                padding:
+                    const EdgeInsets.only(
+                  top: 8,
+                ),
+                child: SizedBox(
+                  width:
+                      double.infinity,
+                  child:
+                      TextButton.icon(
                     onPressed: () {
                       confirmCancellation(
                         orderId,
                       );
                     },
                     icon: const Icon(
-                      Icons.cancel_outlined,
+                      Icons
+                          .cancel_outlined,
+                      color: Colors.red,
                     ),
-                    label: const Text(
-                      'Cancel',
+                    label:
+                        const Text(
+                      'Cancel Order',
+                      style:
+                          TextStyle(
+                        color: Colors.red,
+                      ),
                     ),
                   ),
-              ],
-            ),
+                ),
+              ),
           ],
         ),
       ),
@@ -1510,165 +1869,255 @@ class _AdminPanelState extends State<AdminPanel>
   Widget orderItemsSection(
     Map<String, dynamic> data,
   ) {
-    final items = data['items'];
+    final items =
+        data['items'];
 
     if (items is! List ||
         items.isEmpty) {
-      return const SizedBox.shrink();
+      return const Text(
+        'No item details available.',
+        style: TextStyle(
+          color: Colors.grey,
+        ),
+      );
     }
 
+    return Column(
+      children: items.map<Widget>(
+        (item) {
+          final map =
+              item is Map
+                  ? Map<String, dynamic>.from(
+                      item,
+                    )
+                  : <String, dynamic>{};
+
+          final name =
+              map['name']
+                      ?.toString() ??
+                  'Product';
+
+          final quantity =
+              map['quantity'] ??
+                  map['qty'] ??
+                  1;
+
+          final price =
+              map['price'];
+
+          return Padding(
+            padding:
+                const EdgeInsets.only(
+              bottom: 7,
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons
+                      .shopping_bag_outlined,
+                  size: 19,
+                ),
+                const SizedBox(
+                  width: 8,
+                ),
+                Expanded(
+                  child: Text(
+                    '$name × $quantity',
+                  ),
+                ),
+                Text(
+                  money(price),
+                  style:
+                      const TextStyle(
+                    fontWeight:
+                        FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ).toList(),
+    );
+  }
+
+  Widget statusChip(
+    String status,
+  ) {
+    final color =
+        statusColor(status);
+
     return Container(
-      width: double.infinity,
       padding:
-          const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        border: Border.all(
-          color: Colors.grey.shade300,
+          const EdgeInsets.symmetric(
+        horizontal: 10,
+        vertical: 6,
+      ),
+      decoration:
+          BoxDecoration(
+        color: color.withOpacity(
+          0.12,
         ),
         borderRadius:
-            BorderRadius.circular(8),
+            BorderRadius.circular(
+          20,
+        ),
       ),
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+      child: Row(
+        mainAxisSize:
+            MainAxisSize.min,
         children: [
-          const Text(
-            'Order Items',
-            style: TextStyle(
+          Icon(
+            statusIcon(status),
+            size: 15,
+            color: color,
+          ),
+          const SizedBox(width: 5),
+          Text(
+            status,
+            style:
+                TextStyle(
+              color: color,
               fontWeight:
                   FontWeight.bold,
+              fontSize: 12,
             ),
-          ),
-          const SizedBox(height: 8),
-          ...items.map(
-            (item) {
-              if (item is! Map) {
-                return Text(
-                  item.toString(),
-                );
-              }
-
-              final name =
-                  item['name']?.toString() ??
-                      item['productName']
-                          ?.toString() ??
-                      'Product';
-
-              final quantity =
-                  item['quantity'] ??
-                      item['qty'] ??
-                      1;
-
-              final price =
-                  item['price'] ??
-                      item['sellingPrice'] ??
-                      0;
-
-              return Padding(
-                padding:
-                    const EdgeInsets.only(
-                  bottom: 6,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        name,
-                      ),
-                    ),
-                    Text(
-                      'Qty: $quantity',
-                    ),
-                    const SizedBox(
-                      width: 12,
-                    ),
-                    Text(
-                      money(price),
-                    ),
-                  ],
-                ),
-              );
-            },
           ),
         ],
       ),
     );
   }
 
-  Widget statusChip(String status) {
-    final color =
-        statusColor(status);
-
-    return Chip(
-      avatar: Icon(
-        statusIcon(status),
-        size: 18,
-        color: color,
-      ),
-      label: Text(status),
-    );
-  }
-
-  Widget orderTimeline(String currentStatus) {
+  Widget orderTimeline(
+    String currentStatus,
+  ) {
     final currentIndex =
         lifecycleStatuses.indexOf(
-      currentStatus,
+      normalizedOrderStatus(
+        currentStatus,
+      ),
     );
 
-    return SizedBox(
-      height: 100,
-      child: ListView.builder(
-        scrollDirection:
-            Axis.horizontal,
-        itemCount:
-            lifecycleStatuses.length -
-                1,
-        itemBuilder:
-            (context, index) {
-          final status =
-              lifecycleStatuses[index];
+    return SingleChildScrollView(
+      scrollDirection:
+          Axis.horizontal,
+      child: Row(
+        children: List.generate(
+          lifecycleStatuses.length,
+          (index) {
+            final status =
+                lifecycleStatuses[index];
 
-          final completed =
-              currentIndex >= index &&
-                  currentIndex >= 0;
+            final completed =
+                currentIndex >= index;
 
-          return _timelineItem(
-            status,
-            completed,
-          );
-        },
+            return Row(
+              children: [
+                Column(
+                  children: [
+                    CircleAvatar(
+                      radius: 17,
+                      backgroundColor:
+                          completed
+                              ? statusColor(
+                                  status,
+                                )
+                              : Colors
+                                  .grey
+                                  .shade300,
+                      child: Icon(
+                        statusIcon(
+                          status,
+                        ),
+                        size: 17,
+                        color:
+                            completed
+                                ? Colors
+                                    .white
+                                : Colors
+                                    .grey,
+                      ),
+                    ),
+                    const SizedBox(
+                      height: 5,
+                    ),
+                    SizedBox(
+                      width: 72,
+                      child: Text(
+                        status,
+                        textAlign:
+                            TextAlign.center,
+                        style:
+                            const TextStyle(
+                          fontSize: 9,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (index <
+                    lifecycleStatuses.length -
+                        1)
+                  Container(
+                    width: 28,
+                    height: 2,
+                    color:
+                        currentIndex >
+                                index
+                            ? statusColor(
+                                status,
+                              )
+                            : Colors
+                                .grey
+                                .shade300,
+                  ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
 
   Widget _timelineItem(
     String status,
-    bool completed,
+    dynamic timestamp,
   ) {
-    final color =
-        completed
-            ? statusColor(status)
-            : Colors.grey;
-
-    return SizedBox(
-      width: 105,
-      child: Column(
+    return Padding(
+      padding:
+          const EdgeInsets.only(
+        bottom: 8,
+      ),
+      child: Row(
         children: [
           Icon(
             statusIcon(status),
-            color: color,
-            size: 26,
+            size: 18,
+            color: statusColor(
+              status,
+            ),
           ),
-          const SizedBox(height: 5),
+          const SizedBox(
+            width: 8,
+          ),
+          Expanded(
+            child: Text(
+              status,
+              style:
+                  const TextStyle(
+                fontWeight:
+                    FontWeight.w600,
+              ),
+            ),
+          ),
           Text(
-            status,
-            textAlign: TextAlign.center,
-            style: TextStyle(
+            formatDate(
+              timestamp,
+            ),
+            style:
+                const TextStyle(
               fontSize: 11,
-              fontWeight:
-                  completed
-                      ? FontWeight.bold
-                      : FontWeight.normal,
+              color: Colors.grey,
             ),
           ),
         ],
@@ -1697,85 +2146,93 @@ class _AdminPanelState extends State<AdminPanel>
               FontWeight.bold,
         ),
       ),
-      children: history.reversed.map(
-        (item) {
-          if (item is! Map) {
-            return ListTile(
-              title: Text(
-                item.toString(),
-              ),
-            );
-          }
+      children: history.reversed
+          .map<Widget>(
+            (item) {
+              if (item is! Map) {
+                return const SizedBox.shrink();
+              }
 
-          final status =
-              item['status']?.toString() ??
-                  '-';
+              final map =
+                  Map<String, dynamic>.from(
+                item,
+              );
 
-          return ListTile(
-            dense: true,
-            leading: Icon(
-              statusIcon(status),
-              color:
-                  statusColor(status),
-            ),
-            title: Text(status),
-            subtitle: Text(
-              formatDate(
-                item['timestamp'],
-              ),
-            ),
-          );
-        },
-      ).toList(),
+              return _timelineItem(
+                normalizedOrderStatus(
+                  map['status'],
+                ),
+                map['timestamp'],
+              );
+            },
+          )
+          .toList(),
     );
   }
 
   Widget courierInfoSection(
     Map<String, dynamic> data,
   ) {
+    final courierId =
+        data['courierId']
+                ?.toString()
+                .trim() ??
+            '';
+
+    final courierName =
+        data['courierPersonName']
+                ?.toString()
+                .trim() ??
+            '';
+
+    final courierPhone =
+        data['courierPhone']
+                ?.toString()
+                .trim() ??
+            '';
+
+    final courierEmail =
+        data['courierEmail']
+                ?.toString()
+                .trim() ??
+            '';
+
     final partner =
         data['courierPartner']
-                ?.toString() ??
+                ?.toString()
+                .trim() ??
             '';
 
     final tracking =
         data['trackingNumber']
-                ?.toString() ??
+                ?.toString()
+                .trim() ??
             '';
 
-    final trackingUrl =
-        data['trackingUrl']
-                ?.toString() ??
-            '';
-
-    final person =
-        data['courierPersonName']
-                ?.toString() ??
-            '';
-
-    final phone =
-        data['courierPhone']
-                ?.toString() ??
-            '';
-
-    if (partner.isEmpty &&
-        tracking.isEmpty &&
-        trackingUrl.isEmpty &&
-        person.isEmpty &&
-        phone.isEmpty) {
+    if (courierId.isEmpty &&
+        courierName.isEmpty &&
+        courierPhone.isEmpty &&
+        courierEmail.isEmpty &&
+        partner.isEmpty &&
+        tracking.isEmpty) {
       return const SizedBox.shrink();
     }
 
     return Container(
-      width: double.infinity,
       padding:
           const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
+      decoration:
+          BoxDecoration(
+        color:
+            Colors.grey.shade50,
         borderRadius:
-            BorderRadius.circular(8),
-        border: Border.all(
-          color: Colors.grey.shade300,
+            BorderRadius.circular(
+          12,
+        ),
+        border:
+            Border.all(
+          color:
+              Colors.grey.shade300,
         ),
       ),
       child: Column(
@@ -1783,13 +2240,16 @@ class _AdminPanelState extends State<AdminPanel>
             CrossAxisAlignment.start,
         children: [
           const Text(
-            'Courier / Shipment',
-            style: TextStyle(
+            'Shipment / Courier',
+            style:
+                TextStyle(
               fontWeight:
                   FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(
+            height: 8,
+          ),
           if (partner.isNotEmpty)
             Text(
               'Courier Partner: $partner',
@@ -1798,111 +2258,123 @@ class _AdminPanelState extends State<AdminPanel>
             Text(
               'Tracking / AWB: $tracking',
             ),
-          if (trackingUrl.isNotEmpty)
+          if (courierName.isNotEmpty)
             Text(
-              'Tracking URL: $trackingUrl',
+              'Courier: $courierName',
             ),
-          if (person.isNotEmpty)
+          if (courierPhone.isNotEmpty)
             Text(
-              'Courier Person: $person',
+              'Phone: $courierPhone',
             ),
-          if (phone.isNotEmpty)
+          if (courierEmail.isNotEmpty)
             Text(
-              'Courier Phone: $phone',
+              'Email: $courierEmail',
+            ),
+          if (courierId.isNotEmpty)
+            Text(
+              'Courier ID: $courierId',
+              style:
+                  const TextStyle(
+                fontSize: 11,
+                color: Colors.grey,
+              ),
             ),
         ],
       ),
     );
   }
 
-  Widget productForm() {
+  // ============================================================
+  // PRODUCT FORM
+  // ============================================================
+
+  Widget productForm({
+    bool includeButton = true,
+  }) {
     return Column(
       children: [
         _mainField(
-          'Product Name *',
           nameController,
-          required: true,
+          'Product Name',
         ),
         _mainField(
-          'Category',
           categoryController,
+          'Category',
         ),
         _mainField(
-          'Price',
           priceController,
+          'Price',
           keyboardType:
               const TextInputType.numberWithOptions(
             decimal: true,
           ),
         ),
         _mainField(
-          'MRP',
           mrpController,
+          'MRP',
           keyboardType:
               const TextInputType.numberWithOptions(
             decimal: true,
           ),
         ),
         _mainField(
-          'Discount',
           discountController,
+          'Discount %',
           keyboardType:
               const TextInputType.numberWithOptions(
             decimal: true,
           ),
         ),
         _mainField(
-          'Stock',
           stockController,
+          'Stock',
           keyboardType:
               TextInputType.number,
         ),
         _mainField(
-          'Image URLs',
           imageUrlsController,
+          'Image URLs',
           maxLines: 4,
           hint:
-              'One URL per line',
+              'One URL per line or comma separated',
         ),
         _mainField(
-          'Description',
           descriptionController,
+          'Description',
           maxLines: 4,
         ),
         _mainField(
-          'Remark',
           remarkController,
+          'Remark',
         ),
         _mainField(
-          'Brand',
           brandController,
+          'Brand',
         ),
         _mainField(
-          'Material',
           materialController,
+          'Material',
         ),
         _mainField(
-          'Color',
           colorController,
+          'Color',
         ),
         _mainField(
-          'Size',
           sizeController,
+          'Size',
         ),
         _mainField(
-          'Weight',
           weightController,
+          'Weight',
         ),
         _mainField(
-          'Warranty',
           warrantyController,
+          'Warranty',
         ),
         _mainField(
-          'Highlights',
           highlightsController,
-          maxLines: 4,
-          hint:
-              'One highlight per line',
+          'Highlights',
+          maxLines: 3,
         ),
         SwitchListTile(
           contentPadding:
@@ -1917,14 +2389,44 @@ class _AdminPanelState extends State<AdminPanel>
             });
           },
         ),
+        if (includeButton)
+          const SizedBox(
+            height: 8,
+          ),
+        if (includeButton)
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed:
+                  saving
+                      ? null
+                      : saveProduct,
+              icon: saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child:
+                          CircularProgressIndicator(
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Icon(
+                      Icons.add,
+                    ),
+              label: Text(
+                saving
+                    ? 'Saving...'
+                    : 'Add Product',
+              ),
+            ),
+          ),
       ],
     );
   }
 
   Widget _mainField(
-    String label,
-    TextEditingController controller, {
-    bool required = false,
+    TextEditingController controller,
+    String label, {
     TextInputType? keyboardType,
     int maxLines = 1,
     String? hint,
@@ -1934,28 +2436,29 @@ class _AdminPanelState extends State<AdminPanel>
           const EdgeInsets.only(
         bottom: 12,
       ),
-      child: TextFormField(
-        controller: controller,
-        keyboardType: keyboardType,
-        maxLines: maxLines,
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: hint,
+      child: TextField(
+        controller:
+            controller,
+        keyboardType:
+            keyboardType,
+        maxLines:
+            maxLines,
+        decoration:
+            InputDecoration(
+          labelText:
+              label,
+          hintText:
+              hint,
           border:
               const OutlineInputBorder(),
         ),
-        validator: required
-            ? (value) {
-                if (value == null ||
-                    value.trim().isEmpty) {
-                  return '$label required';
-                }
-                return null;
-              }
-            : null,
       ),
     );
   }
+
+  // ============================================================
+  // PRODUCT LIST
+  // ============================================================
 
   Widget productList() {
     return StreamBuilder<
@@ -1966,23 +2469,26 @@ class _AdminPanelState extends State<AdminPanel>
             descending: true,
           )
           .snapshots(),
-      builder: (context, snapshot) {
+      builder: (
+        context,
+        snapshot,
+      ) {
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              'Unable to load products.\n'
+              '${snapshot.error}',
+              textAlign:
+                  TextAlign.center,
+            ),
+          );
+        }
+
         if (snapshot.connectionState ==
             ConnectionState.waiting) {
           return const Center(
             child:
                 CircularProgressIndicator(),
-          );
-        }
-
-        if (snapshot.hasError) {
-          return Center(
-            child: Text(
-              'Products load failed.\n'
-              '${snapshot.error}',
-              textAlign:
-                  TextAlign.center,
-            ),
           );
         }
 
@@ -1999,66 +2505,233 @@ class _AdminPanelState extends State<AdminPanel>
 
         return ListView.builder(
           padding:
-              const EdgeInsets.all(12),
-          itemCount: docs.length,
+              const EdgeInsets.all(16),
+          itemCount:
+              docs.length,
           itemBuilder:
               (context, index) {
-            final doc = docs[index];
-            final data = doc.data();
+            final doc =
+                docs[index];
+
+            final data =
+                doc.data();
 
             final name =
                 data['name']
                         ?.toString() ??
                     'Product';
 
+            final category =
+                data['category']
+                        ?.toString() ??
+                    '';
+
             final price =
-                data['price'] ?? 0;
+                data['price'];
 
             final stock =
                 data['stock'] ?? 0;
 
             final isActive =
-                data['active'] != false;
+                data['active'] !=
+                    false;
+
+            final images =
+                data['imageUrls'];
+
+            String imageUrl = '';
+
+            if (images is List &&
+                images.isNotEmpty) {
+              imageUrl =
+                  images.first
+                      .toString();
+            }
 
             return Card(
-              child: ListTile(
-                title: Text(
-                  name,
-                  style: const TextStyle(
-                    fontWeight:
-                        FontWeight.bold,
-                  ),
+              margin:
+                  const EdgeInsets.only(
+                bottom: 12,
+              ),
+              child: Padding(
+                padding:
+                    const EdgeInsets.all(
+                  12,
                 ),
-                subtitle: Text(
-                  '${money(price)} • '
-                  'Stock: $stock • '
-                  '${isActive ? 'Active' : 'Inactive'}',
-                ),
-                trailing: Wrap(
+                child: Row(
                   children: [
-                    IconButton(
-                      tooltip:
-                          'Edit Product',
-                      icon: const Icon(
-                        Icons.edit,
+                    Container(
+                      width: 65,
+                      height: 65,
+                      decoration:
+                          BoxDecoration(
+                        borderRadius:
+                            BorderRadius.circular(
+                          10,
+                        ),
+                        color: Colors
+                            .grey
+                            .shade100,
                       ),
-                      onPressed: () {
-                        editProduct(
-                          doc.id,
-                          data,
-                        );
-                      },
+                      child:
+                          imageUrl.isEmpty
+                              ? const Icon(
+                                  Icons
+                                      .image_outlined,
+                                )
+                              : ClipRRect(
+                                  borderRadius:
+                                      BorderRadius.circular(
+                                    10,
+                                  ),
+                                  child:
+                                      Image.network(
+                                    imageUrl,
+                                    fit: BoxFit
+                                        .cover,
+                                    errorBuilder:
+                                        (
+                                      context,
+                                      error,
+                                      stackTrace,
+                                    ) {
+                                      return const Icon(
+                                        Icons
+                                            .broken_image_outlined,
+                                      );
+                                    },
+                                  ),
+                                ),
                     ),
-                    IconButton(
-                      tooltip:
-                          'Delete Product',
-                      icon: const Icon(
-                        Icons.delete_outline,
+                    const SizedBox(
+                      width: 12,
+                    ),
+                    Expanded(
+                      child:
+                          Column(
+                        crossAxisAlignment:
+                            CrossAxisAlignment
+                                .start,
+                        children: [
+                          Text(
+                            name,
+                            style:
+                                const TextStyle(
+                              fontWeight:
+                                  FontWeight.bold,
+                              fontSize:
+                                  16,
+                            ),
+                          ),
+                          if (category
+                              .isNotEmpty)
+                            Text(
+                              category,
+                              style:
+                                  const TextStyle(
+                                color:
+                                    Colors.grey,
+                              ),
+                            ),
+                          const SizedBox(
+                            height: 3,
+                          ),
+                          Text(
+                            '${money(price)} • Stock: $stock',
+                          ),
+                          const SizedBox(
+                            height: 4,
+                          ),
+                          Text(
+                            isActive
+                                ? 'ACTIVE'
+                                : 'INACTIVE',
+                            style:
+                                TextStyle(
+                              fontSize:
+                                  11,
+                              fontWeight:
+                                  FontWeight.bold,
+                              color: isActive
+                                  ? Colors
+                                      .green
+                                  : Colors
+                                      .red,
+                            ),
+                          ),
+                        ],
                       ),
-                      onPressed: () {
-                        deleteProduct(
-                          doc.id,
-                        );
+                    ),
+                    PopupMenuButton<
+                        String>(
+                      onSelected:
+                          (value) {
+                        if (value ==
+                            'edit') {
+                          editProduct(
+                            doc.id,
+                            data,
+                          );
+                        }
+
+                        if (value ==
+                            'delete') {
+                          deleteProduct(
+                            doc.id,
+                          );
+                        }
+                      },
+                      itemBuilder:
+                          (context) {
+                        return [
+                          const PopupMenuItem(
+                            value:
+                                'edit',
+                            child:
+                                Row(
+                              children: [
+                                Icon(
+                                  Icons
+                                      .edit_outlined,
+                                ),
+                                SizedBox(
+                                  width:
+                                      10,
+                                ),
+                                Text(
+                                  'Edit',
+                                ),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value:
+                                'delete',
+                            child:
+                                Row(
+                              children: [
+                                Icon(
+                                  Icons
+                                      .delete_outline,
+                                  color:
+                                      Colors.red,
+                                ),
+                                SizedBox(
+                                  width:
+                                      10,
+                                ),
+                                Text(
+                                  'Delete',
+                                  style:
+                                      TextStyle(
+                                    color:
+                                        Colors.red,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ];
                       },
                     ),
                   ],
@@ -2071,29 +2744,45 @@ class _AdminPanelState extends State<AdminPanel>
     );
   }
 
+  // ============================================================
+  // BUILD
+  // ============================================================
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
           'Preesho Admin Panel',
+          style:
+              TextStyle(
+            fontWeight:
+                FontWeight.bold,
+          ),
         ),
-        bottom: TabBar(
-          controller: tabController,
+        bottom:
+            TabBar(
+          controller:
+              tabController,
           tabs: const [
             Tab(
-              icon:
-                  Icon(Icons.add_box_outlined),
+              icon: Icon(
+                Icons.add_box_outlined,
+              ),
               text: 'Products',
             ),
             Tab(
-              icon:
-                  Icon(Icons.inventory_2_outlined),
+              icon: Icon(
+                Icons.inventory_2_outlined,
+              ),
               text: 'Product List',
             ),
             Tab(
-              icon:
-                  Icon(Icons.shopping_bag_outlined),
+              icon: Icon(
+                Icons.receipt_long_outlined,
+              ),
               text: 'Orders',
             ),
           ],
@@ -2102,9 +2791,6 @@ class _AdminPanelState extends State<AdminPanel>
           IconButton(
             tooltip:
                 'Vendor Management',
-            icon: const Icon(
-              Icons.storefront_outlined,
-            ),
             onPressed: () {
               Navigator.push(
                 context,
@@ -2114,13 +2800,13 @@ class _AdminPanelState extends State<AdminPanel>
                 ),
               );
             },
+            icon: const Icon(
+              Icons.storefront_outlined,
+            ),
           ),
           IconButton(
             tooltip:
                 'Courier Management',
-            icon: const Icon(
-              Icons.local_shipping_outlined,
-            ),
             onPressed: () {
               Navigator.push(
                 context,
@@ -2130,102 +2816,160 @@ class _AdminPanelState extends State<AdminPanel>
                 ),
               );
             },
+            icon: const Icon(
+              Icons.local_shipping_outlined,
+            ),
           ),
         ],
       ),
-      body: TabBarView(
-        controller: tabController,
+      body:
+          TabBarView(
+        controller:
+            tabController,
         children: [
           SingleChildScrollView(
             padding:
-                const EdgeInsets.all(16),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  productForm(),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child:
-                            ElevatedButton.icon(
-                          onPressed: saving
-                              ? null
-                              : saveProduct,
-                          icon: saving
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child:
-                                      CircularProgressIndicator(
-                                    strokeWidth:
-                                        2,
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons.save,
+                const EdgeInsets.all(
+              16,
+            ),
+            child: Column(
+              children: [
+                Card(
+                  elevation: 2,
+                  shape:
+                      RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius.circular(
+                      16,
+                    ),
+                  ),
+                  child:
+                      Padding(
+                    padding:
+                        const EdgeInsets.all(
+                      16,
+                    ),
+                    child:
+                        productForm(),
+                  ),
+                ),
+                const SizedBox(
+                  height: 16,
+                ),
+                Card(
+                  child:
+                      Padding(
+                    padding:
+                        const EdgeInsets.all(
+                      16,
+                    ),
+                    child:
+                        Column(
+                      crossAxisAlignment:
+                          CrossAxisAlignment
+                              .start,
+                      children: [
+                        const Text(
+                          'Excel Products',
+                          style:
+                              TextStyle(
+                            fontSize:
+                                18,
+                            fontWeight:
+                                FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(
+                          height: 8,
+                        ),
+                        const Text(
+                          'Bulk upload products using an Excel file.',
+                        ),
+                        const SizedBox(
+                          height: 14,
+                        ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child:
+                                  OutlinedButton.icon(
+                                onPressed:
+                                    uploadingExcel
+                                        ? null
+                                        : uploadExcel,
+                                icon:
+                                    uploadingExcel
+                                        ? const SizedBox(
+                                            width:
+                                                18,
+                                            height:
+                                                18,
+                                            child:
+                                                CircularProgressIndicator(
+                                              strokeWidth:
+                                                  2,
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons
+                                                .upload_file_outlined,
+                                          ),
+                                label:
+                                    Text(
+                                  uploadingExcel
+                                      ? 'Uploading...'
+                                      : 'Upload Excel',
                                 ),
-                          label: Text(
-                            saving
-                                ? 'Saving...'
-                                : 'Save Product',
-                          ),
+                              ),
+                            ),
+                            const SizedBox(
+                              width:
+                                  10,
+                            ),
+                            Expanded(
+                              child:
+                                  OutlinedButton.icon(
+                                onPressed:
+                                    downloadingTemplate
+                                        ? null
+                                        : downloadTemplate,
+                                icon:
+                                    downloadingTemplate
+                                        ? const SizedBox(
+                                            width:
+                                                18,
+                                            height:
+                                                18,
+                                            child:
+                                                CircularProgressIndicator(
+                                              strokeWidth:
+                                                  2,
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons
+                                                .download_outlined,
+                                          ),
+                                label:
+                                    Text(
+                                  downloadingTemplate
+                                      ? 'Preparing...'
+                                      : 'Template',
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child:
-                            OutlinedButton.icon(
-                          onPressed:
-                              uploadingExcel
-                                  ? null
-                                  : uploadExcel,
-                          icon:
-                              const Icon(
-                            Icons.upload_file,
-                          ),
-                          label: Text(
-                            uploadingExcel
-                                ? 'Uploading...'
-                                : 'Upload Excel',
-                          ),
-                        ),
-                      ),
-                      const SizedBox(
-                        width: 10,
-                      ),
-                      Expanded(
-                        child:
-                            OutlinedButton.icon(
-                          onPressed:
-                              downloadingTemplate
-                                  ? null
-                                  : downloadTemplate,
-                          icon:
-                              const Icon(
-                            Icons.download,
-                          ),
-                          label: Text(
-                            downloadingTemplate
-                                ? 'Creating...'
-                                : 'Excel Template',
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
+
           productList(),
+
           orderList(),
         ],
       ),
