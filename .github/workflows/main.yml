@@ -55,5 +55,5 @@ jobs:
         with:
           name: preesho-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 3
           if-no-files-found: error
-          retention-days: 7
