@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import 'courier_documents_page.dart';
+
 class CourierRegistrationPage extends StatefulWidget {
   const CourierRegistrationPage({super.key});
 
@@ -60,7 +62,6 @@ class _CourierRegistrationPageState
       return;
     }
 
-    // Current test mode
     if (mobile != testMobile) {
       _showMessage(
         'Test registration is currently available only for '
@@ -75,38 +76,6 @@ class _CourierRegistrationPageState
     });
 
     try {
-      // Check existing courier.
-      final existingCourier = await _firestore
-          .collection('couriers')
-          .where('phone', isEqualTo: mobile)
-          .limit(1)
-          .get();
-
-      if (existingCourier.docs.isNotEmpty) {
-        _showMessage(
-          'This mobile number is already registered.',
-          isError: true,
-        );
-        return;
-      }
-
-      // Check existing user.
-      final existingUser = await _firestore
-          .collection('users')
-          .where('phone', isEqualTo: mobile)
-          .limit(1)
-          .get();
-
-      if (existingUser.docs.isNotEmpty) {
-        _showMessage(
-          'This mobile number is already registered.',
-          isError: true,
-        );
-        return;
-      }
-
-      if (!mounted) return;
-
       setState(() {
         otpVerified = false;
       });
@@ -115,21 +84,12 @@ class _CourierRegistrationPageState
         'Test OTP sent. Use OTP: 911111',
         isError: false,
       );
-    } on FirebaseException catch (e) {
-      debugPrint(
-        'COURIER OTP ERROR: ${e.code} - ${e.message}',
-      );
+    } catch (e) {
+      debugPrint('COURIER OTP ERROR: $e');
 
       _showMessage(
         'We could not send the OTP right now. '
         'Please try again.',
-        isError: true,
-      );
-    } catch (e) {
-      debugPrint('COURIER OTP UNKNOWN ERROR: $e');
-
-      _showMessage(
-        'Something went wrong. Please try again.',
         isError: true,
       );
     } finally {
@@ -248,24 +208,6 @@ class _CourierRegistrationPageState
 
     try {
       // ------------------------------------------------
-      // FINAL DUPLICATE CHECK
-      // ------------------------------------------------
-
-      final existingCourier = await _firestore
-          .collection('couriers')
-          .where('phone', isEqualTo: mobile)
-          .limit(1)
-          .get();
-
-      if (existingCourier.docs.isNotEmpty) {
-        _showMessage(
-          'This mobile number is already registered.',
-          isError: true,
-        );
-        return;
-      }
-
-      // ------------------------------------------------
       // CREATE FIREBASE AUTH ACCOUNT
       // ------------------------------------------------
 
@@ -299,9 +241,7 @@ class _CourierRegistrationPageState
         'email': email,
         'role': 'courier',
 
-        // IMPORTANT:
-        // Courier cannot login/access panel
-        // until admin approves the application.
+        // Courier is NOT active until Admin approval.
         'status': 'pending_documents',
         'active': false,
 
@@ -323,39 +263,41 @@ class _CourierRegistrationPageState
         'email': email,
         'role': 'courier',
 
-        // Documents are not uploaded yet.
+        // Documents will be uploaded next.
         'status': 'pending_documents',
         'active': false,
 
         'documentsSubmitted': false,
         'approvedByAdmin': false,
 
+        'documents': {},
+
         'createdAt':
             FieldValue.serverTimestamp(),
       });
 
-      // ------------------------------------------------
-      // SIGN OUT
-      // ------------------------------------------------
-
-      await _auth.signOut();
-
       if (!mounted) return;
 
-      _showMessage(
-        'Registration successful. '
-        'Please complete your document submission. '
-        'Your account will be activated after Admin approval.',
-        isError: false,
+      // ------------------------------------------------
+      // GO DIRECTLY TO DOCUMENTS PAGE
+      // ------------------------------------------------
+      //
+      // IMPORTANT:
+      // Do NOT sign out here.
+      //
+      // Courier needs to remain authenticated so the
+      // Documents page can upload files and update
+      // Firestore using the new security rules.
+      //
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CourierDocumentsPage(
+            courierUid: uid,
+          ),
+        ),
       );
-
-      await Future.delayed(
-        const Duration(milliseconds: 1200),
-      );
-
-      if (!mounted) return;
-
-      Navigator.pop(context);
     }
 
     // --------------------------------------------------
@@ -427,7 +369,6 @@ class _CourierRegistrationPageState
         '${e.code} - ${e.message}',
       );
 
-      // Cleanup Auth account if Firestore failed.
       if (createdUser != null) {
         try {
           await createdUser.delete();
@@ -795,9 +736,9 @@ class _CourierRegistrationPageState
               const SizedBox(height: 15),
 
               const Text(
-                'After registration, your documents will '
-                'be submitted separately. Admin approval '
-                'is required before courier access is activated.',
+                'After registration, the Documents page '
+                'will open automatically. Admin approval is '
+                'required before the courier account becomes active.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,
