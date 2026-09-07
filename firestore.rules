@@ -3,47 +3,411 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Courier खुद अपना registration document बना सकता है
-    match /couriers/{uid} {
-      allow create: if request.auth != null
-        && request.auth.uid == uid
-        && request.resource.data.role == "courier"
-        && request.resource.data.active == true;
+    // ============================================================
+    // ADMIN
+    // ============================================================
 
-      allow read: if request.auth != null
-        && request.auth.uid == uid;
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.uid == "RkjeRGOd1xdCNFjVR7bB7GXtmAG2";
+    }
 
-      allow update: if request.auth != null
-        && request.auth.uid == uid;
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn()
+        && request.auth.uid == userId;
+    }
+
+
+    // ============================================================
+    // APPROVED VENDOR
+    // ============================================================
+
+    function isVendor() {
+      return isSignedIn()
+        && exists(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        )
+        && exists(
+          /databases/$(database)/documents/vendors/$(request.auth.uid)
+        )
+        && get(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        ).data.role == "vendor"
+        && get(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        ).data.status == "approved"
+        && get(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        ).data.active == true
+        && get(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        ).data.approvedByAdmin == true
+        && get(
+          /databases/$(database)/documents/vendors/$(request.auth.uid)
+        ).data.role == "vendor"
+        && get(
+          /databases/$(database)/documents/vendors/$(request.auth.uid)
+        ).data.status == "approved"
+        && get(
+          /databases/$(database)/documents/vendors/$(request.auth.uid)
+        ).data.active == true
+        && get(
+          /databases/$(database)/documents/vendors/$(request.auth.uid)
+        ).data.approvedByAdmin == true;
+    }
+
+
+    // ============================================================
+    // APPROVED COURIER
+    // ============================================================
+
+    function isCourier() {
+      return isSignedIn()
+        && exists(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        )
+        && exists(
+          /databases/$(database)/documents/couriers/$(request.auth.uid)
+        )
+        && get(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        ).data.role == "courier"
+        && get(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        ).data.status == "approved"
+        && get(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        ).data.active == true
+        && get(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        ).data.approvedByAdmin == true
+        && get(
+          /databases/$(database)/documents/couriers/$(request.auth.uid)
+        ).data.role == "courier"
+        && get(
+          /databases/$(database)/documents/couriers/$(request.auth.uid)
+        ).data.status == "approved"
+        && get(
+          /databases/$(database)/documents/couriers/$(request.auth.uid)
+        ).data.active == true
+        && get(
+          /databases/$(database)/documents/couriers/$(request.auth.uid)
+        ).data.approvedByAdmin == true;
+    }
+
+
+    // ============================================================
+    // PRODUCTS
+    // ============================================================
+
+    match /products/{productId} {
+
+      allow read: if true;
+
+      allow create: if isAdmin();
+
+      allow create: if isVendor()
+        && request.resource.data.vendorUid == request.auth.uid;
+
+      allow update, delete: if isAdmin();
+
+      allow update: if isVendor()
+        && resource.data.vendorUid == request.auth.uid
+        && request.resource.data.vendorUid == request.auth.uid;
+
+      // Stock can only decrease
+      allow update: if isSignedIn()
+        && request.resource.data.diff(resource.data)
+          .affectedKeys()
+          .hasOnly(['Stock'])
+        && request.resource.data.Stock >= 0
+        && request.resource.data.Stock <= resource.data.Stock;
+    }
+
+
+    // ============================================================
+    // USERS
+    // ============================================================
+
+    match /users/{userId} {
+
+      allow read: if isAdmin()
+        || isOwner(userId);
+
+      // Customer registration
+      allow create: if isOwner(userId)
+        && (
+          !request.resource.data.keys().hasAny(['role'])
+          || request.resource.data.role == "customer"
+        );
+
+      // Vendor/Courier registration
+      allow create: if isOwner(userId)
+        && request.resource.data.role in ["vendor", "courier"]
+        && request.resource.data.status == "pending_documents"
+        && request.resource.data.active == false;
+
+      // Admin can update anything
+      allow update: if isAdmin();
+
+      // Owner can update normal fields.
+      // Owner cannot change role, active or Admin approval.
+      allow update: if isOwner(userId)
+        && !request.resource.data.diff(resource.data)
+          .affectedKeys()
+          .hasAny([
+            'role',
+            'active',
+            'vendorStatus',
+            'approvedByAdmin'
+          ])
+        && (
+          request.resource.data.status == resource.data.status
+          ||
+          (
+            resource.data.status == "pending_documents"
+            && request.resource.data.status == "pending_approval"
+          )
+        );
+
+      allow delete: if false;
+
+
+      // ==========================================================
+      // ADDRESSES
+      // ==========================================================
+
+      match /addresses/{addressId} {
+        allow read, create, update, delete: if isAdmin()
+          || isOwner(userId);
+      }
+    }
+
+
+    // ============================================================
+    // VENDORS
+    // ============================================================
+
+    match /vendors/{vendorId} {
+
+      // Admin full access
+      allow read, write: if isAdmin();
+
+      // Approved vendor can read own profile
+      allow read: if isVendor()
+        && request.auth.uid == vendorId;
+
+      // Pending/inactive vendor can read own profile
+      // This is required for VendorDocumentsPage.
+      allow read: if isOwner(vendorId)
+        && resource.data.role == "vendor"
+        && resource.data.active == false
+        && resource.data.status != "approved";
+
+      // Vendor registration
+      allow create: if isOwner(vendorId)
+        && request.resource.data.role == "vendor"
+        && request.resource.data.status == "pending_documents"
+        && request.resource.data.active == false
+        && request.resource.data.approvedByAdmin == false;
+
+      // Vendor document/profile updates before approval
+      allow update: if isOwner(vendorId)
+        && resource.data.role == "vendor"
+        && resource.data.active == false
+        && resource.data.approvedByAdmin == false
+        && request.resource.data.role == "vendor"
+        && request.resource.data.active == false
+        && request.resource.data.approvedByAdmin == false
+        && request.resource.data.diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            'documents',
+            'documentsSubmitted',
+            'updatedAt',
+            'status',
+            'registrationType',
+            'registrationNo'
+          ])
+        && (
+          request.resource.data.status == resource.data.status
+          ||
+          (
+            resource.data.status == "pending_documents"
+            && request.resource.data.status == "pending_approval"
+            && request.resource.data.documentsSubmitted == true
+          )
+          ||
+          (
+            resource.data.status == "rejected"
+            && request.resource.data.status == "pending_approval"
+            && request.resource.data.documentsSubmitted == true
+          )
+        );
 
       allow delete: if false;
     }
 
-    // Courier का user profile
-    match /users/{uid} {
-      allow create: if request.auth != null
-        && request.auth.uid == uid
+
+    // ============================================================
+    // COURIERS
+    // ============================================================
+
+    match /couriers/{courierId} {
+
+      // Admin full access
+      allow read, write: if isAdmin();
+
+      // Approved courier can read own profile
+      allow read: if isCourier()
+        && request.auth.uid == courierId;
+
+      // Pending/inactive courier can read own profile
+      // This is required for CourierDocumentsPage.
+      allow read: if isOwner(courierId)
+        && resource.data.role == "courier"
+        && resource.data.active == false
+        && resource.data.status != "approved";
+
+      // Courier registration
+      allow create: if isOwner(courierId)
         && request.resource.data.role == "courier"
-        && request.resource.data.active == true;
+        && request.resource.data.status == "pending_documents"
+        && request.resource.data.active == false
+        && request.resource.data.approvedByAdmin == false;
 
-      allow read: if request.auth != null
-        && request.auth.uid == uid;
-
-      allow update: if request.auth != null
-        && request.auth.uid == uid;
+      // Courier document/profile updates before approval
+      allow update: if isOwner(courierId)
+        && resource.data.role == "courier"
+        && resource.data.active == false
+        && resource.data.approvedByAdmin == false
+        && request.resource.data.role == "courier"
+        && request.resource.data.active == false
+        && request.resource.data.approvedByAdmin == false
+        && request.resource.data.diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            'documents',
+            'documentsSubmitted',
+            'updatedAt',
+            'status',
+            'registrationType',
+            'registrationNo'
+          ])
+        && (
+          request.resource.data.status == resource.data.status
+          ||
+          (
+            resource.data.status == "pending_documents"
+            && request.resource.data.status == "pending_approval"
+            && request.resource.data.documentsSubmitted == true
+          )
+          ||
+          (
+            resource.data.status == "rejected"
+            && request.resource.data.status == "pending_approval"
+            && request.resource.data.documentsSubmitted == true
+          )
+        );
 
       allow delete: if false;
     }
 
-    // Admin documents
-    match /Admins/{uid} {
-      allow read: if request.auth != null
-        && request.auth.uid == uid;
+
+    // ============================================================
+    // ORDERS
+    // ============================================================
+
+    match /orders/{orderId} {
+
+      // Customer creates own order
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid;
+
+      // Order read access
+      allow read: if isAdmin()
+        ||
+        (
+          isSignedIn()
+          && resource.data.userId == request.auth.uid
+        )
+        ||
+        (
+          isVendor()
+          && request.auth.uid in resource.data.vendorUids
+        )
+        ||
+        (
+          isCourier()
+          && resource.data.courierId == request.auth.uid
+        );
+
+      // ==========================================================
+      // ADMIN CAN ASSIGN ONLY APPROVED + ACTIVE COURIER
+      // ==========================================================
+
+      allow update: if isAdmin()
+        && (
+          !request.resource.data.keys().hasAny(['courierId'])
+          ||
+          request.resource.data.courierId == null
+          ||
+          (
+            exists(
+              /databases/$(database)/documents/couriers/$(request.resource.data.courierId)
+            )
+            && get(
+              /databases/$(database)/documents/couriers/$(request.resource.data.courierId)
+            ).data.role == "courier"
+            && get(
+              /databases/$(database)/documents/couriers/$(request.resource.data.courierId)
+            ).data.status == "approved"
+            && get(
+              /databases/$(database)/documents/couriers/$(request.resource.data.courierId)
+            ).data.active == true
+            && get(
+              /databases/$(database)/documents/couriers/$(request.resource.data.courierId)
+            ).data.approvedByAdmin == true
+
+            && exists(
+              /databases/$(database)/documents/users/$(request.resource.data.courierId)
+            )
+            && get(
+              /databases/$(database)/documents/users/$(request.resource.data.courierId)
+            ).data.role == "courier"
+            && get(
+              /databases/$(database)/documents/users/$(request.resource.data.courierId)
+            ).data.status == "approved"
+            && get(
+              /databases/$(database)/documents/users/$(request.resource.data.courierId)
+            ).data.active == true
+            && get(
+              /databases/$(database)/documents/users/$(request.resource.data.courierId)
+            ).data.approvedByAdmin == true
+          )
+        );
+
+      // Only Admin can delete orders
+      allow delete: if isAdmin();
     }
 
-    // बाकी documents फिलहाल बंद
-    match /{document=**} {
-      allow read, write: if false;
+
+    // ============================================================
+    // ADMIN COLLECTIONS
+    // ============================================================
+
+    match /Admins/{adminId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /admins/{adminId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
     }
   }
 }
