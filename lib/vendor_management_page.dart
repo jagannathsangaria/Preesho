@@ -3,7 +3,9 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 
 class VendorManagementPage extends StatefulWidget {
-  const VendorManagementPage({super.key});
+  const VendorManagementPage({
+    super.key,
+  });
 
   @override
   State<VendorManagementPage> createState() =>
@@ -40,6 +42,24 @@ class _VendorManagementPageState
   ];
 
   // ============================================================
+  // MESSAGE
+  // ============================================================
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+        .hideCurrentSnackBar();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  // ============================================================
   // AUTHORIZE VENDOR
   // ============================================================
 
@@ -49,13 +69,17 @@ class _VendorManagementPageState
     required String email,
     required String phone,
   }) async {
+    if (_loading) return;
+
     setState(() {
       _loading = true;
     });
 
     try {
       final callable =
-          _functions.httpsCallable('authorizeVendor');
+          _functions.httpsCallable(
+        'authorizeVendor',
+      );
 
       await callable.call({
         'uid': uid,
@@ -66,33 +90,22 @@ class _VendorManagementPageState
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Vendor authorized successfully. Vendor is now pending document verification.',
-          ),
-        ),
+      _showMessage(
+        'Vendor authorized successfully. Vendor is now pending documents.',
       );
     } on FirebaseFunctionsException catch (e) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            e.message ?? 'Unable to authorize vendor.',
-          ),
-        ),
-      );
+      if (mounted) {
+        _showMessage(
+          e.message ??
+              'Unable to authorize vendor.',
+        );
+      }
     } catch (e) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Error: $e',
-          ),
-        ),
-      );
+      if (mounted) {
+        _showMessage(
+          'Error: $e',
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -111,13 +124,17 @@ class _VendorManagementPageState
     required String status,
     String reason = '',
   }) async {
+    if (_loading) return;
+
     setState(() {
       _loading = true;
     });
 
     try {
       final callable =
-          _functions.httpsCallable('updateVendorStatus');
+          _functions.httpsCallable(
+        'updateVendorStatus',
+      );
 
       await callable.call({
         'vendorUid': uid,
@@ -127,34 +144,22 @@ class _VendorManagementPageState
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Vendor status updated to ${status.toUpperCase()}.',
-          ),
-        ),
+      _showMessage(
+        'Vendor status updated to ${status.toUpperCase()}.',
       );
     } on FirebaseFunctionsException catch (e) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            e.message ??
-                'Unable to update vendor status.',
-          ),
-        ),
-      );
+      if (mounted) {
+        _showMessage(
+          e.message ??
+              'Unable to update vendor status.',
+        );
+      }
     } catch (e) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Error: $e',
-          ),
-        ),
-      );
+      if (mounted) {
+        _showMessage(
+          'Error: $e',
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -174,6 +179,8 @@ class _VendorManagementPageState
     required String status,
     String reason = '',
   }) async {
+    if (_loading) return;
+
     setState(() {
       _loading = true;
     });
@@ -193,34 +200,22 @@ class _VendorManagementPageState
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '${_documentTitle(documentType)} marked ${status.toUpperCase()}.',
-          ),
-        ),
+      _showMessage(
+        '${_documentTitle(documentType)} marked ${status.toUpperCase()}.',
       );
     } on FirebaseFunctionsException catch (e) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            e.message ??
-                'Unable to update document status.',
-          ),
-        ),
-      );
+      if (mounted) {
+        _showMessage(
+          e.message ??
+              'Unable to update document status.',
+        );
+      }
     } catch (e) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Error: $e',
-          ),
-        ),
-      );
+      if (mounted) {
+        _showMessage(
+          'Error: $e',
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -276,7 +271,9 @@ class _VendorManagementPageState
         return Colors.orange;
 
       case 'pending':
-        return Colors.blueGrey;
+      case 'pending_documents':
+      case 'pending_approval':
+        return Colors.blue;
 
       default:
         return Colors.grey;
@@ -300,6 +297,8 @@ class _VendorManagementPageState
         return Icons.pause_circle;
 
       case 'pending':
+      case 'pending_documents':
+      case 'pending_approval':
         return Icons.pending;
 
       default:
@@ -315,22 +314,31 @@ class _VendorManagementPageState
     final color = _statusColor(status);
 
     return Container(
-      padding: const EdgeInsets.symmetric(
+      padding:
+          const EdgeInsets.symmetric(
         horizontal: 10,
         vertical: 6,
       ),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
+        color: color.withValues(
+          alpha: 0.12,
+        ),
+        borderRadius:
+            BorderRadius.circular(20),
         border: Border.all(
-          color: color.withValues(alpha: 0.35),
+          color: color.withValues(
+            alpha: 0.35,
+          ),
         ),
       ),
       child: Text(
-        status.toUpperCase(),
+        status
+            .replaceAll('_', ' ')
+            .toUpperCase(),
         style: TextStyle(
           color: color,
-          fontWeight: FontWeight.bold,
+          fontWeight:
+              FontWeight.bold,
           fontSize: 11,
         ),
       ),
@@ -338,23 +346,42 @@ class _VendorManagementPageState
   }
 
   // ============================================================
-  // CHECK DOCUMENT VERIFIED
+  // DOCUMENT DATA
+  // ============================================================
+
+  Map<String, dynamic> _getDocument(
+    Map<String, dynamic> documents,
+    String documentType,
+  ) {
+    final raw =
+        documents[documentType];
+
+    if (raw is Map) {
+      return Map<String, dynamic>.from(
+        raw,
+      );
+    }
+
+    return <String, dynamic>{};
+  }
+
+  // ============================================================
+  // DOCUMENT VERIFIED
   // ============================================================
 
   bool _isDocumentVerified(
     Map<String, dynamic> documents,
     String documentType,
   ) {
-    final rawDocument =
-        documents[documentType];
-
-    final Map<String, dynamic> document =
-        rawDocument is Map
-            ? Map<String, dynamic>.from(rawDocument)
-            : <String, dynamic>{};
+    final document =
+        _getDocument(
+      documents,
+      documentType,
+    );
 
     final status =
-        (document['status'] ?? 'pending')
+        (document['status'] ??
+                'pending')
             .toString()
             .trim()
             .toLowerCase();
@@ -395,29 +422,126 @@ class _VendorManagementPageState
   }
 
   // ============================================================
-  // PENDING DOCUMENTS
+  // MISSING / PENDING DOCUMENTS
   // ============================================================
 
   List<String> _pendingDocuments(
     Map<String, dynamic> documents,
   ) {
-    return _requiredDocuments.where((type) {
-      final rawDocument =
-          documents[type];
+    return _requiredDocuments.where(
+      (type) {
+        final document =
+            _getDocument(
+          documents,
+          type,
+        );
 
-      final Map<String, dynamic> document =
-          rawDocument is Map
-              ? Map<String, dynamic>.from(rawDocument)
-              : <String, dynamic>{};
+        final status =
+            (document['status'] ??
+                    'pending')
+                .toString()
+                .trim()
+                .toLowerCase();
 
-      final status =
-          (document['status'] ?? 'pending')
-              .toString()
-              .trim()
-              .toLowerCase();
+        return status != 'verified';
+      },
+    ).toList();
+  }
 
-      return status != 'verified';
-    }).toList();
+  // ============================================================
+  // VIEW DOCUMENT
+  // ============================================================
+
+  Future<void> _viewDocument(
+    String title,
+    String url,
+  ) async {
+    if (url.trim().isEmpty) {
+      _showMessage(
+        'Document file is not available.',
+      );
+      return;
+    }
+
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          child: Column(
+            mainAxisSize:
+                MainAxisSize.min,
+            children: [
+              AppBar(
+                automaticallyImplyLeading:
+                    false,
+                title: Text(title),
+                actions: [
+                  IconButton(
+                    onPressed: () {
+                      Navigator.pop(
+                        context,
+                      );
+                    },
+                    icon:
+                        const Icon(
+                      Icons.close,
+                    ),
+                  ),
+                ],
+              ),
+
+              Flexible(
+                child:
+                    InteractiveViewer(
+                  child:
+                      Image.network(
+                    url,
+                    fit:
+                        BoxFit.contain,
+                    loadingBuilder:
+                        (
+                      context,
+                      child,
+                      loadingProgress,
+                    ) {
+                      if (loadingProgress ==
+                          null) {
+                        return child;
+                      }
+
+                      return const SizedBox(
+                        height: 350,
+                        child: Center(
+                          child:
+                              CircularProgressIndicator(),
+                        ),
+                      );
+                    },
+                    errorBuilder:
+                        (
+                      context,
+                      error,
+                      stackTrace,
+                    ) {
+                      return const SizedBox(
+                        height: 300,
+                        child: Center(
+                          child: Text(
+                            'Unable to load document image.',
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   // ============================================================
@@ -431,29 +555,38 @@ class _VendorManagementPageState
     final controller =
         TextEditingController();
 
-    final reason = await showDialog<String>(
+    final reason =
+        await showDialog<String>(
       context: context,
       builder: (context) {
         return AlertDialog(
           title: Text(
             status == 'rejected'
-                ? 'Rejection Reason'
-                : 'Reason',
+                ? 'Reject Vendor'
+                : status == 'suspended'
+                    ? 'Suspend Vendor'
+                    : 'Reason',
           ),
           content: TextField(
             controller: controller,
             maxLines: 4,
-            decoration: const InputDecoration(
-              hintText: 'Enter reason',
-              border: OutlineInputBorder(),
+            decoration:
+                const InputDecoration(
+              hintText:
+                  'Enter reason / remark',
+              border:
+                  OutlineInputBorder(),
             ),
           ),
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(context);
+                Navigator.pop(
+                  context,
+                );
               },
-              child: const Text('Cancel'),
+              child:
+                  const Text('Cancel'),
             ),
             ElevatedButton(
               onPressed: () {
@@ -462,7 +595,8 @@ class _VendorManagementPageState
                   controller.text.trim(),
                 );
               },
-              child: const Text('Submit'),
+              child:
+                  const Text('Submit'),
             ),
           ],
         );
@@ -484,19 +618,27 @@ class _VendorManagementPageState
   // DOCUMENT ACTION DIALOG
   // ============================================================
 
-  Future<void> _showDocumentActionDialog({
+  Future<void>
+      _showDocumentActionDialog({
     required String uid,
     required String documentType,
+    required String currentStatus,
   }) async {
     final controller =
         TextEditingController();
 
+    String selectedStatus =
+        currentStatus == 'verified'
+            ? 'verified'
+            : currentStatus == 'rejected'
+                ? 'rejected'
+                : 'pending';
+
     final result =
-        await showDialog<Map<String, String>>(
+        await showDialog<
+            Map<String, String>>(
       context: context,
       builder: (context) {
-        String selectedStatus = 'verified';
-
         return StatefulBuilder(
           builder: (
             context,
@@ -504,13 +646,16 @@ class _VendorManagementPageState
           ) {
             return AlertDialog(
               title: Text(
-                _documentTitle(documentType),
+                _documentTitle(
+                  documentType,
+                ),
               ),
               content: Column(
                 mainAxisSize:
                     MainAxisSize.min,
                 children: [
-                  DropdownButtonFormField<String>(
+                  DropdownButtonFormField<
+                      String>(
                     initialValue:
                         selectedStatus,
                     decoration:
@@ -524,17 +669,23 @@ class _VendorManagementPageState
                       DropdownMenuItem(
                         value: 'verified',
                         child:
-                            Text('Verified'),
+                            Text(
+                          'Verified',
+                        ),
                       ),
                       DropdownMenuItem(
                         value: 'rejected',
                         child:
-                            Text('Rejected'),
+                            Text(
+                          'Rejected',
+                        ),
                       ),
                       DropdownMenuItem(
                         value: 'pending',
                         child:
-                            Text('Pending'),
+                            Text(
+                          'Pending',
+                        ),
                       ),
                     ],
                     onChanged: (value) {
@@ -548,7 +699,11 @@ class _VendorManagementPageState
                       });
                     },
                   ),
-                  const SizedBox(height: 12),
+
+                  const SizedBox(
+                    height: 12,
+                  ),
+
                   TextField(
                     controller:
                         controller,
@@ -604,7 +759,8 @@ class _VendorManagementPageState
       uid: uid,
       documentType: documentType,
       status:
-          result['status'] ?? 'pending',
+          result['status'] ??
+              'pending',
       reason:
           result['reason'] ?? '',
     );
@@ -617,11 +773,12 @@ class _VendorManagementPageState
   Widget _documentRow({
     required String uid,
     required String documentType,
-    required Map<String, dynamic> document,
+    required Map<String, dynamic>
+        document,
   }) {
-    // FIXED: String(...) removed.
     final status =
-        (document['status'] ?? 'pending')
+        (document['status'] ??
+                'pending')
             .toString()
             .trim()
             .toLowerCase();
@@ -632,7 +789,11 @@ class _VendorManagementPageState
             .trim();
 
     final reason =
-        (document['verificationReason'] ?? '')
+        (document[
+                    'verificationReason'] ??
+                document[
+                    'rejectionReason'] ??
+                '')
             .toString()
             .trim();
 
@@ -645,13 +806,17 @@ class _VendorManagementPageState
         _statusColor(status);
 
     return Card(
-      margin: const EdgeInsets.only(
+      margin:
+          const EdgeInsets.only(
         bottom: 8,
       ),
       elevation: 0,
-      shape: RoundedRectangleBorder(
+      shape:
+          RoundedRectangleBorder(
         borderRadius:
-            BorderRadius.circular(10),
+            BorderRadius.circular(
+          10,
+        ),
         side: BorderSide(
           color: color.withValues(
             alpha: 0.25,
@@ -663,11 +828,14 @@ class _VendorManagementPageState
             const EdgeInsets.all(10),
         child: Row(
           crossAxisAlignment:
-              CrossAxisAlignment.start,
+              CrossAxisAlignment
+                  .start,
           children: [
             Container(
               padding:
-                  const EdgeInsets.all(8),
+                  const EdgeInsets.all(
+                8,
+              ),
               decoration:
                   BoxDecoration(
                 color:
@@ -686,7 +854,9 @@ class _VendorManagementPageState
               ),
             ),
 
-            const SizedBox(width: 10),
+            const SizedBox(
+              width: 10,
+            ),
 
             Expanded(
               child: Column(
@@ -709,121 +879,77 @@ class _VendorManagementPageState
                           ),
                         ),
                       ),
+
                       if (isRequired)
-                        Container(
-                          padding:
-                              const EdgeInsets
-                                  .symmetric(
-                            horizontal: 7,
-                            vertical: 3,
-                          ),
-                          decoration:
-                              BoxDecoration(
-                            color: Colors
-                                .red
-                                .withValues(
-                              alpha: 0.08,
-                            ),
-                            borderRadius:
-                                BorderRadius
-                                    .circular(
-                              6,
-                            ),
-                          ),
-                          child:
-                              const Text(
-                            'REQUIRED',
-                            style:
-                                TextStyle(
-                              color:
-                                  Colors.red,
-                              fontSize: 9,
-                              fontWeight:
-                                  FontWeight
-                                      .bold,
-                            ),
-                          ),
+                        _smallLabel(
+                          'REQUIRED',
+                          Colors.red,
                         )
                       else
-                        Container(
-                          padding:
-                              const EdgeInsets
-                                  .symmetric(
-                            horizontal: 7,
-                            vertical: 3,
-                          ),
-                          decoration:
-                              BoxDecoration(
-                            color: Colors
-                                .grey
-                                .withValues(
-                              alpha: 0.10,
-                            ),
-                            borderRadius:
-                                BorderRadius
-                                    .circular(
-                              6,
-                            ),
-                          ),
-                          child:
-                              const Text(
-                            'OPTIONAL',
-                            style:
-                                TextStyle(
-                              color:
-                                  Colors.grey,
-                              fontSize: 9,
-                              fontWeight:
-                                  FontWeight
-                                      .bold,
-                            ),
-                          ),
+                        _smallLabel(
+                          'OPTIONAL',
+                          Colors.grey,
                         ),
                     ],
                   ),
 
-                  const SizedBox(height: 6),
+                  const SizedBox(
+                    height: 6,
+                  ),
 
                   _statusChip(status),
 
-                  if (fileUrl.isNotEmpty) ...[
-                    const SizedBox(height: 5),
-                    const Row(
+                  const SizedBox(
+                    height: 6,
+                  ),
+
+                  if (fileUrl.isNotEmpty)
+                    Row(
                       children: [
-                        Icon(
-                          Icons.attach_file,
+                        const Icon(
+                          Icons
+                              .attach_file,
                           size: 14,
-                          color: Colors.grey,
+                          color:
+                              Colors.grey,
                         ),
-                        SizedBox(width: 3),
-                        Text(
-                          'Document uploaded',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey,
+                        const SizedBox(
+                          width: 3,
+                        ),
+                        const Expanded(
+                          child: Text(
+                            'Document uploaded',
+                            style:
+                                TextStyle(
+                              fontSize:
+                                  12,
+                              color:
+                                  Colors.grey,
+                            ),
                           ),
                         ),
                       ],
-                    ),
-                  ] else ...[
-                    const SizedBox(height: 5),
+                    )
+                  else
                     const Text(
                       'Document not uploaded',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.red,
-                      ),
-                    ),
-                  ],
-
-                  if (reason.isNotEmpty) ...[
-                    const SizedBox(height: 5),
-                    Text(
-                      'Remark: $reason',
-                      style: TextStyle(
+                      style:
+                          TextStyle(
                         fontSize: 12,
                         color:
-                            Colors.grey.shade700,
+                            Colors.red,
+                      ),
+                    ),
+
+                  if (reason.isNotEmpty) ...[
+                    const SizedBox(
+                      height: 5,
+                    ),
+                    Text(
+                      'Remark: $reason',
+                      style:
+                          const TextStyle(
+                        fontSize: 12,
                       ),
                     ),
                   ],
@@ -831,23 +957,83 @@ class _VendorManagementPageState
               ),
             ),
 
-            IconButton(
-              tooltip:
-                  'Verify / Reject',
-              icon: const Icon(
-                Icons.edit_note,
-              ),
-              onPressed: _loading
-                  ? null
-                  : () {
-                      _showDocumentActionDialog(
+            Column(
+              children: [
+                if (fileUrl.isNotEmpty)
+                  IconButton(
+                    tooltip:
+                        'View Document',
+                    icon:
+                        const Icon(
+                      Icons
+                          .visibility_outlined,
+                    ),
+                    onPressed: _loading
+                        ? null
+                        : () =>
+                            _viewDocument(
+                          _documentTitle(
+                            documentType,
+                          ),
+                          fileUrl,
+                        ),
+                  ),
+
+                IconButton(
+                  tooltip:
+                      'Verify / Reject',
+                  icon:
+                      const Icon(
+                    Icons.edit_note,
+                  ),
+                  onPressed: _loading
+                      ? null
+                      : () =>
+                          _showDocumentActionDialog(
                         uid: uid,
                         documentType:
                             documentType,
-                      );
-                    },
+                        currentStatus:
+                            status,
+                      ),
+                ),
+              ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // SMALL LABEL
+  // ============================================================
+
+  Widget _smallLabel(
+    String text,
+    Color color,
+  ) {
+    return Container(
+      padding:
+          const EdgeInsets.symmetric(
+        horizontal: 7,
+        vertical: 3,
+      ),
+      decoration:
+          BoxDecoration(
+        color: color.withValues(
+          alpha: 0.08,
+        ),
+        borderRadius:
+            BorderRadius.circular(6),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontSize: 9,
+          fontWeight:
+              FontWeight.bold,
         ),
       ),
     );
@@ -887,28 +1073,39 @@ class _VendorManagementPageState
         decoration:
             BoxDecoration(
           color: Colors.green
-              .withValues(alpha: 0.08),
+              .withValues(
+            alpha: 0.08,
+          ),
           borderRadius:
-              BorderRadius.circular(10),
+              BorderRadius.circular(
+            10,
+          ),
           border: Border.all(
             color: Colors.green
-                .withValues(alpha: 0.25),
+                .withValues(
+              alpha: 0.25,
+            ),
           ),
         ),
         child: const Row(
           crossAxisAlignment:
-              CrossAxisAlignment.start,
+              CrossAxisAlignment
+                  .start,
           children: [
             Icon(
               Icons.verified,
               color: Colors.green,
             ),
-            SizedBox(width: 10),
+            SizedBox(
+              width: 10,
+            ),
             Expanded(
               child: Text(
                 'All 5 required documents are verified. Vendor is eligible for final approval.',
-                style: TextStyle(
-                  color: Colors.green,
+                style:
+                    TextStyle(
+                  color:
+                      Colors.green,
                   fontWeight:
                       FontWeight.bold,
                 ),
@@ -930,52 +1127,71 @@ class _VendorManagementPageState
       decoration:
           BoxDecoration(
         color: Colors.orange
-            .withValues(alpha: 0.08),
+            .withValues(
+          alpha: 0.08,
+        ),
         borderRadius:
-            BorderRadius.circular(10),
+            BorderRadius.circular(
+          10,
+        ),
         border: Border.all(
           color: Colors.orange
-              .withValues(alpha: 0.30),
+              .withValues(
+            alpha: 0.30,
+          ),
         ),
       ),
       child: Column(
         crossAxisAlignment:
-            CrossAxisAlignment.start,
+            CrossAxisAlignment
+                .start,
         children: [
           Row(
             children: [
               const Icon(
-                Icons.warning_amber_rounded,
-                color: Colors.orange,
+                Icons
+                    .lock_outline,
+                color:
+                    Colors.orange,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(
+                width: 8,
+              ),
               Expanded(
                 child: Text(
                   '$verifiedCount/5 Required Documents Verified',
-                  style: const TextStyle(
+                  style:
+                      const TextStyle(
                     fontWeight:
                         FontWeight.bold,
-                    color: Colors.orange,
+                    color:
+                        Colors.orange,
                   ),
                 ),
               ),
             ],
           ),
 
-          const SizedBox(height: 8),
+          const SizedBox(
+            height: 8,
+          ),
 
           const Text(
-            'Final approval is locked until PAN, Aadhaar, GST, Bank/Cancelled Cheque and Address Proof are all verified.',
-            style: TextStyle(
+            'Final vendor approval is locked until all 5 required documents are verified.',
+            style:
+                TextStyle(
               fontSize: 12,
             ),
           ),
 
           if (pending.isNotEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(
+              height: 8,
+            ),
             Text(
-              'Pending / rejected: ${pending.map(_documentTitle).join(', ')}',
-              style: const TextStyle(
+              'Remaining: ${pending.map(_documentTitle).join(', ')}',
+              style:
+                  const TextStyle(
                 fontSize: 12,
                 color: Colors.red,
                 fontWeight:
@@ -993,7 +1209,8 @@ class _VendorManagementPageState
   // ============================================================
 
   Widget _vendorCard(
-    DocumentSnapshot<Map<String, dynamic>>
+    DocumentSnapshot<
+            Map<String, dynamic>>
         doc,
   ) {
     final data =
@@ -1001,9 +1218,15 @@ class _VendorManagementPageState
 
     final uid = doc.id;
 
-    // FIXED: String(...) -> toString()
     final name =
-        (data['name'] ?? 'Unknown Vendor')
+        (data['name'] ??
+                data['businessName'] ??
+                'Unknown Vendor')
+            .toString()
+            .trim();
+
+    final businessName =
+        (data['businessName'] ?? '')
             .toString()
             .trim();
 
@@ -1018,7 +1241,8 @@ class _VendorManagementPageState
             .trim();
 
     final status =
-        (data['status'] ?? 'pending')
+        (data['status'] ??
+                'pending_documents')
             .toString()
             .trim()
             .toLowerCase();
@@ -1026,23 +1250,28 @@ class _VendorManagementPageState
     final active =
         data['active'] == true;
 
+    final approvedByAdmin =
+        data['approvedByAdmin'] ==
+            true;
+
     final rawDocuments =
         data['documents'];
 
-    final Map<String, dynamic> documents =
+    final Map<String, dynamic>
+        documents =
         rawDocuments is Map
             ? Map<String, dynamic>.from(
                 rawDocuments,
               )
             : <String, dynamic>{};
 
-    final allDocumentsVerified =
-        _allRequiredDocumentsVerified(
+    final verifiedCount =
+        _verifiedDocumentCount(
       documents,
     );
 
-    final verifiedCount =
-        _verifiedDocumentCount(
+    final allDocumentsVerified =
+        _allRequiredDocumentsVerified(
       documents,
     );
 
@@ -1056,14 +1285,18 @@ class _VendorManagementPageState
         leading: CircleAvatar(
           child: Text(
             name.isNotEmpty
-                ? name[0].toUpperCase()
+                ? name[0]
+                    .toUpperCase()
                 : 'V',
           ),
         ),
 
         title: Text(
-          name,
-          style: const TextStyle(
+          businessName.isNotEmpty
+              ? businessName
+              : name,
+          style:
+              const TextStyle(
             fontWeight:
                 FontWeight.bold,
           ),
@@ -1079,48 +1312,55 @@ class _VendorManagementPageState
                 CrossAxisAlignment
                     .start,
             children: [
+              if (businessName
+                      .isNotEmpty &&
+                  name.isNotEmpty)
+                Text(
+                  'Owner: $name',
+                ),
+
               if (email.isNotEmpty)
                 Text(email),
 
               if (phone.isNotEmpty)
                 Text(phone),
 
-              const SizedBox(height: 5),
+              const SizedBox(
+                height: 5,
+              ),
 
               Row(
                 children: [
                   _statusChip(status),
 
-                  const SizedBox(width: 8),
+                  const SizedBox(
+                    width: 8,
+                  ),
 
-                  if (active)
-                    const Text(
-                      'Active',
-                      style: TextStyle(
-                        color:
-                            Colors.green,
-                        fontWeight:
-                            FontWeight.bold,
-                      ),
-                    )
-                  else
-                    const Text(
-                      'Inactive',
-                      style: TextStyle(
-                        color:
-                            Colors.red,
-                        fontWeight:
-                            FontWeight.bold,
-                      ),
+                  Text(
+                    active
+                        ? 'Active'
+                        : 'Inactive',
+                    style:
+                        TextStyle(
+                      color: active
+                          ? Colors.green
+                          : Colors.red,
+                      fontWeight:
+                          FontWeight.bold,
                     ),
+                  ),
                 ],
               ),
 
-              const SizedBox(height: 6),
+              const SizedBox(
+                height: 6,
+              ),
 
               Text(
                 'Documents: $verifiedCount/5 verified',
-                style: TextStyle(
+                style:
+                    TextStyle(
                   fontSize: 12,
                   color:
                       allDocumentsVerified
@@ -1150,7 +1390,8 @@ class _VendorManagementPageState
                 Alignment.centerLeft,
             child: Text(
               'Vendor ID',
-              style: TextStyle(
+              style:
+                  TextStyle(
                 fontWeight:
                     FontWeight.bold,
                 color:
@@ -1159,11 +1400,15 @@ class _VendorManagementPageState
             ),
           ),
 
-          const SizedBox(height: 4),
+          const SizedBox(
+            height: 4,
+          ),
 
           SelectableText(uid),
 
-          const SizedBox(height: 16),
+          const SizedBox(
+            height: 16,
+          ),
 
           _approvalRequirementBox(
             documents,
@@ -1177,25 +1422,39 @@ class _VendorManagementPageState
             children: [
               Expanded(
                 child:
-                    OutlinedButton.icon(
+                    FilledButton.icon(
                   icon: Icon(
                     allDocumentsVerified
                         ? Icons
-                            .check_circle_outline
+                            .check_circle
                         : Icons
                             .lock_outline,
                   ),
                   label: Text(
                     allDocumentsVerified
-                        ? 'Approve'
+                        ? 'Approve Vendor'
                         : 'Approve Locked',
                   ),
                   onPressed:
                       _loading ||
-                              !allDocumentsVerified
+                              !allDocumentsVerified ||
+                              status ==
+                                  'approved'
                           ? null
-                          : () {
-                              _updateVendorStatus(
+                          : () async {
+                              final confirmed =
+                                  await _confirmAction(
+                                title:
+                                    'Approve Vendor?',
+                                message:
+                                    'All 5 required documents are verified. Approve this vendor and activate the account?',
+                              );
+
+                              if (!confirmed) {
+                                return;
+                              }
+
+                              await _updateVendorStatus(
                                 uid: uid,
                                 status:
                                     'approved',
@@ -1204,16 +1463,21 @@ class _VendorManagementPageState
                 ),
               ),
 
-              const SizedBox(width: 8),
+              const SizedBox(
+                width: 8,
+              ),
 
               Expanded(
                 child:
                     OutlinedButton.icon(
-                  icon: const Icon(
+                  icon:
+                      const Icon(
                     Icons.close,
                   ),
                   label:
-                      const Text('Reject'),
+                      const Text(
+                    'Reject',
+                  ),
                   onPressed: _loading
                       ? null
                       : () {
@@ -1228,7 +1492,9 @@ class _VendorManagementPageState
             ],
           ),
 
-          const SizedBox(height: 8),
+          const SizedBox(
+            height: 8,
+          ),
 
           // ==================================================
           // SUSPEND / PENDING
@@ -1239,12 +1505,15 @@ class _VendorManagementPageState
               Expanded(
                 child:
                     OutlinedButton.icon(
-                  icon: const Icon(
+                  icon:
+                      const Icon(
                     Icons
                         .pause_circle_outline,
                   ),
                   label:
-                      const Text('Suspend'),
+                      const Text(
+                    'Suspend',
+                  ),
                   onPressed: _loading
                       ? null
                       : () {
@@ -1257,17 +1526,22 @@ class _VendorManagementPageState
                 ),
               ),
 
-              const SizedBox(width: 8),
+              const SizedBox(
+                width: 8,
+              ),
 
               Expanded(
                 child:
                     OutlinedButton.icon(
-                  icon: const Icon(
+                  icon:
+                      const Icon(
                     Icons
                         .pending_outlined,
                   ),
                   label:
-                      const Text('Pending'),
+                      const Text(
+                    'Pending',
+                  ),
                   onPressed: _loading
                       ? null
                       : () {
@@ -1282,14 +1556,17 @@ class _VendorManagementPageState
             ],
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(
+            height: 20,
+          ),
 
           const Align(
             alignment:
                 Alignment.centerLeft,
             child: Text(
               'Vendor Documents',
-              style: TextStyle(
+              style:
+                  TextStyle(
                 fontSize: 17,
                 fontWeight:
                     FontWeight.bold,
@@ -1297,53 +1574,57 @@ class _VendorManagementPageState
             ),
           ),
 
-          const SizedBox(height: 6),
+          const SizedBox(
+            height: 6,
+          ),
 
           const Align(
             alignment:
                 Alignment.centerLeft,
             child: Text(
-              'All 5 required documents must be VERIFIED before final approval.',
-              style: TextStyle(
+              'View each document and verify or reject it. All 5 required documents must be verified before approval.',
+              style:
+                  TextStyle(
                 fontSize: 12,
-                color: Colors.grey,
+                color:
+                    Colors.grey,
               ),
             ),
           ),
 
-          const SizedBox(height: 10),
+          const SizedBox(
+            height: 10,
+          ),
 
           ..._allDocuments.map(
             (type) {
-              final rawDocument =
-                  documents[type];
-
-              final Map<String, dynamic>
-                  document =
-                  rawDocument is Map
-                      ? Map<String, dynamic>
-                          .from(
-                          rawDocument,
-                        )
-                      : <String, dynamic>{};
+              final document =
+                  _getDocument(
+                documents,
+                type,
+              );
 
               return _documentRow(
                 uid: uid,
-                documentType: type,
-                document: document,
+                documentType:
+                    type,
+                document:
+                    document,
               );
             },
           ),
 
-          const SizedBox(height: 8),
+          const SizedBox(
+            height: 10,
+          ),
 
-          // ==================================================
-          // APPROVED MESSAGE
-          // ==================================================
-
-          if (status == 'approved')
+          if (status ==
+                  'approved' &&
+              active &&
+              approvedByAdmin)
             Container(
-              width: double.infinity,
+              width:
+                  double.infinity,
               padding:
                   const EdgeInsets.all(
                 12,
@@ -1358,24 +1639,23 @@ class _VendorManagementPageState
                     BorderRadius.circular(
                   10,
                 ),
-                border: Border.all(
-                  color: Colors.green
-                      .withValues(
-                    alpha: 0.20,
-                  ),
-                ),
               ),
-              child: const Row(
+              child:
+                  const Row(
                 children: [
                   Icon(
                     Icons.verified,
-                    color: Colors.green,
+                    color:
+                        Colors.green,
                   ),
-                  SizedBox(width: 8),
+                  SizedBox(
+                    width: 8,
+                  ),
                   Expanded(
                     child: Text(
-                      'Vendor is approved and active. Vendor can proceed for login.',
-                      style: TextStyle(
+                      'Vendor is approved, active and can login to the Vendor Panel.',
+                      style:
+                          TextStyle(
                         color:
                             Colors.green,
                         fontWeight:
@@ -1392,10 +1672,55 @@ class _VendorManagementPageState
   }
 
   // ============================================================
+  // CONFIRM ACTION
+  // ============================================================
+
+  Future<bool> _confirmAction({
+    required String title,
+    required String message,
+  }) async {
+    final result =
+        await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(
+                  context,
+                  false,
+                );
+              },
+              child:
+                  const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(
+                  context,
+                  true,
+                );
+              },
+              child:
+                  const Text('Approve'),
+            ),
+          ],
+        );
+      },
+    );
+
+    return result == true;
+  }
+
+  // ============================================================
   // AUTHORIZE VENDOR DIALOG
   // ============================================================
 
-  Future<void> _showAuthorizeDialog() async {
+  Future<void>
+      _showAuthorizeDialog() async {
     final uidController =
         TextEditingController();
 
@@ -1409,11 +1734,13 @@ class _VendorManagementPageState
         TextEditingController();
 
     final result =
-        await showDialog<Map<String, String>>(
+        await showDialog<
+            Map<String, String>>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text(
+          title:
+              const Text(
             'Authorize Vendor',
           ),
           content:
@@ -1436,7 +1763,9 @@ class _VendorManagementPageState
                   ),
                 ),
 
-                const SizedBox(height: 12),
+                const SizedBox(
+                  height: 12,
+                ),
 
                 TextField(
                   controller:
@@ -1450,22 +1779,28 @@ class _VendorManagementPageState
                   ),
                 ),
 
-                const SizedBox(height: 12),
+                const SizedBox(
+                  height: 12,
+                ),
 
                 TextField(
                   controller:
                       emailController,
                   keyboardType:
-                      TextInputType.emailAddress,
+                      TextInputType
+                          .emailAddress,
                   decoration:
                       const InputDecoration(
-                    labelText: 'Email',
+                    labelText:
+                        'Email',
                     border:
                         OutlineInputBorder(),
                   ),
                 ),
 
-                const SizedBox(height: 12),
+                const SizedBox(
+                  height: 12,
+                ),
 
                 TextField(
                   controller:
@@ -1474,7 +1809,8 @@ class _VendorManagementPageState
                       TextInputType.phone,
                   decoration:
                       const InputDecoration(
-                    labelText: 'Mobile',
+                    labelText:
+                        'Mobile',
                     border:
                         OutlineInputBorder(),
                   ),
@@ -1514,7 +1850,9 @@ class _VendorManagementPageState
                 );
               },
               child:
-                  const Text('Authorize'),
+                  const Text(
+                'Authorize',
+              ),
             ),
           ],
         );
@@ -1532,25 +1870,20 @@ class _VendorManagementPageState
         result['uid'] ?? '';
 
     if (uid.isEmpty) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Firebase User UID is required.',
-          ),
-        ),
+      _showMessage(
+        'Firebase User UID is required.',
       );
-
       return;
     }
 
     await _authorizeVendor(
       uid: uid,
-      name: result['name'] ?? '',
-      email: result['email'] ?? '',
-      phone: result['phone'] ?? '',
+      name:
+          result['name'] ?? '',
+      email:
+          result['email'] ?? '',
+      phone:
+          result['phone'] ?? '',
     );
   }
 
@@ -1559,18 +1892,23 @@ class _VendorManagementPageState
   // ============================================================
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
+        title:
+            const Text(
           'Vendor Management',
         ),
         actions: [
           IconButton(
             tooltip:
                 'Authorize Vendor',
-            icon: const Icon(
-              Icons.person_add_alt_1,
+            icon:
+                const Icon(
+              Icons
+                  .person_add_alt_1,
             ),
             onPressed: _loading
                 ? null
@@ -1585,7 +1923,9 @@ class _VendorManagementPageState
               QuerySnapshot<
                   Map<String, dynamic>>>(
             stream: _firestore
-                .collection('vendors')
+                .collection(
+                  'vendors',
+                )
                 .orderBy(
                   'createdAt',
                   descending: true,
@@ -1596,9 +1936,11 @@ class _VendorManagementPageState
                 (context, snapshot) {
               if (snapshot.hasError) {
                 return Center(
-                  child: Padding(
+                  child:
+                      Padding(
                     padding:
-                        const EdgeInsets.all(
+                        const EdgeInsets
+                            .all(
                       20,
                     ),
                     child: Text(
@@ -1625,49 +1967,50 @@ class _VendorManagementPageState
                       [];
 
               if (docs.isEmpty) {
-                return RefreshIndicator(
-                  onRefresh: () async {},
-                  child: ListView(
-                    physics:
-                        const AlwaysScrollableScrollPhysics(),
-                    children: const [
-                      SizedBox(
-                        height: 180,
-                      ),
-                      Icon(
-                        Icons
-                            .storefront_outlined,
-                        size: 70,
-                      ),
-                      SizedBox(
-                        height: 16,
-                      ),
-                      Center(
-                        child: Text(
-                          'No vendors found.',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight:
-                                FontWeight.bold,
-                          ),
+                return ListView(
+                  physics:
+                      const AlwaysScrollableScrollPhysics(),
+                  children: const [
+                    SizedBox(
+                      height: 180,
+                    ),
+                    Icon(
+                      Icons
+                          .storefront_outlined,
+                      size: 70,
+                    ),
+                    SizedBox(
+                      height: 16,
+                    ),
+                    Center(
+                      child: Text(
+                        'No vendors found.',
+                        style:
+                            TextStyle(
+                          fontSize:
+                              18,
+                          fontWeight:
+                              FontWeight
+                                  .bold,
                         ),
                       ),
-                      SizedBox(
-                        height: 8,
+                    ),
+                    SizedBox(
+                      height: 8,
+                    ),
+                    Center(
+                      child: Text(
+                        'Tap + to authorize a vendor.',
                       ),
-                      Center(
-                        child: Text(
-                          'Tap the add vendor button to authorize a vendor.',
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 );
               }
 
               return ListView.builder(
                 padding:
-                    const EdgeInsets.all(
+                    const EdgeInsets
+                        .all(
                   12,
                 ),
                 itemCount:
@@ -1682,10 +2025,6 @@ class _VendorManagementPageState
             },
           ),
 
-          // ========================================================
-          // LOADING OVERLAY
-          // ========================================================
-
           if (_loading)
             Positioned.fill(
               child: Container(
@@ -1693,7 +2032,8 @@ class _VendorManagementPageState
                     .withValues(
                   alpha: 0.08,
                 ),
-                child: const Center(
+                child:
+                    const Center(
                   child:
                       CircularProgressIndicator(),
                 ),
