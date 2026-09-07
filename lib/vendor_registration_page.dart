@@ -14,188 +14,93 @@ class VendorRegistrationPage extends StatefulWidget {
 
 class _VendorRegistrationPageState
     extends State<VendorRegistrationPage> {
-  final businessNameController = TextEditingController();
-  final ownerNameController = TextEditingController();
-  final mobileController = TextEditingController();
-  final otpController = TextEditingController();
-  final emailController = TextEditingController();
-  final passwordController = TextEditingController();
-
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore =
       FirebaseFirestore.instance;
 
-  static const String testMobile = '9666666666';
-  static const String testOtp = '966666';
+  final TextEditingController _businessNameController =
+      TextEditingController();
 
-  bool loading = false;
-  bool otpVerified = false;
-  bool obscurePassword = true;
+  final TextEditingController _ownerNameController =
+      TextEditingController();
+
+  final TextEditingController _mobileController =
+      TextEditingController();
+
+  final TextEditingController _otpController =
+      TextEditingController();
+
+  final TextEditingController _emailController =
+      TextEditingController();
+
+  final TextEditingController _passwordController =
+      TextEditingController();
+
+  bool _loading = false;
+  bool _obscurePassword = true;
+
+  // ============================================================
+  // TEST OTP
+  // ============================================================
+
+  static const String _testMobile = '9666666666';
+  static const String _testOtp = '966666';
+
+  // ============================================================
+  // DISPOSE
+  // ============================================================
 
   @override
   void dispose() {
-    businessNameController.dispose();
-    ownerNameController.dispose();
-    mobileController.dispose();
-    otpController.dispose();
-    emailController.dispose();
-    passwordController.dispose();
+    _businessNameController.dispose();
+    _ownerNameController.dispose();
+    _mobileController.dispose();
+    _otpController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+
     super.dispose();
   }
 
-  // --------------------------------------------------
-  // SEND TEST OTP
-  // --------------------------------------------------
-
-  Future<void> sendOtp() async {
-    if (loading) return;
-
-    final mobile = mobileController.text.trim();
-
-    if (!RegExp(r'^[0-9]{10}$').hasMatch(mobile)) {
-      _showMessage(
-        'Please enter a valid 10-digit mobile number.',
-        isError: true,
-      );
-      return;
-    }
-
-    if (mobile != testMobile) {
-      _showMessage(
-        'For testing, please use 9666666666.',
-        isError: true,
-      );
-      return;
-    }
-
-    setState(() {
-      loading = true;
-    });
-
-    try {
-      final existingVendor = await _firestore
-          .collection('vendors')
-          .where('phone', isEqualTo: mobile)
-          .limit(1)
-          .get();
-
-      if (existingVendor.docs.isNotEmpty) {
-        _showMessage(
-          'This mobile number is already registered.',
-          isError: true,
-        );
-        return;
-      }
-
-      final existingUser = await _firestore
-          .collection('users')
-          .where('phone', isEqualTo: mobile)
-          .limit(1)
-          .get();
-
-      if (existingUser.docs.isNotEmpty) {
-        _showMessage(
-          'This mobile number is already registered.',
-          isError: true,
-        );
-        return;
-      }
-
-      if (!mounted) return;
-
-      _showMessage(
-        'Test OTP sent. Use OTP: 966666',
-        isError: false,
-      );
-    } on FirebaseException catch (e) {
-      debugPrint(
-        'VENDOR OTP ERROR: ${e.code} - ${e.message}',
-      );
-
-      _showMessage(
-        'We could not send the OTP right now. Please try again.',
-        isError: true,
-      );
-    } catch (e) {
-      debugPrint('VENDOR OTP UNKNOWN ERROR: $e');
-
-      _showMessage(
-        'Something went wrong. Please try again.',
-        isError: true,
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          loading = false;
-        });
-      }
-    }
-  }
-
-  // --------------------------------------------------
-  // VERIFY OTP
-  // --------------------------------------------------
-
-  void verifyOtp() {
-    if (loading) return;
-
-    final mobile = mobileController.text.trim();
-    final otp = otpController.text.trim();
-
-    if (mobile != testMobile) {
-      _showMessage(
-        'Please use the test mobile number 9666666666.',
-        isError: true,
-      );
-      return;
-    }
-
-    if (otp != testOtp) {
-      _showMessage(
-        'Invalid OTP. Please enter 966666.',
-        isError: true,
-      );
-      return;
-    }
-
-    setState(() {
-      otpVerified = true;
-    });
-
-    _showMessage(
-      'Mobile number verified successfully.',
-      isError: false,
-    );
-  }
-
-  // --------------------------------------------------
+  // ============================================================
   // REGISTER VENDOR
-  // --------------------------------------------------
+  // ============================================================
 
-  Future<void> registerVendor() async {
-    if (loading) return;
+  Future<void> _registerVendor() async {
+    if (_loading) return;
 
     final businessName =
-        businessNameController.text.trim();
+        _businessNameController.text.trim();
+
     final ownerName =
-        ownerNameController.text.trim();
-    final mobile = mobileController.text.trim();
-    final email = emailController.text.trim();
+        _ownerNameController.text.trim();
+
+    final mobile =
+        _mobileController.text.trim();
+
+    final otp =
+        _otpController.text.trim();
+
+    final email =
+        _emailController.text.trim().toLowerCase();
+
     final password =
-        passwordController.text.trim();
+        _passwordController.text.trim();
+
+    // ==========================================================
+    // VALIDATION
+    // ==========================================================
 
     if (businessName.isEmpty) {
       _showMessage(
-        'Please enter your business or shop name.',
-        isError: true,
+        'Please enter Business / Shop Name.',
       );
       return;
     }
 
     if (ownerName.isEmpty) {
       _showMessage(
-        'Please enter the owner name.',
-        isError: true,
+        'Please enter Owner Name.',
       );
       return;
     }
@@ -203,74 +108,52 @@ class _VendorRegistrationPageState
     if (!RegExp(r'^[0-9]{10}$').hasMatch(mobile)) {
       _showMessage(
         'Please enter a valid 10-digit mobile number.',
-        isError: true,
       );
       return;
     }
 
-    if (mobile != testMobile) {
+    if (otp.isEmpty) {
       _showMessage(
-        'For testing, please use 9666666666.',
-        isError: true,
+        'Please enter OTP.',
       );
       return;
     }
 
-    if (!otpVerified) {
-      _showMessage(
-        'Please verify your mobile number first.',
-        isError: true,
-      );
-      return;
-    }
-
-    if (email.isEmpty ||
-        !RegExp(
-          r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
-        ).hasMatch(email)) {
+    if (email.isEmpty || !email.contains('@')) {
       _showMessage(
         'Please enter a valid email address.',
-        isError: true,
       );
       return;
     }
 
     if (password.length < 6) {
       _showMessage(
-        'Password must contain at least 6 characters.',
-        isError: true,
+        'Password must be at least 6 characters.',
+      );
+      return;
+    }
+
+    // ==========================================================
+    // TEST OTP
+    // ==========================================================
+
+    if (mobile == _testMobile && otp != _testOtp) {
+      _showMessage(
+        'Invalid test OTP.',
       );
       return;
     }
 
     setState(() {
-      loading = true;
+      _loading = true;
     });
 
     User? createdUser;
 
     try {
-      // ----------------------------------------------
-      // FINAL DUPLICATE CHECK
-      // ----------------------------------------------
-
-      final existingVendor = await _firestore
-          .collection('vendors')
-          .where('phone', isEqualTo: mobile)
-          .limit(1)
-          .get();
-
-      if (existingVendor.docs.isNotEmpty) {
-        _showMessage(
-          'This mobile number is already registered.',
-          isError: true,
-        );
-        return;
-      }
-
-      // ----------------------------------------------
-      // CREATE FIREBASE AUTH ACCOUNT
-      // ----------------------------------------------
+      // ========================================================
+      // FIREBASE AUTH ACCOUNT
+      // ========================================================
 
       final credential =
           await _auth.createUserWithEmailAndPassword(
@@ -282,15 +165,15 @@ class _VendorRegistrationPageState
 
       if (createdUser == null) {
         throw Exception(
-          'Vendor account could not be created.',
+          'Unable to create vendor account.',
         );
       }
 
       final uid = createdUser.uid;
 
-      // ----------------------------------------------
-      // USERS PROFILE
-      // ----------------------------------------------
+      // ========================================================
+      // USERS DOCUMENT
+      // ========================================================
 
       await _firestore
           .collection('users')
@@ -303,8 +186,7 @@ class _VendorRegistrationPageState
         'email': email,
         'role': 'vendor',
 
-        // Vendor cannot login/use panel
-        // until Admin approval.
+        // Vendor cannot login before approval.
         'status': 'pending_documents',
         'active': false,
 
@@ -312,9 +194,9 @@ class _VendorRegistrationPageState
             FieldValue.serverTimestamp(),
       });
 
-      // ----------------------------------------------
-      // VENDOR PROFILE
-      // ----------------------------------------------
+      // ========================================================
+      // VENDORS DOCUMENT
+      // ========================================================
 
       await _firestore
           .collection('vendors')
@@ -327,31 +209,42 @@ class _VendorRegistrationPageState
         'email': email,
         'role': 'vendor',
 
+        // Initial registration state.
         'status': 'pending_documents',
         'active': false,
 
-        'documentsSubmitted': false,
+        // Admin must explicitly approve.
         'approvedByAdmin': false,
 
-        // Document data will be added by
-        // VendorDocumentsPage.
+        // Documents have not been submitted yet.
+        'documentsSubmitted': false,
+
+        // Documents metadata.
         'documents': {},
 
         'createdAt':
             FieldValue.serverTimestamp(),
       });
 
-      // ----------------------------------------------
-      // SIGN OUT
-      // ----------------------------------------------
-
-      await _auth.signOut();
+      // ========================================================
+      // IMPORTANT
+      // DO NOT SIGN OUT HERE.
+      //
+      // Vendor Documents page needs authenticated Firebase user
+      // to upload documents and update Firestore.
+      // ========================================================
 
       if (!mounted) return;
 
-      // ----------------------------------------------
-      // OPEN DOCUMENT PAGE
-      // ----------------------------------------------
+      _showMessage(
+        'Registration successful. Please upload your documents.',
+      );
+
+      await Future.delayed(
+        const Duration(milliseconds: 500),
+      );
+
+      if (!mounted) return;
 
       Navigator.pushReplacement(
         context,
@@ -361,15 +254,13 @@ class _VendorRegistrationPageState
           ),
         ),
       );
-    }
+    } on FirebaseAuthException catch (e) {
+      // ========================================================
+      // AUTH ERROR
+      // ========================================================
 
-    // ----------------------------------------------
-    // AUTH ERROR
-    // ----------------------------------------------
-
-    on FirebaseAuthException catch (e) {
       debugPrint(
-        'VENDOR AUTH ERROR: ${e.code} - ${e.message}',
+        'Vendor registration Auth error: ${e.code}',
       );
 
       String message;
@@ -377,14 +268,7 @@ class _VendorRegistrationPageState
       switch (e.code) {
         case 'email-already-in-use':
           message =
-              'This email address is already registered. '
-              'Please use another email.';
-          break;
-
-        case 'weak-password':
-          message =
-              'Your password is too weak. '
-              'Please use at least 6 characters.';
+              'This email is already registered.';
           break;
 
         case 'invalid-email':
@@ -392,133 +276,95 @@ class _VendorRegistrationPageState
               'Please enter a valid email address.';
           break;
 
+        case 'weak-password':
+          message =
+              'Password is too weak. Use at least 6 characters.';
+          break;
+
         case 'operation-not-allowed':
           message =
-              'Registration is temporarily unavailable. '
-              'Please try again later.';
+              'Email/password registration is not enabled in Firebase.';
           break;
 
         case 'network-request-failed':
           message =
-              'Unable to connect. Please check your internet connection.';
-          break;
-
-        case 'too-many-requests':
-          message =
-              'Too many attempts. Please try again later.';
+              'Network error. Please check your internet connection.';
           break;
 
         default:
           message =
-              'We could not complete registration. Please try again.';
+              'Registration failed. Please try again.';
       }
 
-      _showMessage(
-        message,
-        isError: true,
-      );
-    }
+      if (mounted) {
+        _showMessage(message);
+      }
+    } on FirebaseException catch (e) {
+      // ========================================================
+      // FIREBASE / FIRESTORE ERROR
+      // ========================================================
 
-    // ----------------------------------------------
-    // FIRESTORE ERROR
-    // ----------------------------------------------
-
-    on FirebaseException catch (e) {
       debugPrint(
-        'VENDOR FIREBASE ERROR: ${e.code} - ${e.message}',
+        'Vendor registration Firebase error: ${e.code}',
+      );
+
+      // --------------------------------------------------------
+      // If Firestore write fails after Auth account creation,
+      // sign out so the partially created account cannot
+      // accidentally access the application.
+      // --------------------------------------------------------
+
+      if (createdUser != null) {
+        try {
+          await _auth.signOut();
+        } catch (_) {}
+      }
+
+      if (mounted) {
+        if (e.code == 'permission-denied') {
+          _showMessage(
+            'Registration permission denied. Please check Firebase Rules.',
+          );
+        } else {
+          _showMessage(
+            'Unable to save vendor registration. Please try again.',
+          );
+        }
+      }
+    } catch (e) {
+      // ========================================================
+      // GENERAL ERROR
+      // ========================================================
+
+      debugPrint(
+        'Vendor registration error: $e',
       );
 
       if (createdUser != null) {
         try {
-          await createdUser.delete();
-        } catch (cleanupError) {
-          debugPrint(
-            'VENDOR AUTH CLEANUP ERROR: $cleanupError',
-          );
-        }
+          await _auth.signOut();
+        } catch (_) {}
       }
 
-      String message;
-
-      switch (e.code) {
-        case 'permission-denied':
-          message =
-              'Registration is temporarily unavailable. '
-              'Please try again later.';
-          break;
-
-        case 'unavailable':
-          message =
-              'Server is temporarily unavailable. '
-              'Please try again shortly.';
-          break;
-
-        case 'network-request-failed':
-          message =
-              'Please check your internet connection and try again.';
-          break;
-
-        case 'failed-precondition':
-          message =
-              'Registration service is not ready yet. '
-              'Please try again later.';
-          break;
-
-        default:
-          message =
-              'We could not complete registration. '
-              'Please try again later.';
+      if (mounted) {
+        _showMessage(
+          'Unable to complete registration. Please try again.',
+        );
       }
-
-      _showMessage(
-        message,
-        isError: true,
-      );
-    }
-
-    // ----------------------------------------------
-    // UNKNOWN ERROR
-    // ----------------------------------------------
-
-    catch (e) {
-      debugPrint(
-        'VENDOR UNKNOWN ERROR: $e',
-      );
-
-      if (createdUser != null) {
-        try {
-          await createdUser.delete();
-        } catch (cleanupError) {
-          debugPrint(
-            'VENDOR AUTH CLEANUP ERROR: $cleanupError',
-          );
-        }
-      }
-
-      _showMessage(
-        'We could not complete registration. '
-        'Please try again later.',
-        isError: true,
-      );
-    }
-
-    finally {
+    } finally {
       if (mounted) {
         setState(() {
-          loading = false;
+          _loading = false;
         });
       }
     }
   }
 
-  // --------------------------------------------------
+  // ============================================================
   // MESSAGE
-  // --------------------------------------------------
+  // ============================================================
 
-  void _showMessage(
-    String message, {
-    required bool isError,
-  }) {
+  void _showMessage(String message) {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context)
@@ -527,34 +373,15 @@ class _VendorRegistrationPageState
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        duration: Duration(
-          seconds: isError ? 4 : 5,
-        ),
-        behavior: SnackBarBehavior.floating,
+        behavior:
+            SnackBarBehavior.floating,
       ),
     );
   }
 
-  // --------------------------------------------------
-  // DECORATION
-  // --------------------------------------------------
-
-  InputDecoration _decoration(
-    String label,
-    IconData icon,
-  ) {
-    return InputDecoration(
-      labelText: label,
-      prefixIcon: Icon(icon),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-    );
-  }
-
-  // --------------------------------------------------
-  // UI
-  // --------------------------------------------------
+  // ============================================================
+  // BUILD
+  // ============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -567,250 +394,445 @@ class _VendorRegistrationPageState
           ),
         ),
       ),
+
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.stretch,
-            children: [
-              const Icon(
-                Icons.storefront,
-                size: 72,
+        child: Center(
+          child: SingleChildScrollView(
+            padding:
+                const EdgeInsets.all(24),
+
+            child: ConstrainedBox(
+              constraints:
+                  const BoxConstraints(
+                maxWidth: 500,
               ),
 
-              const SizedBox(height: 10),
+              child: Card(
+                elevation: 3,
 
-              const Text(
-                'Create Vendor Account',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.all(24),
 
-              const SizedBox(height: 8),
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.stretch,
 
-              const Text(
-                'Complete registration first. '
-                'Documents will be submitted in the next step.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 14,
-                ),
-              ),
+                    children: [
 
-              const SizedBox(height: 25),
+                      // ==================================================
+                      // ICON
+                      // ==================================================
 
-              // BUSINESS NAME
-              TextField(
-                controller: businessNameController,
-                textCapitalization:
-                    TextCapitalization.words,
-                decoration: _decoration(
-                  'Business / Shop Name',
-                  Icons.store_outlined,
-                ),
-              ),
+                      const CircleAvatar(
+                        radius: 40,
+                        child: Icon(
+                          Icons.storefront_outlined,
+                          size: 44,
+                        ),
+                      ),
 
-              const SizedBox(height: 15),
+                      const SizedBox(height: 18),
 
-              // OWNER NAME
-              TextField(
-                controller: ownerNameController,
-                textCapitalization:
-                    TextCapitalization.words,
-                decoration: _decoration(
-                  'Owner Name',
-                  Icons.person_outline,
-                ),
-              ),
+                      const Text(
+                        'Register as Vendor',
+                        textAlign:
+                            TextAlign.center,
+                        style:
+                            TextStyle(
+                          fontSize: 24,
+                          fontWeight:
+                              FontWeight.bold,
+                        ),
+                      ),
 
-              const SizedBox(height: 15),
+                      const SizedBox(height: 8),
 
-              // MOBILE
-              TextField(
-                controller: mobileController,
-                keyboardType:
-                    TextInputType.phone,
-                maxLength: 10,
-                enabled: !otpVerified,
-                decoration: _decoration(
-                  'Mobile Number',
-                  Icons.phone_outlined,
-                ),
-              ),
+                      const Text(
+                        'Create your Preesho Vendor account',
+                        textAlign:
+                            TextAlign.center,
+                        style:
+                            TextStyle(
+                          color:
+                              Colors.grey,
+                        ),
+                      ),
 
-              const SizedBox(height: 4),
+                      const SizedBox(height: 28),
 
-              // SEND OTP
-              SizedBox(
-                height: 48,
-                child: OutlinedButton.icon(
-                  onPressed:
-                      loading || otpVerified
-                          ? null
-                          : sendOtp,
-                  icon: const Icon(
-                    Icons.sms_outlined,
-                  ),
-                  label: Text(
-                    otpVerified
-                        ? 'Mobile Verified'
-                        : 'SEND OTP',
-                  ),
-                ),
-              ),
+                      // ==================================================
+                      // BUSINESS NAME
+                      // ==================================================
 
-              const SizedBox(height: 15),
+                      TextField(
+                        controller:
+                            _businessNameController,
 
-              // OTP
-              TextField(
-                controller: otpController,
-                keyboardType:
-                    TextInputType.number,
-                maxLength: 6,
-                enabled: !otpVerified,
-                decoration: _decoration(
-                  'Enter OTP',
-                  Icons.verified_user_outlined,
-                ),
-              ),
+                        textInputAction:
+                            TextInputAction.next,
 
-              SizedBox(
-                height: 48,
-                child: ElevatedButton(
-                  onPressed:
-                      loading || otpVerified
-                          ? null
-                          : verifyOtp,
-                  child: Text(
-                    otpVerified
-                        ? 'OTP VERIFIED ✓'
-                        : 'VERIFY OTP',
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // EMAIL
-              TextField(
-                controller: emailController,
-                keyboardType:
-                    TextInputType.emailAddress,
-                decoration: _decoration(
-                  'Email Address',
-                  Icons.email_outlined,
-                ),
-              ),
-
-              const SizedBox(height: 15),
-
-              // PASSWORD
-              TextField(
-                controller: passwordController,
-                obscureText: obscurePassword,
-                decoration: _decoration(
-                  'Password',
-                  Icons.lock_outline,
-                ).copyWith(
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      obscurePassword
-                          ? Icons.visibility
-                          : Icons.visibility_off,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        obscurePassword =
-                            !obscurePassword;
-                      });
-                    },
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 25),
-
-              // REGISTER
-              SizedBox(
-                height: 54,
-                child: ElevatedButton(
-                  onPressed:
-                      loading
-                          ? null
-                          : registerVendor,
-                  child: loading
-                      ? const SizedBox(
-                          width: 25,
-                          height: 25,
-                          child:
-                              CircularProgressIndicator(
-                            strokeWidth: 2.5,
+                        decoration:
+                            const InputDecoration(
+                          labelText:
+                              'Business / Shop Name',
+                          hintText:
+                              'Enter business name',
+                          prefixIcon:
+                              Icon(
+                            Icons.store_outlined,
                           ),
-                        )
-                      : const Text(
-                          'SUBMIT REGISTRATION',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight:
-                                FontWeight.bold,
+                          border:
+                              OutlineInputBorder(),
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // ==================================================
+                      // OWNER NAME
+                      // ==================================================
+
+                      TextField(
+                        controller:
+                            _ownerNameController,
+
+                        textInputAction:
+                            TextInputAction.next,
+
+                        decoration:
+                            const InputDecoration(
+                          labelText:
+                              'Owner Name',
+                          hintText:
+                              'Enter owner name',
+                          prefixIcon:
+                              Icon(
+                            Icons.person_outline,
+                          ),
+                          border:
+                              OutlineInputBorder(),
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // ==================================================
+                      // MOBILE
+                      // ==================================================
+
+                      TextField(
+                        controller:
+                            _mobileController,
+
+                        keyboardType:
+                            TextInputType.phone,
+
+                        maxLength: 10,
+
+                        textInputAction:
+                            TextInputAction.next,
+
+                        decoration:
+                            const InputDecoration(
+                          labelText:
+                              'Mobile Number',
+                          hintText:
+                              'Enter 10-digit mobile',
+                          prefixIcon:
+                              Icon(
+                            Icons.phone_outlined,
+                          ),
+                          border:
+                              OutlineInputBorder(),
+                          counterText: '',
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // ==================================================
+                      // OTP
+                      // ==================================================
+
+                      TextField(
+                        controller:
+                            _otpController,
+
+                        keyboardType:
+                            TextInputType.number,
+
+                        maxLength: 6,
+
+                        textInputAction:
+                            TextInputAction.next,
+
+                        decoration:
+                            const InputDecoration(
+                          labelText:
+                              'OTP',
+                          hintText:
+                              'Enter OTP',
+                          prefixIcon:
+                              Icon(
+                            Icons.verified_outlined,
+                          ),
+                          border:
+                              OutlineInputBorder(),
+                          counterText: '',
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // ==================================================
+                      // EMAIL
+                      // ==================================================
+
+                      TextField(
+                        controller:
+                            _emailController,
+
+                        keyboardType:
+                            TextInputType.emailAddress,
+
+                        textInputAction:
+                            TextInputAction.next,
+
+                        autocorrect: false,
+
+                        decoration:
+                            const InputDecoration(
+                          labelText:
+                              'Email Address',
+                          hintText:
+                              'Enter vendor email',
+                          prefixIcon:
+                              Icon(
+                            Icons.email_outlined,
+                          ),
+                          border:
+                              OutlineInputBorder(),
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // ==================================================
+                      // PASSWORD
+                      // ==================================================
+
+                      TextField(
+                        controller:
+                            _passwordController,
+
+                        obscureText:
+                            _obscurePassword,
+
+                        textInputAction:
+                            TextInputAction.done,
+
+                        onSubmitted: (_) {
+                          _registerVendor();
+                        },
+
+                        decoration:
+                            InputDecoration(
+                          labelText:
+                              'Password',
+                          hintText:
+                              'Minimum 6 characters',
+
+                          prefixIcon:
+                              const Icon(
+                            Icons.lock_outline,
+                          ),
+
+                          suffixIcon:
+                              IconButton(
+                            onPressed: () {
+                              setState(() {
+                                _obscurePassword =
+                                    !_obscurePassword;
+                              });
+                            },
+
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons
+                                      .visibility_outlined
+                                  : Icons
+                                      .visibility_off_outlined,
+                            ),
+                          ),
+
+                          border:
+                              const OutlineInputBorder(),
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // ==================================================
+                      // REGISTER BUTTON
+                      // ==================================================
+
+                      SizedBox(
+                        height: 52,
+
+                        child:
+                            FilledButton.icon(
+                          onPressed:
+                              _loading
+                                  ? null
+                                  : _registerVendor,
+
+                          icon:
+                              _loading
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child:
+                                          CircularProgressIndicator(
+                                        strokeWidth:
+                                            2.5,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons
+                                          .person_add_alt_1,
+                                    ),
+
+                          label:
+                              Text(
+                            _loading
+                                ? 'Creating Account...'
+                                : 'Register Vendor',
+                            style:
+                                const TextStyle(
+                              fontSize:
+                                  16,
+                              fontWeight:
+                                  FontWeight.bold,
+                            ),
                           ),
                         ),
-                ),
-              ),
+                      ),
 
-              const SizedBox(height: 18),
+                      const SizedBox(height: 20),
 
-              // TEST INFO
-              Container(
-                padding:
-                    const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  borderRadius:
-                      BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Colors.grey.shade300,
+                      // ==================================================
+                      // APPROVAL INFORMATION
+                      // ==================================================
+
+                      Container(
+                        padding:
+                            const EdgeInsets.all(14),
+
+                        decoration:
+                            BoxDecoration(
+                          borderRadius:
+                              BorderRadius.circular(
+                            12,
+                          ),
+                          border:
+                              Border.all(
+                            color:
+                                Theme.of(context)
+                                    .dividerColor,
+                          ),
+                        ),
+
+                        child:
+                            const Column(
+                          children: [
+                            Icon(
+                              Icons
+                                  .admin_panel_settings_outlined,
+                              size: 30,
+                            ),
+
+                            SizedBox(
+                              height: 8,
+                            ),
+
+                            Text(
+                              'Admin Approval Required',
+                              textAlign:
+                                  TextAlign.center,
+                              style:
+                                  TextStyle(
+                                fontWeight:
+                                    FontWeight.bold,
+                              ),
+                            ),
+
+                            SizedBox(
+                              height: 5,
+                            ),
+
+                            Text(
+                              'After registration, upload the required documents. Your Vendor account will remain inactive until Admin verifies and approves it.',
+                              textAlign:
+                                  TextAlign.center,
+                              style:
+                                  TextStyle(
+                                fontSize:
+                                    12,
+                                color:
+                                    Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // ==================================================
+                      // TEST OTP INFO
+                      // ==================================================
+
+                      if (_mobileController.text ==
+                          _testMobile)
+                        Container(
+                          padding:
+                              const EdgeInsets.all(
+                            12,
+                          ),
+
+                          decoration:
+                              BoxDecoration(
+                            borderRadius:
+                                BorderRadius.circular(
+                              10,
+                            ),
+                            color: Theme.of(
+                              context,
+                            )
+                                .colorScheme
+                                .surfaceContainerHighest,
+                          ),
+
+                          child:
+                              const Text(
+                            'Development Test OTP: 966666',
+                            textAlign:
+                                TextAlign.center,
+                            style:
+                                TextStyle(
+                              fontSize:
+                                  12,
+                              fontWeight:
+                                  FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-                child: const Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Test Registration',
-                      style: TextStyle(
-                        fontWeight:
-                            FontWeight.bold,
-                      ),
-                    ),
-                    SizedBox(height: 6),
-                    Text(
-                      'Mobile: 9666666666',
-                    ),
-                    Text(
-                      'OTP: 966666',
-                    ),
-                  ],
-                ),
               ),
-
-              const SizedBox(height: 15),
-
-              const Text(
-                'After registration, your documents must be '
-                'submitted and verified by Preesho Admin before '
-                'your vendor account can be activated.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
