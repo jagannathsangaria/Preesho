@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 
 class CourierRegistrationPage extends StatefulWidget {
   const CourierRegistrationPage({super.key});
@@ -14,38 +14,180 @@ class _CourierRegistrationPageState
     extends State<CourierRegistrationPage> {
   final nameController = TextEditingController();
   final mobileController = TextEditingController();
+  final emailController = TextEditingController();
   final passwordController = TextEditingController();
-  final vehicleNumberController = TextEditingController();
-
-  String vehicleType = 'Bike';
-
-  bool loading = false;
-  bool obscurePassword = true;
+  final otpController = TextEditingController();
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore =
+      FirebaseFirestore.instance;
+
+  bool loading = false;
+  bool otpVerified = false;
+  bool obscurePassword = true;
+
+  // --------------------------------------------------
+  // TEST OTP
+  // --------------------------------------------------
+
+  static const String testMobile = '9111111111';
+  static const String testOtp = '911111';
 
   @override
   void dispose() {
     nameController.dispose();
     mobileController.dispose();
+    emailController.dispose();
     passwordController.dispose();
-    vehicleNumberController.dispose();
+    otpController.dispose();
     super.dispose();
   }
+
+  // --------------------------------------------------
+  // SEND OTP
+  // --------------------------------------------------
+
+  Future<void> sendOtp() async {
+    if (loading) return;
+
+    final mobile = mobileController.text.trim();
+
+    if (!RegExp(r'^[0-9]{10}$').hasMatch(mobile)) {
+      _showMessage(
+        'Please enter a valid 10-digit mobile number.',
+        isError: true,
+      );
+      return;
+    }
+
+    // Current test mode
+    if (mobile != testMobile) {
+      _showMessage(
+        'Test registration is currently available only for '
+        'the test courier number 9111111111.',
+        isError: true,
+      );
+      return;
+    }
+
+    setState(() {
+      loading = true;
+    });
+
+    try {
+      // Check existing courier.
+      final existingCourier = await _firestore
+          .collection('couriers')
+          .where('phone', isEqualTo: mobile)
+          .limit(1)
+          .get();
+
+      if (existingCourier.docs.isNotEmpty) {
+        _showMessage(
+          'This mobile number is already registered.',
+          isError: true,
+        );
+        return;
+      }
+
+      // Check existing user.
+      final existingUser = await _firestore
+          .collection('users')
+          .where('phone', isEqualTo: mobile)
+          .limit(1)
+          .get();
+
+      if (existingUser.docs.isNotEmpty) {
+        _showMessage(
+          'This mobile number is already registered.',
+          isError: true,
+        );
+        return;
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        otpVerified = false;
+      });
+
+      _showMessage(
+        'Test OTP sent. Use OTP: 911111',
+        isError: false,
+      );
+    } on FirebaseException catch (e) {
+      debugPrint(
+        'COURIER OTP ERROR: ${e.code} - ${e.message}',
+      );
+
+      _showMessage(
+        'We could not send the OTP right now. '
+        'Please try again.',
+        isError: true,
+      );
+    } catch (e) {
+      debugPrint('COURIER OTP UNKNOWN ERROR: $e');
+
+      _showMessage(
+        'Something went wrong. Please try again.',
+        isError: true,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          loading = false;
+        });
+      }
+    }
+  }
+
+  // --------------------------------------------------
+  // VERIFY OTP
+  // --------------------------------------------------
+
+  void verifyOtp() {
+    if (loading) return;
+
+    final mobile = mobileController.text.trim();
+    final otp = otpController.text.trim();
+
+    if (mobile != testMobile) {
+      _showMessage(
+        'Please use the test mobile number 9111111111.',
+        isError: true,
+      );
+      return;
+    }
+
+    if (otp != testOtp) {
+      _showMessage(
+        'Invalid OTP. Please enter 911111.',
+        isError: true,
+      );
+      return;
+    }
+
+    setState(() {
+      otpVerified = true;
+    });
+
+    _showMessage(
+      'Mobile number verified successfully.',
+      isError: false,
+    );
+  }
+
+  // --------------------------------------------------
+  // REGISTER COURIER
+  // --------------------------------------------------
 
   Future<void> registerCourier() async {
     if (loading) return;
 
     final name = nameController.text.trim();
     final mobile = mobileController.text.trim();
+    final email = emailController.text.trim();
     final password = passwordController.text.trim();
-    final vehicleNumber =
-        vehicleNumberController.text.trim().toUpperCase();
-
-    // -----------------------------
-    // BASIC VALIDATION
-    // -----------------------------
 
     if (name.isEmpty) {
       _showMessage(
@@ -63,17 +205,36 @@ class _CourierRegistrationPageState
       return;
     }
 
-    if (password.length < 6) {
+    if (mobile != testMobile) {
       _showMessage(
-        'Password must contain at least 6 characters.',
+        'For testing, please use 9111111111.',
         isError: true,
       );
       return;
     }
 
-    if (vehicleNumber.isEmpty) {
+    if (!otpVerified) {
       _showMessage(
-        'Please enter your vehicle number.',
+        'Please verify your mobile number first.',
+        isError: true,
+      );
+      return;
+    }
+
+    if (email.isEmpty ||
+        !RegExp(
+          r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+        ).hasMatch(email)) {
+      _showMessage(
+        'Please enter a valid email address.',
+        isError: true,
+      );
+      return;
+    }
+
+    if (password.length < 6) {
+      _showMessage(
+        'Password must contain at least 6 characters.',
         isError: true,
       );
       return;
@@ -86,39 +247,31 @@ class _CourierRegistrationPageState
     User? createdUser;
 
     try {
-      // -----------------------------
-      // CHECK DUPLICATE MOBILE
-      // -----------------------------
+      // ------------------------------------------------
+      // FINAL DUPLICATE CHECK
+      // ------------------------------------------------
 
-      final existing = await _firestore
+      final existingCourier = await _firestore
           .collection('couriers')
           .where('phone', isEqualTo: mobile)
           .limit(1)
           .get();
 
-      if (existing.docs.isNotEmpty) {
+      if (existingCourier.docs.isNotEmpty) {
         _showMessage(
-          'This mobile number is already registered. '
-          'Please use another number.',
+          'This mobile number is already registered.',
           isError: true,
         );
         return;
       }
 
-      // -----------------------------
-      // CREATE INTERNAL EMAIL
-      // -----------------------------
-
-      final internalEmail =
-          'courier_$mobile@preesho.app';
-
-      // -----------------------------
+      // ------------------------------------------------
       // CREATE FIREBASE AUTH ACCOUNT
-      // -----------------------------
+      // ------------------------------------------------
 
       final credential =
           await _auth.createUserWithEmailAndPassword(
-        email: internalEmail,
+        email: email,
         password: password,
       );
 
@@ -132,9 +285,9 @@ class _CourierRegistrationPageState
 
       final uid = createdUser.uid;
 
-      // -----------------------------
-      // CREATE USER PROFILE
-      // -----------------------------
+      // ------------------------------------------------
+      // USER PROFILE
+      // ------------------------------------------------
 
       await _firestore
           .collection('users')
@@ -143,18 +296,22 @@ class _CourierRegistrationPageState
         'uid': uid,
         'name': name,
         'phone': mobile,
+        'email': email,
         'role': 'courier',
-        'active': true,
-        'vehicleNumber': vehicleNumber,
-        'vehicleType': vehicleType,
-        'email': internalEmail,
+
+        // IMPORTANT:
+        // Courier cannot login/access panel
+        // until admin approves the application.
+        'status': 'pending_documents',
+        'active': false,
+
         'createdAt':
             FieldValue.serverTimestamp(),
       });
 
-      // -----------------------------
-      // CREATE COURIER PROFILE
-      // -----------------------------
+      // ------------------------------------------------
+      // COURIER PROFILE
+      // ------------------------------------------------
 
       await _firestore
           .collection('couriers')
@@ -163,31 +320,37 @@ class _CourierRegistrationPageState
         'uid': uid,
         'name': name,
         'phone': mobile,
+        'email': email,
         'role': 'courier',
-        'active': true,
-        'vehicleNumber': vehicleNumber,
-        'vehicleType': vehicleType,
-        'email': internalEmail,
+
+        // Documents are not uploaded yet.
+        'status': 'pending_documents',
+        'active': false,
+
+        'documentsSubmitted': false,
+        'approvedByAdmin': false,
+
         'createdAt':
             FieldValue.serverTimestamp(),
       });
 
-      // -----------------------------
-      // SIGN OUT AFTER REGISTRATION
-      // -----------------------------
+      // ------------------------------------------------
+      // SIGN OUT
+      // ------------------------------------------------
 
       await _auth.signOut();
 
       if (!mounted) return;
 
       _showMessage(
-        'Courier account created successfully. '
-        'You can now login.',
+        'Registration successful. '
+        'Please complete your document submission. '
+        'Your account will be activated after Admin approval.',
         isError: false,
       );
 
       await Future.delayed(
-        const Duration(milliseconds: 700),
+        const Duration(milliseconds: 1200),
       );
 
       if (!mounted) return;
@@ -195,9 +358,9 @@ class _CourierRegistrationPageState
       Navigator.pop(context);
     }
 
-    // -----------------------------
-    // FIREBASE AUTH ERRORS
-    // -----------------------------
+    // --------------------------------------------------
+    // AUTH ERRORS
+    // --------------------------------------------------
 
     on FirebaseAuthException catch (e) {
       debugPrint(
@@ -209,20 +372,19 @@ class _CourierRegistrationPageState
       switch (e.code) {
         case 'email-already-in-use':
           message =
-              'This mobile number is already registered. '
-              'Please use another number.';
+              'This email address is already registered. '
+              'Please use another email.';
           break;
 
         case 'weak-password':
           message =
               'Your password is too weak. '
-              'Please use a stronger password.';
+              'Please use at least 6 characters.';
           break;
 
         case 'invalid-email':
           message =
-              'We could not process your registration. '
-              'Please try again.';
+              'Please enter a valid email address.';
           break;
 
         case 'operation-not-allowed':
@@ -233,19 +395,19 @@ class _CourierRegistrationPageState
 
         case 'network-request-failed':
           message =
-              'Unable to connect to the server. '
+              'Unable to connect. '
               'Please check your internet connection.';
           break;
 
         case 'too-many-requests':
           message =
-              'Too many registration attempts. '
-              'Please try again after some time.';
+              'Too many attempts. '
+              'Please try again later.';
           break;
 
         default:
           message =
-              'We could not complete your registration. '
+              'We could not complete registration. '
               'Please try again.';
       }
 
@@ -255,9 +417,9 @@ class _CourierRegistrationPageState
       );
     }
 
-    // -----------------------------
-    // FIRESTORE / FIREBASE ERRORS
-    // -----------------------------
+    // --------------------------------------------------
+    // FIREBASE / FIRESTORE ERRORS
+    // --------------------------------------------------
 
     on FirebaseException catch (e) {
       debugPrint(
@@ -265,14 +427,13 @@ class _CourierRegistrationPageState
         '${e.code} - ${e.message}',
       );
 
-      // If Auth account was created but Firestore
-      // failed, remove the incomplete Auth account.
+      // Cleanup Auth account if Firestore failed.
       if (createdUser != null) {
         try {
           await createdUser.delete();
         } catch (cleanupError) {
           debugPrint(
-            'COURIER CLEANUP ERROR: $cleanupError',
+            'COURIER AUTH CLEANUP ERROR: $cleanupError',
           );
         }
       }
@@ -289,7 +450,7 @@ class _CourierRegistrationPageState
         case 'unavailable':
           message =
               'Server is temporarily unavailable. '
-              'Please try again in a few moments.';
+              'Please try again shortly.';
           break;
 
         case 'network-request-failed':
@@ -306,7 +467,7 @@ class _CourierRegistrationPageState
 
         default:
           message =
-              'We could not complete your registration. '
+              'We could not complete registration. '
               'Please try again later.';
       }
 
@@ -316,36 +477,31 @@ class _CourierRegistrationPageState
       );
     }
 
-    // -----------------------------
+    // --------------------------------------------------
     // UNKNOWN ERRORS
-    // -----------------------------
+    // --------------------------------------------------
 
     catch (e) {
       debugPrint(
         'COURIER UNKNOWN ERROR: $e',
       );
 
-      // Cleanup incomplete Auth account.
       if (createdUser != null) {
         try {
           await createdUser.delete();
         } catch (cleanupError) {
           debugPrint(
-            'COURIER CLEANUP ERROR: $cleanupError',
+            'COURIER AUTH CLEANUP ERROR: $cleanupError',
           );
         }
       }
 
       _showMessage(
-        'We could not complete your registration. '
+        'We could not complete registration. '
         'Please try again later.',
         isError: true,
       );
     }
-
-    // -----------------------------
-    // STOP LOADING
-    // -----------------------------
 
     finally {
       if (mounted) {
@@ -356,9 +512,9 @@ class _CourierRegistrationPageState
     }
   }
 
-  // -----------------------------
+  // --------------------------------------------------
   // MESSAGE
-  // -----------------------------
+  // --------------------------------------------------
 
   void _showMessage(
     String message, {
@@ -378,16 +534,16 @@ class _CourierRegistrationPageState
           ),
         ),
         duration: Duration(
-          seconds: isError ? 4 : 3,
+          seconds: isError ? 4 : 5,
         ),
         behavior: SnackBarBehavior.floating,
       ),
     );
   }
 
-  // -----------------------------
+  // --------------------------------------------------
   // INPUT DECORATION
-  // -----------------------------
+  // --------------------------------------------------
 
   InputDecoration _decoration(
     String label,
@@ -402,9 +558,9 @@ class _CourierRegistrationPageState
     );
   }
 
-  // -----------------------------
+  // --------------------------------------------------
   // UI
-  // -----------------------------
+  // --------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -420,19 +576,34 @@ class _CourierRegistrationPageState
           padding: const EdgeInsets.all(20),
 
           child: Column(
+            crossAxisAlignment:
+                CrossAxisAlignment.stretch,
             children: [
               const Icon(
                 Icons.delivery_dining,
-                size: 70,
+                size: 72,
               ),
 
               const SizedBox(height: 10),
 
               const Text(
                 'Create Courier Account',
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              const Text(
+                'Register first. Documents will be submitted '
+                'in the next step.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 14,
                 ),
               ),
 
@@ -444,8 +615,8 @@ class _CourierRegistrationPageState
                 textCapitalization:
                     TextCapitalization.words,
                 decoration: _decoration(
-                  'Name',
-                  Icons.person,
+                  'Full Name',
+                  Icons.person_outline,
                 ),
               ),
 
@@ -457,22 +628,87 @@ class _CourierRegistrationPageState
                 keyboardType:
                     TextInputType.phone,
                 maxLength: 10,
+                enabled: !otpVerified,
                 decoration: _decoration(
                   'Mobile Number',
-                  Icons.phone,
+                  Icons.phone_outlined,
                 ),
               ),
 
               const SizedBox(height: 5),
 
+              // SEND OTP
+              SizedBox(
+                height: 48,
+                child: OutlinedButton.icon(
+                  onPressed:
+                      loading || otpVerified
+                          ? null
+                          : sendOtp,
+                  icon: const Icon(
+                    Icons.sms_outlined,
+                  ),
+                  label: Text(
+                    otpVerified
+                        ? 'Mobile Verified'
+                        : 'SEND OTP',
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 15),
+
+              // OTP
+              TextField(
+                controller: otpController,
+                keyboardType:
+                    TextInputType.number,
+                maxLength: 6,
+                enabled: !otpVerified,
+                decoration: _decoration(
+                  'Enter OTP',
+                  Icons.verified_user_outlined,
+                ),
+              ),
+
+              // VERIFY OTP
+              SizedBox(
+                height: 48,
+                child: ElevatedButton(
+                  onPressed:
+                      loading || otpVerified
+                          ? null
+                          : verifyOtp,
+                  child: Text(
+                    otpVerified
+                        ? 'OTP VERIFIED ✓'
+                        : 'VERIFY OTP',
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // EMAIL
+              TextField(
+                controller: emailController,
+                keyboardType:
+                    TextInputType.emailAddress,
+                decoration: _decoration(
+                  'Email Address',
+                  Icons.email_outlined,
+                ),
+              ),
+
+              const SizedBox(height: 15),
+
               // PASSWORD
               TextField(
                 controller: passwordController,
                 obscureText: obscurePassword,
-                decoration:
-                    _decoration(
+                decoration: _decoration(
                   'Password',
-                  Icons.lock,
+                  Icons.lock_outline,
                 ).copyWith(
                   suffixIcon: IconButton(
                     icon: Icon(
@@ -490,93 +726,82 @@ class _CourierRegistrationPageState
                 ),
               ),
 
-              const SizedBox(height: 15),
-
-              // VEHICLE NUMBER
-              TextField(
-                controller:
-                    vehicleNumberController,
-                textCapitalization:
-                    TextCapitalization.characters,
-                decoration: _decoration(
-                  'Vehicle Number',
-                  Icons.directions_car,
-                ),
-              ),
-
-              const SizedBox(height: 15),
-
-              // VEHICLE TYPE
-              DropdownButtonFormField<String>(
-                value: vehicleType,
-
-                decoration: _decoration(
-                  'Vehicle Type',
-                  Icons.two_wheeler,
-                ),
-
-                items: const [
-                  DropdownMenuItem(
-                    value: 'Bike',
-                    child: Text('Bike'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'Scooter',
-                    child: Text('Scooter'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'Car',
-                    child: Text('Car'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'Auto',
-                    child: Text('Auto'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'Other',
-                    child: Text('Other'),
-                  ),
-                ],
-
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() {
-                      vehicleType = value;
-                    });
-                  }
-                },
-              ),
-
               const SizedBox(height: 25),
 
-              // REGISTER BUTTON
+              // REGISTER
               SizedBox(
                 width: double.infinity,
-                height: 52,
-
+                height: 54,
                 child: ElevatedButton(
                   onPressed:
                       loading
                           ? null
                           : registerCourier,
-
                   child: loading
                       ? const SizedBox(
-                          width: 24,
-                          height: 24,
+                          width: 25,
+                          height: 25,
                           child:
                               CircularProgressIndicator(
                             strokeWidth: 2.5,
                           ),
                         )
                       : const Text(
-                          'REGISTER',
+                          'SUBMIT REGISTRATION',
                           style: TextStyle(
-                            fontSize: 17,
+                            fontSize: 16,
                             fontWeight:
                                 FontWeight.bold,
                           ),
                         ),
+                ),
+              ),
+
+              const SizedBox(height: 18),
+
+              // TEST INFORMATION
+              Container(
+                padding:
+                    const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  borderRadius:
+                      BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.grey.shade300,
+                  ),
+                ),
+                child: const Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Test Registration',
+                      style: TextStyle(
+                        fontWeight:
+                            FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 6),
+                    Text(
+                      'Mobile: 9111111111',
+                    ),
+                    Text(
+                      'OTP: 911111',
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 15),
+
+              const Text(
+                'After registration, your documents will '
+                'be submitted separately. Admin approval '
+                'is required before courier access is activated.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey,
                 ),
               ),
             ],
