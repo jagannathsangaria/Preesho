@@ -4,9 +4,9 @@ service firebase.storage {
 
   match /b/{bucket}/o {
 
-    // =========================================================
+    // ============================================================
     // ADMIN
-    // =========================================================
+    // ============================================================
 
     function isAdmin() {
       return request.auth != null
@@ -14,30 +14,50 @@ service firebase.storage {
     }
 
 
-    // =========================================================
-    // SIGNED IN USER
-    // =========================================================
+    // ============================================================
+    // SIGNED IN
+    // ============================================================
 
     function isSignedIn() {
       return request.auth != null;
     }
 
 
-    // =========================================================
+    // ============================================================
     // VENDOR DOCUMENTS
-    // Path:
-    // vendor_documents/{uid}/filename
-    // =========================================================
+    // ============================================================
 
     match /vendor_documents/{userId}/{fileName} {
 
-      // Admin can read/write vendor documents
+      // Admin has full access
       allow read, write: if isAdmin();
 
 
-      // Vendor can upload/read only own documents
-      // while account is not yet approved.
-      allow read, write: if isSignedIn()
+      // ----------------------------------------------------------
+      // Vendor can READ own documents while pending/inactive
+      // ----------------------------------------------------------
+
+      allow read: if isSignedIn()
+        && request.auth.uid == userId
+        && firestore.exists(
+          /databases/(default)/documents/users/$(userId)
+        )
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.role == "vendor"
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.active == false
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.status != "approved";
+
+
+      // ----------------------------------------------------------
+      // Vendor can UPLOAD own documents while pending/inactive
+      // ----------------------------------------------------------
+
+      allow create: if isSignedIn()
         && request.auth.uid == userId
         && firestore.exists(
           /databases/(default)/documents/users/$(userId)
@@ -53,24 +73,86 @@ service firebase.storage {
         ).data.status != "approved"
         && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
+
+
+      // ----------------------------------------------------------
+      // Vendor can UPDATE own documents while pending/inactive
+      // ----------------------------------------------------------
+
+      allow update: if isSignedIn()
+        && request.auth.uid == userId
+        && firestore.exists(
+          /databases/(default)/documents/users/$(userId)
+        )
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.role == "vendor"
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.active == false
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.status != "approved"
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+
+
+      // ----------------------------------------------------------
+      // Vendor can DELETE own pending documents
+      // ----------------------------------------------------------
+
+      allow delete: if isSignedIn()
+        && request.auth.uid == userId
+        && firestore.exists(
+          /databases/(default)/documents/users/$(userId)
+        )
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.role == "vendor"
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.active == false
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.status != "approved";
     }
 
 
-    // =========================================================
+    // ============================================================
     // COURIER DOCUMENTS
-    // Path:
-    // courier_documents/{uid}/filename
-    // =========================================================
+    // ============================================================
 
     match /courier_documents/{userId}/{fileName} {
 
-      // Admin can read/write courier documents
+      // Admin has full access
       allow read, write: if isAdmin();
 
 
-      // Courier can upload/read only own documents
-      // while account is not yet approved.
-      allow read, write: if isSignedIn()
+      // ----------------------------------------------------------
+      // Courier can READ own documents while pending/inactive
+      // ----------------------------------------------------------
+
+      allow read: if isSignedIn()
+        && request.auth.uid == userId
+        && firestore.exists(
+          /databases/(default)/documents/users/$(userId)
+        )
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.role == "courier"
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.active == false
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.status != "approved";
+
+
+      // ----------------------------------------------------------
+      // Courier can UPLOAD own documents while pending/inactive
+      // ----------------------------------------------------------
+
+      allow create: if isSignedIn()
         && request.auth.uid == userId
         && firestore.exists(
           /databases/(default)/documents/users/$(userId)
@@ -86,12 +168,54 @@ service firebase.storage {
         ).data.status != "approved"
         && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
+
+
+      // ----------------------------------------------------------
+      // Courier can UPDATE own documents while pending/inactive
+      // ----------------------------------------------------------
+
+      allow update: if isSignedIn()
+        && request.auth.uid == userId
+        && firestore.exists(
+          /databases/(default)/documents/users/$(userId)
+        )
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.role == "courier"
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.active == false
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.status != "approved"
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+
+
+      // ----------------------------------------------------------
+      // Courier can DELETE own pending documents
+      // ----------------------------------------------------------
+
+      allow delete: if isSignedIn()
+        && request.auth.uid == userId
+        && firestore.exists(
+          /databases/(default)/documents/users/$(userId)
+        )
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.role == "courier"
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.active == false
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.status != "approved";
     }
 
 
-    // =========================================================
-    // DEFAULT DENY
-    // =========================================================
+    // ============================================================
+    // DENY EVERYTHING ELSE
+    // ============================================================
 
     match /{allPaths=**} {
       allow read, write: if false;
