@@ -1,0 +1,100 @@
+rules_version = '2';
+
+service firebase.storage {
+
+  match /b/{bucket}/o {
+
+    // =========================================================
+    // ADMIN
+    // =========================================================
+
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.uid == "RkjeRGOd1xdCNFjVR7bB7GXtmAG2";
+    }
+
+
+    // =========================================================
+    // SIGNED IN USER
+    // =========================================================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+
+    // =========================================================
+    // VENDOR DOCUMENTS
+    // Path:
+    // vendor_documents/{uid}/filename
+    // =========================================================
+
+    match /vendor_documents/{userId}/{fileName} {
+
+      // Admin can read/write vendor documents
+      allow read, write: if isAdmin();
+
+
+      // Vendor can upload/read only own documents
+      // while account is not yet approved.
+      allow read, write: if isSignedIn()
+        && request.auth.uid == userId
+        && firestore.exists(
+          /databases/(default)/documents/users/$(userId)
+        )
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.role == "vendor"
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.active == false
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.status != "approved"
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+
+    // =========================================================
+    // COURIER DOCUMENTS
+    // Path:
+    // courier_documents/{uid}/filename
+    // =========================================================
+
+    match /courier_documents/{userId}/{fileName} {
+
+      // Admin can read/write courier documents
+      allow read, write: if isAdmin();
+
+
+      // Courier can upload/read only own documents
+      // while account is not yet approved.
+      allow read, write: if isSignedIn()
+        && request.auth.uid == userId
+        && firestore.exists(
+          /databases/(default)/documents/users/$(userId)
+        )
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.role == "courier"
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.active == false
+        && firestore.get(
+          /databases/(default)/documents/users/$(userId)
+        ).data.status != "approved"
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+
+    // =========================================================
+    // DEFAULT DENY
+    // =========================================================
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
