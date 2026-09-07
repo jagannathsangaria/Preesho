@@ -27,7 +27,8 @@ class _VendorDocumentsPageState
   final FirebaseStorage _storage =
       FirebaseStorage.instance;
 
-  final ImagePicker _picker = ImagePicker();
+  final ImagePicker _picker =
+      ImagePicker();
 
   bool _loading = false;
 
@@ -77,43 +78,98 @@ class _VendorDocumentsPageState
   ];
 
   String get _uid {
-    final passedUid = widget.vendorUid?.trim();
+    final passedUid =
+        widget.vendorUid?.trim();
 
-    if (passedUid != null && passedUid.isNotEmpty) {
+    if (passedUid != null &&
+        passedUid.isNotEmpty) {
       return passedUid;
     }
 
-    return FirebaseAuth.instance.currentUser?.uid ?? '';
+    return FirebaseAuth
+            .instance
+            .currentUser
+            ?.uid ??
+        '';
   }
 
-  Map<String, dynamic> _documentsMap(dynamic value) {
+  Map<String, dynamic> _documentsMap(
+    dynamic value,
+  ) {
     if (value is Map) {
-      return Map<String, dynamic>.from(value);
+      return Map<String, dynamic>.from(
+        value,
+      );
     }
 
     return <String, dynamic>{};
   }
 
-  Map<String, dynamic> _documentData(dynamic value) {
+  Map<String, dynamic> _documentData(
+    dynamic value,
+  ) {
     if (value is Map) {
-      return Map<String, dynamic>.from(value);
+      return Map<String, dynamic>.from(
+        value,
+      );
     }
 
     return <String, dynamic>{};
   }
+
+  // ============================================================
+  // UPLOAD DOCUMENT
+  // ============================================================
 
   Future<void> _uploadDocument(
     _DocumentType document,
   ) async {
     if (_uid.isEmpty) {
-      _showMessage('Vendor account not found.');
+      _showMessage(
+        'Vendor account not found.',
+      );
       return;
     }
 
     if (_loading) return;
 
     try {
-      final XFile? picked = await _picker.pickImage(
+      // --------------------------------------------------------
+      // CHECK VENDOR STATUS
+      // --------------------------------------------------------
+
+      final vendorSnapshot =
+          await _firestore
+              .collection('vendors')
+              .doc(_uid)
+              .get();
+
+      if (!vendorSnapshot.exists) {
+        _showMessage(
+          'Vendor profile not found.',
+        );
+        return;
+      }
+
+      final vendorData =
+          vendorSnapshot.data() ??
+              <String, dynamic>{};
+
+      final status =
+          (vendorData['status'] ?? '')
+              .toString()
+              .trim()
+              .toLowerCase();
+
+      if (status == 'approved') {
+        _showMessage(
+          'Vendor is already approved. Documents are locked.',
+        );
+        return;
+      }
+
+      final XFile? picked =
+          await _picker.pickImage(
         source: ImageSource.gallery,
         imageQuality: 85,
       );
@@ -126,18 +182,21 @@ class _VendorDocumentsPageState
         _loading = true;
       });
 
-      final File file = File(picked.path);
+      final File file =
+          File(picked.path);
 
       final String fileName =
           '${DateTime.now().millisecondsSinceEpoch}_${document.key}.jpg';
 
-      final Reference storageRef = _storage
-          .ref()
-          .child('vendor_documents')
-          .child(_uid)
-          .child(fileName);
+      final Reference storageRef =
+          _storage
+              .ref()
+              .child('vendor_documents')
+              .child(_uid)
+              .child(fileName);
 
-      final UploadTask uploadTask = storageRef.putFile(
+      final UploadTask uploadTask =
+          storageRef.putFile(
         file,
         SettableMetadata(
           contentType: 'image/jpeg',
@@ -148,31 +207,36 @@ class _VendorDocumentsPageState
           await uploadTask;
 
       final String downloadUrl =
-          await snapshot.ref.getDownloadURL();
+          await snapshot.ref
+              .getDownloadURL();
 
-      final DocumentReference<Map<String, dynamic>>
-          vendorRef = _firestore
+      final DocumentReference<
+              Map<String, dynamic>>
+          vendorRef =
+          _firestore
               .collection('vendors')
               .doc(_uid);
 
-      final DocumentSnapshot<Map<String, dynamic>>
-          vendorSnapshot = await vendorRef.get();
+      final DocumentSnapshot<
+              Map<String, dynamic>>
+          latestSnapshot =
+          await vendorRef.get();
 
-      final Map<String, dynamic> vendorData =
-          vendorSnapshot.data() ??
+      final Map<String, dynamic>
+          latestVendorData =
+          latestSnapshot.data() ??
               <String, dynamic>{};
 
-      final Map<String, dynamic> documents =
+      final Map<String, dynamic>
+          documents =
           _documentsMap(
-        vendorData['documents'],
+        latestVendorData['documents'],
       );
 
-      /*
-       * Every new upload resets the particular
-       * document to PENDING.
-       *
-       * Admin must verify the latest uploaded file.
-       */
+      // --------------------------------------------------------
+      // NEW UPLOAD = PENDING
+      // --------------------------------------------------------
+
       documents[document.key] = {
         'status': 'pending',
         'url': downloadUrl,
@@ -184,22 +248,22 @@ class _VendorDocumentsPageState
         'rejectionReason': '',
       };
 
-      await vendorRef.set(
-        {
-          'documents': documents,
-          'updatedAt':
-              FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+      await vendorRef.update({
+        'documents': documents,
+        'updatedAt':
+            FieldValue.serverTimestamp(),
+      });
 
       if (!mounted) return;
 
       _showMessage(
-        '${document.title} uploaded successfully. '
-        'Waiting for Admin verification.',
+        '${document.title} uploaded successfully.',
       );
     } catch (e) {
+      debugPrint(
+        'Vendor document upload error: $e',
+      );
+
       if (mounted) {
         _showMessage(
           'Upload failed. Please try again.',
@@ -214,11 +278,17 @@ class _VendorDocumentsPageState
     }
   }
 
+  // ============================================================
+  // DELETE DOCUMENT
+  // ============================================================
+
   Future<void> _deleteDocument(
     _DocumentType document,
   ) async {
     if (_uid.isEmpty) {
-      _showMessage('Vendor account not found.');
+      _showMessage(
+        'Vendor account not found.',
+      );
       return;
     }
 
@@ -229,35 +299,53 @@ class _VendorDocumentsPageState
         _loading = true;
       });
 
-      final DocumentReference<Map<String, dynamic>>
-          vendorRef = _firestore
+      final DocumentReference<
+              Map<String, dynamic>>
+          vendorRef =
+          _firestore
               .collection('vendors')
               .doc(_uid);
 
-      final DocumentSnapshot<Map<String, dynamic>>
-          vendorSnapshot = await vendorRef.get();
+      final DocumentSnapshot<
+              Map<String, dynamic>>
+          vendorSnapshot =
+          await vendorRef.get();
 
-      final Map<String, dynamic> data =
+      if (!vendorSnapshot.exists) {
+        _showMessage(
+          'Vendor profile not found.',
+        );
+        return;
+      }
+
+      final Map<String, dynamic>
+          data =
           vendorSnapshot.data() ??
               <String, dynamic>{};
 
-      final Map<String, dynamic> documents =
+      final Map<String, dynamic>
+          documents =
           _documentsMap(
         data['documents'],
       );
 
-      final Map<String, dynamic> documentData =
+      final Map<String, dynamic>
+          documentData =
           _documentData(
         documents[document.key],
       );
 
       final String status =
-          (documentData['status'] ?? 'pending')
+          (documentData['status'] ??
+                  'pending')
               .toString()
               .trim()
               .toLowerCase();
 
-      // Verified document cannot be deleted.
+      // --------------------------------------------------------
+      // VERIFIED DOCUMENT CANNOT BE DELETED
+      // --------------------------------------------------------
+
       if (status == 'verified') {
         if (mounted) {
           _showMessage(
@@ -268,7 +356,8 @@ class _VendorDocumentsPageState
       }
 
       final String url =
-          (documentData['url'] ?? '').toString();
+          (documentData['url'] ?? '')
+              .toString();
 
       if (url.isNotEmpty) {
         try {
@@ -288,6 +377,21 @@ class _VendorDocumentsPageState
 
       await vendorRef.update({
         'documents': documents,
+        'documentsSubmitted': false,
+        'status': 'pending_documents',
+        'active': false,
+        'approvedByAdmin': false,
+        'updatedAt':
+            FieldValue.serverTimestamp(),
+      });
+
+      // Keep users document status synchronized.
+      await _firestore
+          .collection('users')
+          .doc(_uid)
+          .update({
+        'status': 'pending_documents',
+        'active': false,
         'updatedAt':
             FieldValue.serverTimestamp(),
       });
@@ -298,6 +402,10 @@ class _VendorDocumentsPageState
         '${document.title} removed.',
       );
     } catch (e) {
+      debugPrint(
+        'Vendor document delete error: $e',
+      );
+
       if (mounted) {
         _showMessage(
           'Unable to remove document.',
@@ -312,18 +420,278 @@ class _VendorDocumentsPageState
     }
   }
 
-  void _showMessage(String message) {
+  // ============================================================
+  // SUBMIT FOR ADMIN APPROVAL
+  // ============================================================
+
+  Future<void> _submitForApproval() async {
+    if (_uid.isEmpty) {
+      _showMessage(
+        'Vendor account not found.',
+      );
+      return;
+    }
+
+    if (_loading) return;
+
+    try {
+      setState(() {
+        _loading = true;
+      });
+
+      // --------------------------------------------------------
+      // GET VENDOR
+      // --------------------------------------------------------
+
+      final vendorRef =
+          _firestore
+              .collection('vendors')
+              .doc(_uid);
+
+      final vendorSnapshot =
+          await vendorRef.get();
+
+      if (!vendorSnapshot.exists) {
+        _showMessage(
+          'Vendor profile not found.',
+        );
+        return;
+      }
+
+      final vendorData =
+          vendorSnapshot.data() ??
+              <String, dynamic>{};
+
+      final currentStatus =
+          (vendorData['status'] ?? '')
+              .toString()
+              .trim()
+              .toLowerCase();
+
+      final alreadySubmitted =
+          vendorData['documentsSubmitted'] ==
+              true;
+
+      // --------------------------------------------------------
+      // ALREADY SUBMITTED
+      // --------------------------------------------------------
+
+      if (alreadySubmitted &&
+          currentStatus ==
+              'pending_approval') {
+        _showMessage(
+          'Documents are already submitted and waiting for Admin approval.',
+        );
+        return;
+      }
+
+      if (currentStatus ==
+          'approved') {
+        _showMessage(
+          'Vendor is already approved.',
+        );
+        return;
+      }
+
+      // --------------------------------------------------------
+      // CHECK REQUIRED DOCUMENTS
+      // --------------------------------------------------------
+
+      final Map<String, dynamic>
+          documents =
+          _documentsMap(
+        vendorData['documents'],
+      );
+
+      final List<String>
+          missingDocuments = [];
+
+      final List<String>
+          rejectedDocuments = [];
+
+      for (final document
+          in _documents) {
+        if (!document.required) {
+          continue;
+        }
+
+        final Map<String, dynamic>
+            documentData =
+            _documentData(
+          documents[document.key],
+        );
+
+        final String status =
+            (documentData['status'] ?? '')
+                .toString()
+                .trim()
+                .toLowerCase();
+
+        final String url =
+            (documentData['url'] ?? '')
+                .toString();
+
+        if (url.isEmpty) {
+          missingDocuments.add(
+            document.title,
+          );
+        } else if (status ==
+            'rejected') {
+          rejectedDocuments.add(
+            document.title,
+          );
+        }
+      }
+
+      // --------------------------------------------------------
+      // MISSING DOCUMENT
+      // --------------------------------------------------------
+
+      if (missingDocuments.isNotEmpty) {
+        _showMessage(
+          'Please upload: ${missingDocuments.join(', ')}',
+        );
+        return;
+      }
+
+      // --------------------------------------------------------
+      // REJECTED DOCUMENT
+      // --------------------------------------------------------
+
+      if (rejectedDocuments.isNotEmpty) {
+        _showMessage(
+          'Please replace rejected document(s): ${rejectedDocuments.join(', ')}',
+        );
+        return;
+      }
+
+      // --------------------------------------------------------
+      // ALL REQUIRED DOCUMENTS UPLOADED
+      // --------------------------------------------------------
+
+      await vendorRef.update({
+        'documentsSubmitted': true,
+        'status': 'pending_approval',
+        'active': false,
+        'approvedByAdmin': false,
+        'updatedAt':
+            FieldValue.serverTimestamp(),
+      });
+
+      // --------------------------------------------------------
+      // UPDATE USERS DOCUMENT
+      // --------------------------------------------------------
+
+      await _firestore
+          .collection('users')
+          .doc(_uid)
+          .update({
+        'status': 'pending_approval',
+        'active': false,
+        'updatedAt':
+            FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) return;
+
+      await _showApprovalDialog();
+    } catch (e) {
+      debugPrint(
+        'Vendor submit approval error: $e',
+      );
+
+      if (mounted) {
+        _showMessage(
+          'Unable to submit documents. Please try again.',
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  // ============================================================
+  // APPROVAL DIALOG
+  // ============================================================
+
+  Future<void> _showApprovalDialog() async {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          icon: const Icon(
+            Icons.check_circle_outline,
+            size: 50,
+            color: Colors.green,
+          ),
+          title: const Text(
+            'Documents Submitted',
+            textAlign: TextAlign.center,
+          ),
+          content: const Text(
+            'Your Vendor documents have been submitted successfully.\n\n'
+            'Your account is now waiting for Admin verification and approval.\n\n'
+            'You will not be able to access the Vendor Panel until Admin approves your account.',
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () {
+                  Navigator.of(context)
+                      .pop();
+
+                  Navigator.of(context)
+                      .pop();
+                },
+                child: const Text(
+                  'Done',
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // ============================================================
+  // MESSAGE
+  // ============================================================
+
+  void _showMessage(
+    String message,
+  ) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+        .hideCurrentSnackBar();
+
+    ScaffoldMessenger.of(context)
+        .showSnackBar(
       SnackBar(
         content: Text(message),
-        behavior: SnackBarBehavior.floating,
+        behavior:
+            SnackBarBehavior.floating,
       ),
     );
   }
 
-  Color _statusColor(String status) {
+  // ============================================================
+  // STATUS COLOR
+  // ============================================================
+
+  Color _statusColor(
+    String status,
+  ) {
     switch (status.toLowerCase()) {
       case 'verified':
         return Colors.green;
@@ -337,7 +705,13 @@ class _VendorDocumentsPageState
     }
   }
 
-  String _statusText(String status) {
+  // ============================================================
+  // STATUS TEXT
+  // ============================================================
+
+  String _statusText(
+    String status,
+  ) {
     switch (status.toLowerCase()) {
       case 'verified':
         return 'VERIFIED';
@@ -351,8 +725,14 @@ class _VendorDocumentsPageState
     }
   }
 
+  // ============================================================
+  // BUILD
+  // ============================================================
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     if (_uid.isEmpty) {
       return Scaffold(
         appBar: AppBar(
@@ -378,74 +758,142 @@ class _VendorDocumentsPageState
         ),
       ),
       body: StreamBuilder<
-          DocumentSnapshot<Map<String, dynamic>>>(
+          DocumentSnapshot<
+              Map<String, dynamic>>>(
         stream: _firestore
             .collection('vendors')
             .doc(_uid)
             .snapshots(),
-        builder: (context, snapshot) {
+
+        builder:
+            (context, snapshot) {
           if (snapshot.connectionState ==
               ConnectionState.waiting) {
             return const Center(
-              child: CircularProgressIndicator(),
+              child:
+                  CircularProgressIndicator(),
             );
           }
 
-          final Map<String, dynamic> vendorData =
+          final Map<String, dynamic>
+              vendorData =
               snapshot.data?.data() ??
                   <String, dynamic>{};
 
-          final Map<String, dynamic> documents =
+          final Map<String, dynamic>
+              documents =
               _documentsMap(
             vendorData['documents'],
           );
 
+          final String vendorStatus =
+              (vendorData['status'] ??
+                      'pending_documents')
+                  .toString()
+                  .trim()
+                  .toLowerCase();
+
+          final bool documentsSubmitted =
+              vendorData[
+                      'documentsSubmitted'] ==
+                  true;
+
           int verifiedCount = 0;
+          int uploadedCount = 0;
 
-          for (final document in _documents) {
-            if (!document.required) continue;
+          for (final document
+              in _documents) {
+            if (!document.required) {
+              continue;
+            }
 
-            final Map<String, dynamic> documentData =
+            final Map<String, dynamic>
+                documentData =
                 _documentData(
               documents[document.key],
             );
 
             final String status =
-                (documentData['status'] ?? '')
+                (documentData['status'] ??
+                        '')
                     .toString()
                     .trim()
                     .toLowerCase();
+
+            final String url =
+                (documentData['url'] ??
+                        '')
+                    .toString();
+
+            if (url.isNotEmpty) {
+              uploadedCount++;
+            }
 
             if (status == 'verified') {
               verifiedCount++;
             }
           }
 
+          final bool allUploaded =
+              uploadedCount == 5;
+
           final bool allVerified =
               verifiedCount == 5;
+
+          final bool canSubmit =
+              allUploaded &&
+              vendorStatus !=
+                  'pending_approval' &&
+              vendorStatus !=
+                  'approved';
 
           return Stack(
             children: [
               ListView(
                 padding:
                     const EdgeInsets.all(16),
+
                 children: [
+                  // ==================================================
+                  // STATUS CARD
+                  // ==================================================
+
+                  _buildAccountStatusCard(
+                    vendorStatus,
+                    documentsSubmitted,
+                  ),
+
+                  const SizedBox(
+                    height: 16,
+                  ),
+
+                  // ==================================================
+                  // PROGRESS
+                  // ==================================================
+
                   _buildProgressCard(
+                    uploadedCount,
                     verifiedCount,
+                    allUploaded,
                     allVerified,
                   ),
 
-                  const SizedBox(height: 16),
+                  const SizedBox(
+                    height: 16,
+                  ),
 
                   const Text(
                     'Vendor KYC & Documents',
                     style: TextStyle(
                       fontSize: 19,
-                      fontWeight: FontWeight.bold,
+                      fontWeight:
+                          FontWeight.bold,
                     ),
                   ),
 
-                  const SizedBox(height: 6),
+                  const SizedBox(
+                    height: 6,
+                  ),
 
                   const Text(
                     'Upload all required documents for Admin verification.',
@@ -454,32 +902,84 @@ class _VendorDocumentsPageState
                     ),
                   ),
 
-                  const SizedBox(height: 14),
+                  const SizedBox(
+                    height: 14,
+                  ),
+
+                  // ==================================================
+                  // DOCUMENT LIST
+                  // ==================================================
 
                   ..._documents.map(
                     (document) {
-                      final Map<String, dynamic>
+                      final Map<
+                              String,
+                              dynamic>
                           documentData =
                           _documentData(
-                        documents[document.key],
+                        documents[
+                            document.key],
                       );
 
                       return _buildDocumentCard(
                         document,
                         documentData,
+                        vendorStatus,
                       );
                     },
                   ),
 
-                  const SizedBox(height: 20),
+                  const SizedBox(
+                    height: 10,
+                  ),
+
+                  // ==================================================
+                  // SUBMIT BUTTON
+                  // ==================================================
+
+                  if (vendorStatus ==
+                      'pending_documents') ...[
+                    _buildSubmitCard(
+                      allUploaded,
+                      canSubmit,
+                    ),
+                  ],
+
+                  // ==================================================
+                  // WAITING FOR ADMIN
+                  // ==================================================
+
+                  if (vendorStatus ==
+                      'pending_approval') ...[
+                    _buildWaitingCard(),
+                  ],
+
+                  // ==================================================
+                  // APPROVED
+                  // ==================================================
+
+                  if (vendorStatus ==
+                      'approved') ...[
+                    _buildApprovedCard(),
+                  ],
+
+                  const SizedBox(
+                    height: 20,
+                  ),
+
+                  // ==================================================
+                  // INFO
+                  // ==================================================
 
                   Container(
                     padding:
-                        const EdgeInsets.all(14),
+                        const EdgeInsets.all(
+                      14,
+                    ),
                     decoration:
                         BoxDecoration(
-                      color:
-                          Colors.blue.withOpacity(
+                      color: Colors.blue
+                          .withOpacity(
                         0.08,
                       ),
                       borderRadius:
@@ -489,28 +989,34 @@ class _VendorDocumentsPageState
                     ),
                     child: const Row(
                       crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                          CrossAxisAlignment
+                              .start,
                       children: [
                         Icon(
                           Icons.info_outline,
                           color: Colors.blue,
                         ),
-                        SizedBox(width: 10),
+                        SizedBox(
+                          width: 10,
+                        ),
                         Expanded(
                           child: Text(
-                            'After uploading, your documents will be '
-                            'reviewed by Preesho Admin. Final vendor '
-                            'approval is possible only after all 5 '
-                            'required documents are verified.',
+                            'After submission, your documents will be reviewed by Preesho Admin. Your Vendor account remains inactive until Admin approval.',
                           ),
                         ),
                       ],
                     ),
                   ),
 
-                  const SizedBox(height: 30),
+                  const SizedBox(
+                    height: 30,
+                  ),
                 ],
               ),
+
+              // ====================================================
+              // LOADING OVERLAY
+              // ====================================================
 
               if (_loading)
                 Container(
@@ -525,7 +1031,9 @@ class _VendorDocumentsPageState
                               MainAxisSize.min,
                           children: [
                             CircularProgressIndicator(),
-                            SizedBox(height: 16),
+                            SizedBox(
+                              height: 16,
+                            ),
                             Text(
                               'Processing document...',
                             ),
@@ -542,14 +1050,121 @@ class _VendorDocumentsPageState
     );
   }
 
+  // ============================================================
+  // ACCOUNT STATUS CARD
+  // ============================================================
+
+  Widget _buildAccountStatusCard(
+    String status,
+    bool submitted,
+  ) {
+    IconData icon;
+    Color color;
+    String title;
+    String subtitle;
+
+    switch (status) {
+      case 'pending_approval':
+        icon = Icons.hourglass_top;
+        color = Colors.orange;
+        title = 'Waiting for Admin Approval';
+        subtitle =
+            'Your documents have been submitted and are under review.';
+        break;
+
+      case 'approved':
+        icon = Icons.verified;
+        color = Colors.green;
+        title = 'Vendor Approved';
+        subtitle =
+            'Your Vendor account has been approved by Admin.';
+        break;
+
+      case 'rejected':
+        icon = Icons.cancel_outlined;
+        color = Colors.red;
+        title = 'Vendor Rejected';
+        subtitle =
+            'Please check the document rejection details.';
+        break;
+
+      default:
+        icon = Icons.upload_file;
+        color = Colors.blue;
+        title = 'Documents Required';
+        subtitle =
+            'Upload all required documents and submit for approval.';
+    }
+
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding:
+            const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 25,
+              backgroundColor:
+                  color.withOpacity(0.10),
+              child: Icon(
+                icon,
+                color: color,
+                size: 28,
+              ),
+            ),
+            const SizedBox(
+              width: 12,
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style:
+                        const TextStyle(
+                      fontSize: 16,
+                      fontWeight:
+                          FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(
+                    height: 4,
+                  ),
+                  Text(
+                    subtitle,
+                    style:
+                        const TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // PROGRESS CARD
+  // ============================================================
+
   Widget _buildProgressCard(
+    int uploadedCount,
     int verifiedCount,
+    bool allUploaded,
     bool allVerified,
   ) {
     return Card(
       elevation: 2,
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding:
+            const EdgeInsets.all(18),
         child: Column(
           crossAxisAlignment:
               CrossAxisAlignment.start,
@@ -565,54 +1180,74 @@ class _VendorDocumentsPageState
                       ? Colors.green
                       : Colors.orange,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
+                const SizedBox(
+                  width: 12,
+                ),
+                const Expanded(
                   child: Text(
-                    allVerified
-                        ? 'All Documents Verified'
-                        : 'Document Verification',
-                    style: const TextStyle(
+                    'Document Verification',
+                    style:
+                        TextStyle(
                       fontSize: 18,
-                      fontWeight: FontWeight.bold,
+                      fontWeight:
+                          FontWeight.bold,
                     ),
                   ),
                 ),
               ],
             ),
 
-            const SizedBox(height: 12),
+            const SizedBox(
+              height: 12,
+            ),
 
             Text(
-              '$verifiedCount of 5 required documents verified',
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
+              '$uploadedCount of 5 required documents uploaded',
+              style:
+                  const TextStyle(
+                fontWeight:
+                    FontWeight.w600,
               ),
             ),
 
-            const SizedBox(height: 10),
-
-            LinearProgressIndicator(
-              value: verifiedCount / 5,
-              minHeight: 8,
-              borderRadius:
-                  BorderRadius.circular(10),
+            const SizedBox(
+              height: 8,
             ),
 
-            const SizedBox(height: 12),
+            LinearProgressIndicator(
+              value:
+                  uploadedCount / 5,
+              minHeight: 8,
+              borderRadius:
+                  BorderRadius.circular(
+                10,
+              ),
+            ),
+
+            const SizedBox(
+              height: 12,
+            ),
 
             Text(
-              allVerified
-                  ? 'All required documents are verified. '
-                      'Admin can now approve your vendor account.'
-                  : '${5 - verifiedCount} required document'
-                      '${5 - verifiedCount == 1 ? '' : 's'} '
-                      'pending verification.',
-              style: TextStyle(
-                color: allVerified
-                    ? Colors.green
-                    : Colors.orange.shade800,
+              '$verifiedCount of 5 required documents verified',
+              style:
+                  const TextStyle(
                 fontWeight:
                     FontWeight.w600,
+              ),
+            ),
+
+            const SizedBox(
+              height: 8,
+            ),
+
+            LinearProgressIndicator(
+              value:
+                  verifiedCount / 5,
+              minHeight: 8,
+              borderRadius:
+                  BorderRadius.circular(
+                10,
               ),
             ),
           ],
@@ -621,21 +1256,29 @@ class _VendorDocumentsPageState
     );
   }
 
+  // ============================================================
+  // DOCUMENT CARD
+  // ============================================================
+
   Widget _buildDocumentCard(
     _DocumentType document,
     Map<String, dynamic> data,
+    String vendorStatus,
   ) {
     final String status =
-        (data['status'] ?? 'pending')
+        (data['status'] ??
+                'pending')
             .toString()
             .trim()
             .toLowerCase();
 
     final String url =
-        (data['url'] ?? '').toString();
+        (data['url'] ?? '')
+            .toString();
 
     final String rejectionReason =
-        (data['rejectionReason'] ?? '')
+        (data['rejectionReason'] ??
+                '')
             .toString();
 
     final bool uploaded =
@@ -644,27 +1287,39 @@ class _VendorDocumentsPageState
     final bool verified =
         status == 'verified';
 
+    final bool approved =
+        vendorStatus == 'approved';
+
     return Card(
       margin:
-          const EdgeInsets.only(bottom: 12),
+          const EdgeInsets.only(
+        bottom: 12,
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding:
+            const EdgeInsets.all(14),
         child: Column(
           children: [
             Row(
               crossAxisAlignment:
-                  CrossAxisAlignment.start,
+                  CrossAxisAlignment
+                      .start,
               children: [
                 CircleAvatar(
-                  child: Icon(document.icon),
+                  child: Icon(
+                    document.icon,
+                  ),
                 ),
 
-                const SizedBox(width: 12),
+                const SizedBox(
+                  width: 12,
+                ),
 
                 Expanded(
                   child: Column(
                     crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                        CrossAxisAlignment
+                            .start,
                     children: [
                       Row(
                         children: [
@@ -673,9 +1328,11 @@ class _VendorDocumentsPageState
                               document.title,
                               style:
                                   const TextStyle(
-                                fontSize: 16,
+                                fontSize:
+                                    16,
                                 fontWeight:
-                                    FontWeight.bold,
+                                    FontWeight
+                                        .bold,
                               ),
                             ),
                           ),
@@ -684,55 +1341,71 @@ class _VendorDocumentsPageState
                             padding:
                                 const EdgeInsets
                                     .symmetric(
-                              horizontal: 8,
+                              horizontal:
+                                  8,
                               vertical: 4,
                             ),
                             decoration:
                                 BoxDecoration(
-                              color: document.required
-                                  ? Colors.red
+                              color: document
+                                      .required
+                                  ? Colors
+                                      .red
                                       .withOpacity(
                                       0.08,
                                     )
-                                  : Colors.blue
+                                  : Colors
+                                      .blue
                                       .withOpacity(
                                       0.08,
                                     ),
                               borderRadius:
-                                  BorderRadius.circular(
+                                  BorderRadius
+                                      .circular(
                                 6,
                               ),
                             ),
                             child: Text(
-                              document.required
+                              document
+                                      .required
                                   ? 'REQUIRED'
                                   : 'OPTIONAL',
-                              style: TextStyle(
-                                fontSize: 10,
+                              style:
+                                  TextStyle(
+                                fontSize:
+                                    10,
                                 fontWeight:
-                                    FontWeight.bold,
-                                color:
-                                    document.required
-                                        ? Colors.red
-                                        : Colors.blue,
+                                    FontWeight
+                                        .bold,
+                                color: document
+                                        .required
+                                    ? Colors.red
+                                    : Colors
+                                        .blue,
                               ),
                             ),
                           ),
                         ],
                       ),
 
-                      const SizedBox(height: 4),
+                      const SizedBox(
+                        height: 4,
+                      ),
 
                       Text(
                         document.subtitle,
                         style:
                             const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 13,
+                          color:
+                              Colors.grey,
+                          fontSize:
+                              13,
                         ),
                       ),
 
-                      const SizedBox(height: 8),
+                      const SizedBox(
+                        height: 8,
+                      ),
 
                       Row(
                         children: [
@@ -740,46 +1413,60 @@ class _VendorDocumentsPageState
                             padding:
                                 const EdgeInsets
                                     .symmetric(
-                              horizontal: 9,
+                              horizontal:
+                                  9,
                               vertical: 5,
                             ),
                             decoration:
                                 BoxDecoration(
-                              color: _statusColor(
+                              color:
+                                  _statusColor(
                                 status,
                               ).withOpacity(
                                 0.10,
                               ),
                               borderRadius:
-                                  BorderRadius.circular(
+                                  BorderRadius
+                                      .circular(
                                 8,
                               ),
                             ),
                             child: Text(
-                              _statusText(status),
-                              style: TextStyle(
+                              _statusText(
+                                status,
+                              ),
+                              style:
+                                  TextStyle(
                                 color:
                                     _statusColor(
                                   status,
                                 ),
-                                fontSize: 11,
+                                fontSize:
+                                    11,
                                 fontWeight:
-                                    FontWeight.bold,
+                                    FontWeight
+                                        .bold,
                               ),
                             ),
                           ),
 
                           if (uploaded) ...[
-                            const SizedBox(width: 8),
+                            const SizedBox(
+                              width: 8,
+                            ),
                             const Icon(
                               Icons.attach_file,
                               size: 16,
                             ),
-                            const SizedBox(width: 3),
+                            const SizedBox(
+                              width: 3,
+                            ),
                             const Text(
                               'Uploaded',
-                              style: TextStyle(
-                                fontSize: 12,
+                              style:
+                                  TextStyle(
+                                fontSize:
+                                    12,
                               ),
                             ),
                           ],
@@ -791,41 +1478,60 @@ class _VendorDocumentsPageState
               ],
             ),
 
-            if (status == 'rejected') ...[
-              const SizedBox(height: 10),
+            // ==================================================
+            // REJECTION
+            // ==================================================
+
+            if (status ==
+                'rejected') ...[
+              const SizedBox(
+                height: 10,
+              ),
 
               Container(
-                width: double.infinity,
+                width:
+                    double.infinity,
                 padding:
-                    const EdgeInsets.all(10),
-                decoration: BoxDecoration(
+                    const EdgeInsets.all(
+                  10,
+                ),
+                decoration:
+                    BoxDecoration(
                   color: Colors.red
-                      .withOpacity(0.06),
+                      .withOpacity(
+                    0.06,
+                  ),
                   borderRadius:
-                      BorderRadius.circular(8),
-                  border: Border.all(
-                    color: Colors.red
-                        .withOpacity(0.15),
+                      BorderRadius.circular(
+                    8,
                   ),
                 ),
                 child: Column(
                   crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                      CrossAxisAlignment
+                          .start,
                   children: [
                     const Row(
                       children: [
                         Icon(
-                          Icons.error_outline,
-                          color: Colors.red,
+                          Icons
+                              .error_outline,
+                          color:
+                              Colors.red,
                           size: 18,
                         ),
-                        SizedBox(width: 6),
+                        SizedBox(
+                          width: 6,
+                        ),
                         Text(
                           'Document Rejected',
-                          style: TextStyle(
-                            color: Colors.red,
+                          style:
+                              TextStyle(
+                            color:
+                                Colors.red,
                             fontWeight:
-                                FontWeight.bold,
+                                FontWeight
+                                    .bold,
                           ),
                         ),
                       ],
@@ -833,24 +1539,33 @@ class _VendorDocumentsPageState
 
                     if (rejectionReason
                         .isNotEmpty) ...[
-                      const SizedBox(height: 6),
+                      const SizedBox(
+                        height: 6,
+                      ),
                       Text(
                         'Reason: $rejectionReason',
                         style:
                             const TextStyle(
-                          color: Colors.red,
-                          fontSize: 12,
+                          color:
+                              Colors.red,
+                          fontSize:
+                              12,
                         ),
                       ),
                     ],
 
-                    const SizedBox(height: 6),
+                    const SizedBox(
+                      height: 6,
+                    ),
 
                     const Text(
                       'Please upload a corrected document.',
-                      style: TextStyle(
-                        color: Colors.red,
-                        fontSize: 12,
+                      style:
+                          TextStyle(
+                        color:
+                            Colors.red,
+                        fontSize:
+                            12,
                       ),
                     ),
                   ],
@@ -858,36 +1573,56 @@ class _VendorDocumentsPageState
               ),
             ],
 
-            if (status == 'verified') ...[
-              const SizedBox(height: 10),
+            // ==================================================
+            // VERIFIED
+            // ==================================================
+
+            if (verified) ...[
+              const SizedBox(
+                height: 10,
+              ),
 
               Container(
-                width: double.infinity,
+                width:
+                    double.infinity,
                 padding:
-                    const EdgeInsets.all(10),
-                decoration: BoxDecoration(
+                    const EdgeInsets.all(
+                  10,
+                ),
+                decoration:
+                    BoxDecoration(
                   color: Colors.green
-                      .withOpacity(0.06),
+                      .withOpacity(
+                    0.06,
+                  ),
                   borderRadius:
-                      BorderRadius.circular(8),
+                      BorderRadius.circular(
+                    8,
+                  ),
                 ),
                 child: const Row(
                   children: [
                     Icon(
                       Icons.verified,
-                      color: Colors.green,
+                      color:
+                          Colors.green,
                       size: 18,
                     ),
-                    SizedBox(width: 7),
+                    SizedBox(
+                      width: 7,
+                    ),
                     Expanded(
                       child: Text(
-                        'Verified by Preesho Admin. '
-                        'This document is locked.',
-                        style: TextStyle(
-                          color: Colors.green,
-                          fontSize: 12,
+                        'Verified by Preesho Admin. This document is locked.',
+                        style:
+                            TextStyle(
+                          color:
+                              Colors.green,
+                          fontSize:
+                              12,
                           fontWeight:
-                              FontWeight.w600,
+                              FontWeight
+                                  .w600,
                         ),
                       ),
                     ),
@@ -896,49 +1631,262 @@ class _VendorDocumentsPageState
               ),
             ],
 
-            const SizedBox(height: 12),
+            const SizedBox(
+              height: 12,
+            ),
 
-            Row(
-              children: [
-                Expanded(
-                  child:
-                      OutlinedButton.icon(
-                    onPressed:
-                        verified || _loading
-                            ? null
-                            : () =>
-                                _uploadDocument(
-                                  document,
-                                ),
-                    icon: const Icon(
-                      Icons.upload_file,
+            // ==================================================
+            // UPLOAD / REPLACE / DELETE
+            // ==================================================
+
+            if (!approved &&
+                !verified)
+              Row(
+                children: [
+                  Expanded(
+                    child:
+                        OutlinedButton
+                            .icon(
+                      onPressed:
+                          _loading
+                              ? null
+                              : () =>
+                                  _uploadDocument(
+                                document,
+                              ),
+                      icon:
+                          const Icon(
+                        Icons
+                            .upload_file,
+                      ),
+                      label: Text(
+                        uploaded
+                            ? 'Replace'
+                            : 'Upload',
+                      ),
                     ),
-                    label: Text(
-                      uploaded
-                          ? 'Replace'
-                          : 'Upload',
+                  ),
+
+                  if (uploaded) ...[
+                    const SizedBox(
+                      width: 8,
                     ),
+                    IconButton(
+                      tooltip:
+                          'Remove',
+                      onPressed:
+                          _loading
+                              ? null
+                              : () =>
+                                  _deleteDocument(
+                                document,
+                              ),
+                      icon:
+                          const Icon(
+                        Icons
+                            .delete_outline,
+                        color:
+                            Colors.red,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // SUBMIT CARD
+  // ============================================================
+
+  Widget _buildSubmitCard(
+    bool allUploaded,
+    bool canSubmit,
+  ) {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding:
+            const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            const Icon(
+              Icons.send_outlined,
+              size: 36,
+            ),
+
+            const SizedBox(
+              height: 10,
+            ),
+
+            const Text(
+              'Ready for Admin Review?',
+              style:
+                  TextStyle(
+                fontSize: 18,
+                fontWeight:
+                    FontWeight.bold,
+              ),
+            ),
+
+            const SizedBox(
+              height: 6,
+            ),
+
+            Text(
+              allUploaded
+                  ? 'All required documents have been uploaded. Submit them for Admin approval.'
+                  : 'Please upload all 5 required documents before submitting.',
+              textAlign:
+                  TextAlign.center,
+              style:
+                  const TextStyle(
+                color:
+                    Colors.grey,
+                fontSize:
+                    13,
+              ),
+            ),
+
+            const SizedBox(
+              height: 16,
+            ),
+
+            SizedBox(
+              width:
+                  double.infinity,
+              height: 50,
+              child:
+                  FilledButton.icon(
+                onPressed:
+                    canSubmit
+                        ? _submitForApproval
+                        : null,
+                icon:
+                    const Icon(
+                  Icons.send,
+                ),
+                label:
+                    const Text(
+                  'Submit for Admin Approval',
+                  style:
+                      TextStyle(
+                    fontWeight:
+                        FontWeight.bold,
                   ),
                 ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-                if (uploaded &&
-                    !verified) ...[
-                  const SizedBox(width: 8),
-                  IconButton(
-                    tooltip: 'Remove',
-                    onPressed: _loading
-                        ? null
-                        : () =>
-                            _deleteDocument(
-                              document,
-                            ),
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      color: Colors.red,
-                    ),
-                  ),
-                ],
-              ],
+  // ============================================================
+  // WAITING CARD
+  // ============================================================
+
+  Widget _buildWaitingCard() {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding:
+            const EdgeInsets.all(18),
+        child: Column(
+          children: [
+            const Icon(
+              Icons.hourglass_top,
+              size: 42,
+              color: Colors.orange,
+            ),
+
+            const SizedBox(
+              height: 10,
+            ),
+
+            const Text(
+              'Waiting for Admin Approval',
+              textAlign:
+                  TextAlign.center,
+              style:
+                  TextStyle(
+                fontSize: 18,
+                fontWeight:
+                    FontWeight.bold,
+              ),
+            ),
+
+            const SizedBox(
+              height: 8,
+            ),
+
+            const Text(
+              'Your Vendor documents have been submitted successfully. Admin will review them before activating your account.',
+              textAlign:
+                  TextAlign.center,
+              style:
+                  TextStyle(
+                color:
+                    Colors.grey,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // APPROVED CARD
+  // ============================================================
+
+  Widget _buildApprovedCard() {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding:
+            const EdgeInsets.all(18),
+        child: Column(
+          children: [
+            const Icon(
+              Icons.verified,
+              size: 46,
+              color: Colors.green,
+            ),
+
+            const SizedBox(
+              height: 10,
+            ),
+
+            const Text(
+              'Vendor Account Approved',
+              textAlign:
+                  TextAlign.center,
+              style:
+                  TextStyle(
+                fontSize: 18,
+                fontWeight:
+                    FontWeight.bold,
+              ),
+            ),
+
+            const SizedBox(
+              height: 8,
+            ),
+
+            const Text(
+              'Your Vendor account has been approved by Admin.',
+              textAlign:
+                  TextAlign.center,
+              style:
+                  TextStyle(
+                color:
+                    Colors.green,
+              ),
             ),
           ],
         ),
@@ -946,6 +1894,10 @@ class _VendorDocumentsPageState
     );
   }
 }
+
+// ================================================================
+// DOCUMENT TYPE
+// ================================================================
 
 class _DocumentType {
   final String key;
