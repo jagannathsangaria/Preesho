@@ -77,6 +77,14 @@ async function verifyAdmin(request) {
 
 // ============================================================
 // COMMON COURIER CHECK
+//
+// IMPORTANT:
+// Courier must exist in BOTH users and couriers collections.
+// BOTH must be:
+// role = courier
+// status = approved
+// active = true
+// approvedByAdmin = true
 // ============================================================
 
 async function verifyCourier(request) {
@@ -89,10 +97,19 @@ async function verifyCourier(request) {
 
   const courierUid = request.auth.uid;
 
-  const userDoc = await db
+  const userRef = db
     .collection("users")
-    .doc(courierUid)
-    .get();
+    .doc(courierUid);
+
+  const courierRef = db
+    .collection("couriers")
+    .doc(courierUid);
+
+  const [userDoc, courierDoc] =
+    await Promise.all([
+      userRef.get(),
+      courierRef.get(),
+    ]);
 
   if (!userDoc.exists) {
     throw new HttpsError(
@@ -101,42 +118,145 @@ async function verifyCourier(request) {
     );
   }
 
-  const userData = userDoc.data() || {};
+  if (!courierDoc.exists) {
+    throw new HttpsError(
+      "permission-denied",
+      "Courier profile not found."
+    );
+  }
 
-  const role = String(
+  const userData =
+    userDoc.data() || {};
+
+  const courierData =
+    courierDoc.data() || {};
+
+  const userRole = String(
     userData.role ||
     userData.Role ||
     ""
   ).toLowerCase();
 
-  const active =
-    userData.active !== false;
+  const courierRole = String(
+    courierData.role ||
+    courierData.Role ||
+    ""
+  ).toLowerCase();
 
-  if (role !== "courier") {
+  if (userRole !== "courier" ||
+      courierRole !== "courier") {
     throw new HttpsError(
       "permission-denied",
       "Courier permission required."
     );
   }
 
-  if (!active) {
+  if (
+    userData.status !== "approved" ||
+    courierData.status !== "approved"
+  ) {
+    throw new HttpsError(
+      "permission-denied",
+      "Courier account is not approved by Admin."
+    );
+  }
+
+  if (
+    userData.active !== true ||
+    courierData.active !== true
+  ) {
     throw new HttpsError(
       "permission-denied",
       "Courier account is inactive."
     );
   }
 
+  if (
+    userData.approvedByAdmin !== true ||
+    courierData.approvedByAdmin !== true
+  ) {
+    throw new HttpsError(
+      "permission-denied",
+      "Courier has not been approved by Admin."
+    );
+  }
+
   return {
     uid: courierUid,
+
     name: String(
+      courierData.name ||
       userData.name ||
       userData.displayName ||
       ""
     ).trim(),
+
     phone: String(
+      courierData.phone ||
       userData.phone ||
       ""
     ).trim(),
+  };
+}
+
+
+// ============================================================
+// COMMON REQUIRED VENDOR DOCUMENT CHECK
+// ============================================================
+
+function getVendorDocumentVerification(
+  vendorData
+) {
+  const documents =
+    vendorData.documents || {};
+
+  const requiredDocuments = [
+    "pan",
+    "aadhaar",
+    "gst",
+    "bank",
+    "addressProof",
+  ];
+
+  const missingDocuments = [];
+  const rejectedDocuments = [];
+
+  for (
+    const documentType
+    of requiredDocuments
+  ) {
+    const document =
+      documents[documentType] || {};
+
+    const documentStatus =
+      String(
+        document.status || ""
+      ).toLowerCase();
+
+    if (
+      documentStatus ===
+      "rejected"
+    ) {
+      rejectedDocuments.push(
+        documentType
+      );
+    } else if (
+      documentStatus !==
+      "verified"
+    ) {
+      missingDocuments.push(
+        documentType
+      );
+    }
+  }
+
+  return {
+    allVerified:
+      missingDocuments.length === 0 &&
+      rejectedDocuments.length === 0,
+
+    missingDocuments,
+    rejectedDocuments,
   };
 }
 
@@ -214,7 +334,15 @@ function buildStatusHistory(
 
 
 // ============================================================
-// CREATE COURIER ACCOUNT
+// CREATE COURIER ACCOUNT - ADMIN
+//
+// IMPORTANT:
+// Admin-created courier ALSO requires approval.
+// It starts as:
+//
+// status = pending_documents
+// active = false
+// approvedByAdmin = false
 // ============================================================
 
 exports.createCourierAccount = onCall(
@@ -284,7 +412,10 @@ exports.createCourierAccount = onCall(
         throw error;
       }
 
-      if (error.code !== "auth/user-not-found") {
+      if (
+        error.code !==
+        "auth/user-not-found"
+      ) {
         throw new HttpsError(
           "internal",
           "Unable to verify courier email."
@@ -342,10 +473,21 @@ exports.createCourierAccount = onCall(
           name,
           email,
           phone,
+
           role: "courier",
-          active: true,
+
+          status:
+            "pending_documents",
+
+          active: false,
+
+          approvedByAdmin: false,
+
+          documentsSubmitted: false,
+
           createdAt:
             FieldValue.serverTimestamp(),
+
           updatedAt:
             FieldValue.serverTimestamp(),
         },
@@ -365,12 +507,26 @@ exports.createCourierAccount = onCall(
           name,
           email,
           phone,
+
           role: "courier",
-          active: true,
+
+          status:
+            "pending_documents",
+
+          active: false,
+
+          approvedByAdmin: false,
+
+          documentsSubmitted: false,
+
+          documents: {},
+
           createdAt:
             FieldValue.serverTimestamp(),
+
           updatedAt:
             FieldValue.serverTimestamp(),
+
           createdBy: adminUid,
         },
         {
@@ -409,8 +565,16 @@ exports.createCourierAccount = onCall(
       email,
       phone,
       role: "courier",
+
+      status:
+        "pending_documents",
+
+      active: false,
+
+      approvedByAdmin: false,
+
       message:
-        "Courier account created successfully.",
+        "Courier account created. Documents and Admin approval are required.",
     };
   }
 );
@@ -418,7 +582,9 @@ exports.createCourierAccount = onCall(
 
 // ============================================================
 // AUTHORIZE VENDOR
-// Authorization = PENDING
+//
+// This function prepares vendor authorization.
+// It does NOT activate the vendor.
 // ============================================================
 
 exports.authorizeVendor = onCall(
@@ -577,15 +743,28 @@ exports.authorizeVendor = onCall(
         name: vendorName,
         email: vendorEmail,
         phone: vendorPhone,
+
         role: "vendor",
-        vendorStatus: "pending",
+
+        vendorStatus:
+          "pending_documents",
+
+        status:
+          "pending_documents",
+
         active: false,
-        vendorAuthorizedAt:
-          FieldValue.serverTimestamp(),
-        vendorAuthorizedBy:
-          adminUid,
+
+        approvedByAdmin: false,
+
         updatedAt:
           FieldValue.serverTimestamp(),
+
+        vendorAuthorizedAt:
+          FieldValue.serverTimestamp(),
+
+        vendorAuthorizedBy:
+          adminUid,
+
         ...(userDoc.exists
           ? {}
           : {
@@ -605,17 +784,31 @@ exports.authorizeVendor = onCall(
         name: vendorName,
         email: vendorEmail,
         phone: vendorPhone,
+
         role: "vendor",
-        status: "pending",
+
+        status:
+          "pending_documents",
+
         active: false,
+
+        approvedByAdmin: false,
+
+        documentsSubmitted:
+          existingVendorData.documentsSubmitted === true,
+
         authorizedBy: adminUid,
+
         authorizedAt:
           FieldValue.serverTimestamp(),
+
         updatedAt:
           FieldValue.serverTimestamp(),
+
         ...(vendorDoc.exists
           ? {}
           : {
+              documents: {},
               createdAt:
                 FieldValue.serverTimestamp(),
             }),
@@ -634,17 +827,45 @@ exports.authorizeVendor = onCall(
       email: vendorEmail,
       phone: vendorPhone,
       role: "vendor",
-      vendorStatus: "pending",
+
+      vendorStatus:
+        "pending_documents",
+
+      status:
+        "pending_documents",
+
       active: false,
+
+      approvedByAdmin: false,
+
       message:
-        "Vendor added successfully. Documents verification pending.",
+        "Vendor added. Documents and Admin approval are required.",
     };
   }
 );
 
 
 // ============================================================
-// UPDATE VENDOR STATUS
+// UPDATE VENDOR STATUS - ADMIN ONLY
+//
+// APPROVAL SECURITY:
+//
+// Vendor can become approved ONLY when:
+//
+// 1. Vendor exists
+// 2. User exists
+// 3. role = vendor
+// 4. documentsSubmitted = true
+// 5. All 5 required documents = verified
+//
+// Then:
+// users.status = approved
+// users.active = true
+// users.approvedByAdmin = true
+//
+// vendors.status = approved
+// vendors.active = true
+// vendors.approvedByAdmin = true
 // ============================================================
 
 exports.updateVendorStatus = onCall(
@@ -683,6 +904,8 @@ exports.updateVendorStatus = onCall(
 
     const allowedStatuses = [
       "pending",
+      "pending_documents",
+      "pending_approval",
       "approved",
       "rejected",
       "suspended",
@@ -719,72 +942,116 @@ exports.updateVendorStatus = onCall(
       );
     }
 
+    const userData =
+      userDoc.exists
+        ? userDoc.data() || {}
+        : {};
+
     const vendorData =
       vendorDoc.exists
         ? vendorDoc.data() || {}
         : {};
 
+    const userRole =
+      String(
+        userData.role ||
+        userData.Role ||
+        ""
+      ).toLowerCase();
+
+    const vendorRole =
+      String(
+        vendorData.role ||
+        vendorData.Role ||
+        ""
+      ).toLowerCase();
+
+    if (
+      userRole &&
+      userRole !== "vendor"
+    ) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Selected account is not a vendor."
+      );
+    }
+
+    if (
+      vendorRole &&
+      vendorRole !== "vendor"
+    ) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Vendor profile role is invalid."
+      );
+    }
+
+    // --------------------------------------------------------
+    // FINAL APPROVAL SECURITY
+    // --------------------------------------------------------
+
     if (status === "approved") {
-      const documents =
-        vendorData.documents || {};
-
-      const requiredDocuments = [
-        "pan",
-        "aadhaar",
-        "gst",
-        "bank",
-        "addressProof",
-      ];
-
-      const missingDocuments = [];
-      const rejectedDocuments = [];
-
-      for (
-        const documentType
-        of requiredDocuments
-      ) {
-        const document =
-          documents[documentType] || {};
-
-        const documentStatus =
-          String(
-            document.status || ""
-          ).toLowerCase();
-
-        if (
-          documentStatus ===
-          "rejected"
-        ) {
-          rejectedDocuments.push(
-            documentType
-          );
-        } else if (
-          documentStatus !==
-          "verified"
-        ) {
-          missingDocuments.push(
-            documentType
-          );
-        }
-      }
-
-      if (
-        rejectedDocuments.length > 0
-      ) {
+      if (!userDoc.exists) {
         throw new HttpsError(
           "failed-precondition",
-          "Vendor approval blocked. Rejected documents: " +
-            rejectedDocuments.join(", ")
+          "Vendor user profile not found."
+        );
+      }
+
+      if (!vendorDoc.exists) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Vendor profile not found."
         );
       }
 
       if (
-        missingDocuments.length > 0
+        userRole !== "vendor" ||
+        vendorRole !== "vendor"
+      ) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Vendor role verification failed."
+        );
+      }
+
+      if (
+        vendorData.documentsSubmitted !== true
+      ) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Vendor has not submitted documents for Admin approval."
+        );
+      }
+
+      const verification =
+        getVendorDocumentVerification(
+          vendorData
+        );
+
+      if (
+        verification.rejectedDocuments.length >
+        0
+      ) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Vendor approval blocked. Rejected documents: " +
+            verification.rejectedDocuments.join(
+              ", "
+            )
+        );
+      }
+
+      if (
+        verification.missingDocuments.length >
+        0
       ) {
         throw new HttpsError(
           "failed-precondition",
           "Vendor approval blocked. Required documents not verified: " +
-            missingDocuments.join(", ")
+            verification.missingDocuments.join(
+              ", "
+            )
         );
       }
     }
@@ -798,20 +1065,38 @@ exports.updateVendorStatus = onCall(
       userRef,
       {
         role: "vendor",
-        vendorStatus: status,
-        active: isApproved,
+
+        status:
+          isApproved
+            ? "approved"
+            : status,
+
+        vendorStatus:
+          status,
+
+        active:
+          isApproved,
+
+        approvedByAdmin:
+          isApproved,
+
         vendorStatusUpdatedAt:
           FieldValue.serverTimestamp(),
+
         vendorStatusUpdatedBy:
           adminUid,
+
         vendorStatusReason:
           reason,
+
         updatedAt:
           FieldValue.serverTimestamp(),
+
         ...(isApproved
           ? {
               vendorApprovedAt:
                 FieldValue.serverTimestamp(),
+
               vendorApprovedBy:
                 adminUid,
             }
@@ -826,20 +1111,33 @@ exports.updateVendorStatus = onCall(
       vendorRef,
       {
         role: "vendor",
-        status,
-        active: isApproved,
+
+        status:
+          status,
+
+        active:
+          isApproved,
+
+        approvedByAdmin:
+          isApproved,
+
         statusUpdatedAt:
           FieldValue.serverTimestamp(),
+
         statusUpdatedBy:
           adminUid,
+
         statusReason:
           reason,
+
         updatedAt:
           FieldValue.serverTimestamp(),
+
         ...(isApproved
           ? {
               approvedAt:
                 FieldValue.serverTimestamp(),
+
               approvedBy:
                 adminUid,
             }
@@ -856,8 +1154,16 @@ exports.updateVendorStatus = onCall(
       success: true,
       vendorUid,
       status,
-      active: isApproved,
-      updatedBy: adminUid,
+
+      active:
+        isApproved,
+
+      approvedByAdmin:
+        isApproved,
+
+      updatedBy:
+        adminUid,
+
       message:
         isApproved
           ? "Vendor approved successfully."
@@ -869,6 +1175,7 @@ exports.updateVendorStatus = onCall(
 
 // ============================================================
 // UPDATE VENDOR DOCUMENT STATUS
+// ADMIN ONLY
 // ============================================================
 
 exports.updateVendorDocumentStatus = onCall(
@@ -971,13 +1278,24 @@ exports.updateVendorDocumentStatus = onCall(
 
     const updatedDocument = {
       ...existingDocument,
+
       status,
+
+      // Keep both names for compatibility
       verificationReason:
         reason,
+
+      rejectionReason:
+        status === "rejected"
+          ? reason
+          : "",
+
       verifiedBy:
         adminUid,
+
       verifiedAt:
         FieldValue.serverTimestamp(),
+
       updatedAt:
         FieldValue.serverTimestamp(),
     };
@@ -988,6 +1306,7 @@ exports.updateVendorDocumentStatus = onCall(
           [documentType]:
             updatedDocument,
         },
+
         updatedAt:
           FieldValue.serverTimestamp(),
       },
@@ -1001,7 +1320,9 @@ exports.updateVendorDocumentStatus = onCall(
       vendorUid,
       documentType,
       status,
-      verifiedBy: adminUid,
+      verifiedBy:
+        adminUid,
+
       message:
         "Vendor document status updated successfully.",
     };
@@ -1012,8 +1333,6 @@ exports.updateVendorDocumentStatus = onCall(
 // ============================================================
 // ADMIN ORDER STATUS
 //
-// ADMIN FLOW:
-//
 // Placed
 //   ↓
 // Confirmed
@@ -1021,8 +1340,6 @@ exports.updateVendorDocumentStatus = onCall(
 // Processing
 //   ↓
 // Packed
-//
-// Shipped is handled separately by shipOrder.
 // ============================================================
 
 exports.updateOrderStatus = onCall(
@@ -1152,10 +1469,13 @@ exports.updateOrderStatus = onCall(
         const updateData = {
           orderStatus:
             newStatus,
+
           status:
             newStatus,
+
           statusHistory:
             newHistory,
+
           updatedAt:
             FieldValue.serverTimestamp(),
         };
@@ -1192,6 +1512,7 @@ exports.updateOrderStatus = onCall(
         result = {
           previousStatus:
             currentStatus,
+
           status:
             newStatus,
         };
@@ -1201,11 +1522,16 @@ exports.updateOrderStatus = onCall(
     return {
       success: true,
       orderId,
+
       previousStatus:
         result.previousStatus,
+
       status:
         result.status,
-      updatedBy: adminUid,
+
+      updatedBy:
+        adminUid,
+
       message:
         "Order status updated successfully.",
     };
@@ -1216,12 +1542,7 @@ exports.updateOrderStatus = onCall(
 // ============================================================
 // SHIP ORDER - ADMIN ONLY
 //
-// ONLY:
 // Packed → Shipped
-//
-// Requires:
-// courierPartner
-// trackingNumber
 // ============================================================
 
 exports.shipOrder = onCall(
@@ -1390,6 +1711,7 @@ exports.shipOrder = onCall(
         result = {
           previousStatus:
             "Packed",
+
           status:
             "Shipped",
         };
@@ -1399,13 +1721,19 @@ exports.shipOrder = onCall(
     return {
       success: true,
       orderId,
+
       previousStatus:
         result.previousStatus,
+
       status:
         result.status,
+
       courierPartner,
       trackingNumber,
-      updatedBy: adminUid,
+
+      updatedBy:
+        adminUid,
+
       message:
         "Order shipped successfully.",
     };
@@ -1415,17 +1743,6 @@ exports.shipOrder = onCall(
 
 // ============================================================
 // CANCEL ORDER - ADMIN ONLY
-//
-// Allowed:
-// Placed
-// Confirmed
-// Processing
-//
-// Not allowed:
-// Packed
-// Shipped
-// Courier stages
-// Delivered
 // ============================================================
 
 exports.cancelOrder = onCall(
@@ -1560,8 +1877,13 @@ exports.cancelOrder = onCall(
     return {
       success: true,
       orderId,
-      status: "Cancelled",
-      cancelledBy: adminUid,
+
+      status:
+        "Cancelled",
+
+      cancelledBy:
+        adminUid,
+
       message:
         "Order cancelled successfully.",
     };
@@ -1572,10 +1894,18 @@ exports.cancelOrder = onCall(
 // ============================================================
 // ASSIGN ORDER TO COURIER - ADMIN ONLY
 //
-// Allowed only:
-// Shipped
+// SECURITY:
 //
-// Does NOT change status.
+// Courier MUST:
+// - exist in users
+// - exist in couriers
+// - role courier in both
+// - status approved in both
+// - active true in both
+// - approvedByAdmin true in both
+//
+// Order MUST be:
+// Shipped
 // ============================================================
 
 exports.assignOrderToCourier = onCall(
@@ -1632,6 +1962,10 @@ exports.assignOrderToCourier = onCall(
       courierRef.get(),
     ]);
 
+    // --------------------------------------------------------
+    // USER PROFILE CHECK
+    // --------------------------------------------------------
+
     if (!courierUserDoc.exists) {
       throw new HttpsError(
         "not-found",
@@ -1639,25 +1973,98 @@ exports.assignOrderToCourier = onCall(
       );
     }
 
+    // --------------------------------------------------------
+    // COURIER PROFILE CHECK
+    // --------------------------------------------------------
+
+    if (!courierDoc.exists) {
+      throw new HttpsError(
+        "not-found",
+        "Courier profile not found."
+      );
+    }
+
     const courierUserData =
       courierUserDoc.data() || {};
 
-    const courierRole =
+    const courierData =
+      courierDoc.data() || {};
+
+    const courierUserRole =
       String(
         courierUserData.role ||
         courierUserData.Role ||
         ""
       ).toLowerCase();
 
-    if (courierRole !== "courier") {
+    const courierRole =
+      String(
+        courierData.role ||
+        courierData.Role ||
+        ""
+      ).toLowerCase();
+
+    if (
+      courierUserRole !== "courier" ||
+      courierRole !== "courier"
+    ) {
       throw new HttpsError(
         "failed-precondition",
-        "Selected user is not a courier."
+        "Selected user is not a valid courier."
+      );
+    }
+
+    // --------------------------------------------------------
+    // ADMIN APPROVAL CHECK
+    // --------------------------------------------------------
+
+    if (
+      courierUserData.status !==
+      "approved"
+    ) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Courier is not approved in users profile."
       );
     }
 
     if (
-      courierUserData.active === false
+      courierData.status !==
+      "approved"
+    ) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Courier is not approved in courier profile."
+      );
+    }
+
+    if (
+      courierUserData.approvedByAdmin !==
+      true
+    ) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Courier has not been approved by Admin."
+      );
+    }
+
+    if (
+      courierData.approvedByAdmin !==
+      true
+    ) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Courier profile has not been approved by Admin."
+      );
+    }
+
+    // --------------------------------------------------------
+    // ACTIVE CHECK
+    // --------------------------------------------------------
+
+    if (
+      courierUserData.active !== true ||
+      courierData.active !== true
     ) {
       throw new HttpsError(
         "failed-precondition",
@@ -1668,6 +2075,7 @@ exports.assignOrderToCourier = onCall(
     let courierName =
       String(
         courierUserData.name ||
+        courierUserData.displayName ||
         ""
       ).trim();
 
@@ -1677,22 +2085,21 @@ exports.assignOrderToCourier = onCall(
         ""
       ).trim();
 
-    if (courierDoc.exists) {
-      const courierData =
-        courierDoc.data() || {};
+    courierName =
+      String(
+        courierData.name ||
+        courierName
+      ).trim();
 
-      courierName =
-        String(
-          courierData.name ||
-          courierName
-        ).trim();
+    courierPhone =
+      String(
+        courierData.phone ||
+        courierPhone
+      ).trim();
 
-      courierPhone =
-        String(
-          courierData.phone ||
-          courierPhone
-        ).trim();
-    }
+    // --------------------------------------------------------
+    // ORDER TRANSACTION
+    // --------------------------------------------------------
 
     await db.runTransaction(
       async (transaction) => {
@@ -1743,14 +2150,19 @@ exports.assignOrderToCourier = onCall(
           orderRef,
           {
             courierId,
+
             courierPersonName:
               courierName,
+
             courierPhone:
               courierPhone,
+
             courierAssignedAt:
               FieldValue.serverTimestamp(),
+
             courierAssignedBy:
               adminUid,
+
             updatedAt:
               FieldValue.serverTimestamp(),
           },
@@ -1763,15 +2175,21 @@ exports.assignOrderToCourier = onCall(
 
     return {
       success: true,
+
       orderId,
+
       courierId,
+
       courierPersonName:
         courierName,
+
       courierPhone,
+
       assignedBy:
         adminUid,
+
       message:
-        "Courier assigned successfully.",
+        "Approved and active courier assigned successfully.",
     };
   }
 );
@@ -1787,6 +2205,9 @@ exports.assignOrderToCourier = onCall(
 // Out for Delivery
 //    ↓
 // Delivered
+//
+// verifyCourier() ensures:
+// approved + active + Admin approval
 // ============================================================
 
 exports.updateCourierOrderStatus = onCall(
@@ -2005,6 +2426,7 @@ exports.updateCourierOrderStatus = onCall(
         result = {
           previousStatus:
             currentStatus,
+
           status:
             newStatus,
         };
@@ -2013,13 +2435,18 @@ exports.updateCourierOrderStatus = onCall(
 
     return {
       success: true,
+
       orderId,
+
       previousStatus:
         result.previousStatus,
+
       status:
         result.status,
+
       courierId:
         courier.uid,
+
       message:
         "Order status updated successfully.",
     };
