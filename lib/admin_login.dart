@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'admin_panel.dart';
 import 'courier_panel.dart';
+import 'courier_registration_page.dart';
 import 'vendor_panel.dart';
 
 class AdminLogin extends StatefulWidget {
@@ -42,11 +43,11 @@ class _AdminLoginState extends State<AdminLogin> {
       return;
     }
 
-    final email = _emailController.text.trim();
+    final loginInput = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
-    if (email.isEmpty) {
-      _showMessage('Please enter email.');
+    if (loginInput.isEmpty) {
+      _showMessage('Please enter email or mobile number.');
       return;
     }
 
@@ -60,13 +61,55 @@ class _AdminLoginState extends State<AdminLogin> {
     });
 
     try {
+      String loginEmail = loginInput;
+
+      // ========================================================
+      // COURIER MOBILE LOGIN
+      // ========================================================
+      //
+      // If the user entered a 10-digit mobile number,
+      // find the courier account and get its internal email.
+      //
+
+      if (RegExp(r'^[0-9]{10}$').hasMatch(loginInput)) {
+        final courierQuery = await _firestore
+            .collection('users')
+            .where('phone', isEqualTo: loginInput)
+            .where('role', isEqualTo: 'courier')
+            .limit(1)
+            .get();
+
+        if (courierQuery.docs.isEmpty) {
+          _showMessage(
+            'Courier account not found for this mobile number.',
+          );
+          return;
+        }
+
+        final courierData =
+            courierQuery.docs.first.data();
+
+        final courierEmail =
+            courierData['email']?.toString().trim();
+
+        if (courierEmail == null ||
+            courierEmail.isEmpty) {
+          _showMessage(
+            'Courier account email is missing.',
+          );
+          return;
+        }
+
+        loginEmail = courierEmail;
+      }
+
       // ========================================================
       // FIREBASE AUTH LOGIN
       // ========================================================
 
       final credential =
           await _auth.signInWithEmailAndPassword(
-        email: email,
+        email: loginEmail,
         password: password,
       );
 
@@ -86,7 +129,8 @@ class _AdminLoginState extends State<AdminLogin> {
           .get();
 
       if (adminDoc.exists) {
-        final adminData = adminDoc.data() ?? {};
+        final adminData =
+            adminDoc.data() ?? {};
 
         final roleValue =
             adminData['role'] ?? adminData['Role'];
@@ -117,7 +161,8 @@ class _AdminLoginState extends State<AdminLogin> {
           .doc(user.uid)
           .get();
 
-      final userData = userDoc.data() ?? {};
+      final userData =
+          userDoc.data() ?? {};
 
       final roleValue =
           userData['role'] ?? userData['Role'];
@@ -130,7 +175,8 @@ class _AdminLoginState extends State<AdminLogin> {
       // ========================================================
 
       if (role == 'courier') {
-        final active = userData['active'] != false;
+        final active =
+            userData['active'] != false;
 
         if (!active) {
           await _auth.signOut();
@@ -167,32 +213,22 @@ class _AdminLoginState extends State<AdminLogin> {
         final vendorData =
             vendorDoc.data() ?? {};
 
-        // ======================================================
-        // VENDOR STATUS
-        // ======================================================
+        final userStatus =
+            userData['vendorStatus']
+                ?.toString()
+                .trim()
+                .toLowerCase();
 
-        final userStatus = userData['vendorStatus']
-            ?.toString()
-            .trim()
-            .toLowerCase();
-
-        final vendorStatus = vendorData['status']
-            ?.toString()
-            .trim()
-            .toLowerCase();
-
-        // FIX:
-        // vendorStatus is String?, so .isNotEmpty
-        // cannot be called directly.
+        final vendorStatus =
+            vendorData['status']
+                ?.toString()
+                .trim()
+                .toLowerCase();
 
         final status =
             vendorStatus?.isNotEmpty == true
                 ? vendorStatus
                 : userStatus;
-
-        // ======================================================
-        // VENDOR ACTIVE
-        // ======================================================
 
         final userActive =
             userData['active'] == true;
@@ -263,23 +299,28 @@ class _AdminLoginState extends State<AdminLogin> {
 
       switch (e.code) {
         case 'invalid-credential':
-          message = 'Invalid email or password.';
+          message =
+              'Invalid email/mobile or password.';
           break;
 
         case 'invalid-email':
-          message = 'Please enter a valid email.';
+          message =
+              'Please enter a valid email.';
           break;
 
         case 'user-disabled':
-          message = 'This account has been disabled.';
+          message =
+              'This account has been disabled.';
           break;
 
         case 'user-not-found':
-          message = 'Account not found.';
+          message =
+              'Account not found.';
           break;
 
         case 'wrong-password':
-          message = 'Incorrect password.';
+          message =
+              'Incorrect password.';
           break;
 
         case 'too-many-requests':
@@ -296,7 +337,9 @@ class _AdminLoginState extends State<AdminLogin> {
         _showMessage(message);
       }
     } catch (e) {
-      debugPrint('Staff login error: $e');
+      debugPrint(
+        'Staff login error: $e',
+      );
 
       if (mounted) {
         _showMessage(
@@ -323,6 +366,20 @@ class _AdminLoginState extends State<AdminLogin> {
       SnackBar(
         content: Text(message),
         behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  // ============================================================
+  // OPEN COURIER REGISTRATION
+  // ============================================================
+
+  void _openCourierRegistration() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            const CourierRegistrationPage(),
       ),
     );
   }
@@ -394,22 +451,24 @@ class _AdminLoginState extends State<AdminLogin> {
                       const SizedBox(height: 28),
 
                       // ==================================================
-                      // EMAIL
+                      // EMAIL / MOBILE
                       // ==================================================
 
                       TextField(
-                        controller: _emailController,
+                        controller:
+                            _emailController,
                         keyboardType:
                             TextInputType.emailAddress,
                         textInputAction:
                             TextInputAction.next,
                         decoration:
                             const InputDecoration(
-                          labelText: 'Email',
+                          labelText:
+                              'Email / Mobile Number',
                           hintText:
-                              'Enter staff email',
+                              'Enter email or courier mobile',
                           prefixIcon: Icon(
-                            Icons.email_outlined,
+                            Icons.person_outline,
                           ),
                           border:
                               OutlineInputBorder(),
@@ -493,7 +552,40 @@ class _AdminLoginState extends State<AdminLogin> {
                         ),
                       ),
 
+                      const SizedBox(height: 18),
+
+                      // ==================================================
+                      // COURIER REGISTRATION
+                      // ==================================================
+
+                      OutlinedButton.icon(
+                        onPressed:
+                            _loading
+                                ? null
+                                : _openCourierRegistration,
+                        icon: const Icon(
+                          Icons.delivery_dining,
+                        ),
+                        label: const Text(
+                          'Register as Courier',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+
                       const SizedBox(height: 16),
+
+                      const Text(
+                        'Courier can login using mobile number and password.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                      ),
+
+                      const SizedBox(height: 8),
 
                       const Text(
                         'Only authorized staff accounts can access this panel.',
