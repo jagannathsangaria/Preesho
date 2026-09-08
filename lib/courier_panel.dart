@@ -305,7 +305,7 @@ class _AppEntryState extends State<AppEntry> {
         if (!mounted) return;
 
         setState(() {
-          _page = const CourierPanel();
+          _page = CourierPanel();
           _loading = false;
         });
 
