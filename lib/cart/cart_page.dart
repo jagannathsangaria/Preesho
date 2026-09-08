@@ -167,7 +167,7 @@ class _CartPageState extends State<CartPage> {
       final result = await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => const LoginPage(),
+          builder: (_) => LoginPage(),
         ),
       );
 
