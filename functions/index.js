@@ -14,10 +14,35 @@ const auth = getAuth();
 
 
 // ============================================================
+// COMMON NORMALIZERS
+// ============================================================
+
+function normalizeRole(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeStatus(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+}
+
+function cleanString(value) {
+  return String(value || "").trim();
+}
+
+
+// ============================================================
 // COMMON ADMIN CHECK
+//
 // Supports:
+//
 // Admins/{uid}.role / Role == admin
-// OR users/{uid}.role / Role == admin
+// OR
+// users/{uid}.role / Role == admin
 // ============================================================
 
 async function verifyAdmin(request) {
@@ -38,11 +63,9 @@ async function verifyAdmin(request) {
   if (adminDoc.exists) {
     const adminData = adminDoc.data() || {};
 
-    const adminRole = String(
-      adminData.Role ||
-      adminData.role ||
-      ""
-    ).toLowerCase();
+    const adminRole = normalizeRole(
+      adminData.Role || adminData.role
+    );
 
     if (adminRole === "admin") {
       return adminUid;
@@ -57,11 +80,9 @@ async function verifyAdmin(request) {
   if (userDoc.exists) {
     const userData = userDoc.data() || {};
 
-    const userRole = String(
-      userData.role ||
-      userData.Role ||
-      ""
-    ).toLowerCase();
+    const userRole = normalizeRole(
+      userData.role || userData.Role
+    );
 
     if (userRole === "admin") {
       return adminUid;
@@ -78,13 +99,19 @@ async function verifyAdmin(request) {
 // ============================================================
 // COMMON COURIER CHECK
 //
-// IMPORTANT:
-// Courier must exist in BOTH users and couriers collections.
-// BOTH must be:
+// SECURITY REQUIREMENTS:
+//
+// users/{uid}
+// couriers/{uid}
+//
+// BOTH must have:
+//
 // role = courier
 // status = approved
 // active = true
 // approvedByAdmin = true
+//
+// This function is used by courier-only backend operations.
 // ============================================================
 
 async function verifyCourier(request) {
@@ -105,11 +132,10 @@ async function verifyCourier(request) {
     .collection("couriers")
     .doc(courierUid);
 
-  const [userDoc, courierDoc] =
-    await Promise.all([
-      userRef.get(),
-      courierRef.get(),
-    ]);
+  const [userDoc, courierDoc] = await Promise.all([
+    userRef.get(),
+    courierRef.get(),
+  ]);
 
   if (!userDoc.exists) {
     throw new HttpsError(
@@ -125,39 +151,48 @@ async function verifyCourier(request) {
     );
   }
 
-  const userData =
-    userDoc.data() || {};
+  const userData = userDoc.data() || {};
+  const courierData = courierDoc.data() || {};
 
-  const courierData =
-    courierDoc.data() || {};
+  const userRole = normalizeRole(
+    userData.role || userData.Role
+  );
 
-  const userRole = String(
-    userData.role ||
-    userData.Role ||
-    ""
-  ).toLowerCase();
+  const courierRole = normalizeRole(
+    courierData.role || courierData.Role
+  );
 
-  const courierRole = String(
-    courierData.role ||
-    courierData.Role ||
-    ""
-  ).toLowerCase();
-
-  if (userRole !== "courier" ||
-      courierRole !== "courier") {
+  if (
+    userRole !== "courier" ||
+    courierRole !== "courier"
+  ) {
     throw new HttpsError(
       "permission-denied",
       "Courier permission required."
     );
   }
 
-  if (
-    userData.status !== "approved" ||
-    courierData.status !== "approved"
-  ) {
+  const userStatus = normalizeStatus(
+    userData.status ||
+    userData.registrationStatus
+  );
+
+  const courierStatus = normalizeStatus(
+    courierData.status ||
+    courierData.registrationStatus
+  );
+
+  if (userStatus !== "approved") {
     throw new HttpsError(
       "permission-denied",
-      "Courier account is not approved by Admin."
+      "Courier account is not approved."
+    );
+  }
+
+  if (courierStatus !== "approved") {
+    throw new HttpsError(
+      "permission-denied",
+      "Courier profile is not approved."
     );
   }
 
@@ -184,31 +219,161 @@ async function verifyCourier(request) {
   return {
     uid: courierUid,
 
-    name: String(
+    name: cleanString(
       courierData.name ||
       userData.name ||
       userData.displayName ||
       ""
-    ).trim(),
+    ),
 
-    phone: String(
+    phone: cleanString(
       courierData.phone ||
       userData.phone ||
       ""
-    ).trim(),
+    ),
+
+    email: cleanString(
+      courierData.email ||
+      userData.email ||
+      ""
+    ).toLowerCase(),
   };
 }
 
 
 // ============================================================
-// COMMON REQUIRED VENDOR DOCUMENT CHECK
+// COURIER PROFILE VALIDATION
+//
+// Used by Admin assignment.
+// Target courier UID is supplied by Admin,
+// therefore we do NOT trust the client data.
+// We read the actual Firestore profiles.
 // ============================================================
 
-function getVendorDocumentVerification(
-  vendorData
-) {
-  const documents =
-    vendorData.documents || {};
+async function verifyTargetCourier(courierId) {
+  const userRef = db
+    .collection("users")
+    .doc(courierId);
+
+  const courierRef = db
+    .collection("couriers")
+    .doc(courierId);
+
+  const [userDoc, courierDoc] = await Promise.all([
+    userRef.get(),
+    courierRef.get(),
+  ]);
+
+  if (!userDoc.exists) {
+    throw new HttpsError(
+      "not-found",
+      "Courier user account not found."
+    );
+  }
+
+  if (!courierDoc.exists) {
+    throw new HttpsError(
+      "not-found",
+      "Courier profile not found."
+    );
+  }
+
+  const userData = userDoc.data() || {};
+  const courierData = courierDoc.data() || {};
+
+  const userRole = normalizeRole(
+    userData.role || userData.Role
+  );
+
+  const courierRole = normalizeRole(
+    courierData.role || courierData.Role
+  );
+
+  if (
+    userRole !== "courier" ||
+    courierRole !== "courier"
+  ) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Selected user is not a valid courier."
+    );
+  }
+
+  const userStatus = normalizeStatus(
+    userData.status ||
+    userData.registrationStatus
+  );
+
+  const courierStatus = normalizeStatus(
+    courierData.status ||
+    courierData.registrationStatus
+  );
+
+  if (userStatus !== "approved") {
+    throw new HttpsError(
+      "failed-precondition",
+      "Courier is not approved in users profile."
+    );
+  }
+
+  if (courierStatus !== "approved") {
+    throw new HttpsError(
+      "failed-precondition",
+      "Courier is not approved in courier profile."
+    );
+  }
+
+  if (
+    userData.active !== true ||
+    courierData.active !== true
+  ) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Selected courier is inactive."
+    );
+  }
+
+  if (
+    userData.approvedByAdmin !== true ||
+    courierData.approvedByAdmin !== true
+  ) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Courier has not been approved by Admin."
+    );
+  }
+
+  return {
+    uid: courierId,
+
+    name: cleanString(
+      courierData.name ||
+      userData.name ||
+      userData.displayName ||
+      ""
+    ),
+
+    phone: cleanString(
+      courierData.phone ||
+      userData.phone ||
+      ""
+    ),
+
+    email: cleanString(
+      courierData.email ||
+      userData.email ||
+      ""
+    ).toLowerCase(),
+  };
+}
+
+
+// ============================================================
+// REQUIRED VENDOR DOCUMENT CHECK
+// ============================================================
+
+function getVendorDocumentVerification(vendorData) {
+  const documents = vendorData.documents || {};
 
   const requiredDocuments = [
     "pan",
@@ -221,32 +386,17 @@ function getVendorDocumentVerification(
   const missingDocuments = [];
   const rejectedDocuments = [];
 
-  for (
-    const documentType
-    of requiredDocuments
-  ) {
-    const document =
-      documents[documentType] || {};
+  for (const documentType of requiredDocuments) {
+    const document = documents[documentType] || {};
 
-    const documentStatus =
-      String(
-        document.status || ""
-      ).toLowerCase();
+    const documentStatus = normalizeRole(
+      document.status
+    );
 
-    if (
-      documentStatus ===
-      "rejected"
-    ) {
-      rejectedDocuments.push(
-        documentType
-      );
-    } else if (
-      documentStatus !==
-      "verified"
-    ) {
-      missingDocuments.push(
-        documentType
-      );
+    if (documentStatus === "rejected") {
+      rejectedDocuments.push(documentType);
+    } else if (documentStatus !== "verified") {
+      missingDocuments.push(documentType);
     }
   }
 
@@ -276,10 +426,8 @@ function normalizeOrderStatus(value) {
     processing: "Processing",
     packed: "Packed",
     shipped: "Shipped",
-    "picked by courier":
-      "Picked by Courier",
-    "out for delivery":
-      "Out for Delivery",
+    "picked by courier": "Picked by Courier",
+    "out for delivery": "Out for Delivery",
     delivered: "Delivered",
     cancelled: "Cancelled",
   };
@@ -289,7 +437,7 @@ function normalizeOrderStatus(value) {
 
 
 // ============================================================
-// APPEND STATUS HISTORY
+// STATUS HISTORY
 // ============================================================
 
 function buildStatusHistory(
@@ -310,10 +458,8 @@ function buildStatusHistory(
 
   const entry = {
     status,
-    previousStatus:
-      previousStatus || "",
-    timestamp:
-      Timestamp.now(),
+    previousStatus: previousStatus || "",
+    timestamp: Timestamp.now(),
     updatedBy,
     updatedByUid,
   };
@@ -335,14 +481,6 @@ function buildStatusHistory(
 
 // ============================================================
 // CREATE COURIER ACCOUNT - ADMIN
-//
-// IMPORTANT:
-// Admin-created courier ALSO requires approval.
-// It starts as:
-//
-// status = pending_documents
-// active = false
-// approvedByAdmin = false
 // ============================================================
 
 exports.createCourierAccount = onCall(
@@ -350,24 +488,18 @@ exports.createCourierAccount = onCall(
     region: "asia-south1",
   },
   async (request) => {
-    const adminUid =
-      await verifyAdmin(request);
+    const adminUid = await verifyAdmin(request);
 
     const data = request.data || {};
 
-    const name =
-      String(data.name || "").trim();
+    const name = cleanString(data.name);
 
-    const email =
-      String(data.email || "")
-        .trim()
-        .toLowerCase();
+    const email = cleanString(data.email)
+      .toLowerCase();
 
-    const phone =
-      String(data.phone || "").trim();
+    const phone = cleanString(data.phone);
 
-    const password =
-      String(data.password || "");
+    const password = String(data.password || "");
 
     if (!name) {
       throw new HttpsError(
@@ -426,14 +558,13 @@ exports.createCourierAccount = onCall(
     let courierUser;
 
     try {
-      courierUser =
-        await auth.createUser({
-          email,
-          password,
-          displayName: name,
-          emailVerified: false,
-          disabled: false,
-        });
+      courierUser = await auth.createUser({
+        email,
+        password,
+        displayName: name,
+        emailVerified: false,
+        disabled: false,
+      });
     } catch (error) {
       console.error(
         "Courier Auth creation failed:",
@@ -456,8 +587,7 @@ exports.createCourierAccount = onCall(
       );
     }
 
-    const courierUid =
-      courierUser.uid;
+    const courierUid = courierUser.uid;
 
     try {
       const batch = db.batch();
@@ -476,7 +606,9 @@ exports.createCourierAccount = onCall(
 
           role: "courier",
 
-          status:
+          status: "pending_documents",
+
+          registrationStatus:
             "pending_documents",
 
           active: false,
@@ -491,9 +623,7 @@ exports.createCourierAccount = onCall(
           updatedAt:
             FieldValue.serverTimestamp(),
         },
-        {
-          merge: true,
-        }
+        { merge: true }
       );
 
       const courierRef = db
@@ -510,7 +640,9 @@ exports.createCourierAccount = onCall(
 
           role: "courier",
 
-          status:
+          status: "pending_documents",
+
+          registrationStatus:
             "pending_documents",
 
           active: false,
@@ -529,9 +661,7 @@ exports.createCourierAccount = onCall(
 
           createdBy: adminUid,
         },
-        {
-          merge: true,
-        }
+        { merge: true }
       );
 
       await batch.commit();
@@ -542,9 +672,7 @@ exports.createCourierAccount = onCall(
       );
 
       try {
-        await auth.deleteUser(
-          courierUid
-        );
+        await auth.deleteUser(courierUid);
       } catch (deleteError) {
         console.error(
           "Courier rollback failed:",
@@ -566,8 +694,7 @@ exports.createCourierAccount = onCall(
       phone,
       role: "courier",
 
-      status:
-        "pending_documents",
+      status: "pending_documents",
 
       active: false,
 
@@ -582,9 +709,6 @@ exports.createCourierAccount = onCall(
 
 // ============================================================
 // AUTHORIZE VENDOR
-//
-// This function prepares vendor authorization.
-// It does NOT activate the vendor.
 // ============================================================
 
 exports.authorizeVendor = onCall(
@@ -592,18 +716,14 @@ exports.authorizeVendor = onCall(
     region: "asia-south1",
   },
   async (request) => {
-    const adminUid =
-      await verifyAdmin(request);
+    const adminUid = await verifyAdmin(request);
 
     const data = request.data || {};
 
-    const targetUid =
-      String(data.uid || "").trim();
+    const targetUid = cleanString(data.uid);
 
-    const targetEmail =
-      String(data.email || "")
-        .trim()
-        .toLowerCase();
+    const targetEmail = cleanString(data.email)
+      .toLowerCase();
 
     let vendorUser;
 
@@ -643,8 +763,7 @@ exports.authorizeVendor = onCall(
       );
     }
 
-    const vendorUid =
-      vendorUser.uid;
+    const vendorUid = vendorUser.uid;
 
     const userRef = db
       .collection("users")
@@ -670,13 +789,11 @@ exports.authorizeVendor = onCall(
         ? vendorDoc.data() || {}
         : {};
 
-    const existingRole =
-      String(
-        existingUserData.role ||
-        existingUserData.Role ||
-        existingVendorData.role ||
-        ""
-      ).toLowerCase();
+    const existingRole = normalizeRole(
+      existingUserData.role ||
+      existingUserData.Role ||
+      existingVendorData.role
+    );
 
     if (existingRole === "admin") {
       throw new HttpsError(
@@ -692,33 +809,25 @@ exports.authorizeVendor = onCall(
       );
     }
 
-    const vendorName =
-      String(
-        data.name ||
-        existingUserData.name ||
-        existingVendorData.name ||
-        vendorUser.displayName ||
-        ""
-      ).trim();
+    const vendorName = cleanString(
+      data.name ||
+      existingUserData.name ||
+      existingVendorData.name ||
+      vendorUser.displayName
+    );
 
-    const vendorEmail =
-      String(
-        data.email ||
-        existingUserData.email ||
-        existingVendorData.email ||
-        vendorUser.email ||
-        ""
-      )
-        .trim()
-        .toLowerCase();
+    const vendorEmail = cleanString(
+      data.email ||
+      existingUserData.email ||
+      existingVendorData.email ||
+      vendorUser.email
+    ).toLowerCase();
 
-    const vendorPhone =
-      String(
-        data.phone ||
-        existingUserData.phone ||
-        existingVendorData.phone ||
-        ""
-      ).trim();
+    const vendorPhone = cleanString(
+      data.phone ||
+      existingUserData.phone ||
+      existingVendorData.phone
+    );
 
     if (!vendorName) {
       throw new HttpsError(
@@ -772,9 +881,7 @@ exports.authorizeVendor = onCall(
                 FieldValue.serverTimestamp(),
             }),
       },
-      {
-        merge: true,
-      }
+      { merge: true }
     );
 
     batch.set(
@@ -813,9 +920,7 @@ exports.authorizeVendor = onCall(
                 FieldValue.serverTimestamp(),
             }),
       },
-      {
-        merge: true,
-      }
+      { merge: true }
     );
 
     await batch.commit();
@@ -847,25 +952,6 @@ exports.authorizeVendor = onCall(
 
 // ============================================================
 // UPDATE VENDOR STATUS - ADMIN ONLY
-//
-// APPROVAL SECURITY:
-//
-// Vendor can become approved ONLY when:
-//
-// 1. Vendor exists
-// 2. User exists
-// 3. role = vendor
-// 4. documentsSubmitted = true
-// 5. All 5 required documents = verified
-//
-// Then:
-// users.status = approved
-// users.active = true
-// users.approvedByAdmin = true
-//
-// vendors.status = approved
-// vendors.active = true
-// vendors.approvedByAdmin = true
 // ============================================================
 
 exports.updateVendorStatus = onCall(
@@ -879,21 +965,13 @@ exports.updateVendorStatus = onCall(
     const data = request.data || {};
 
     const vendorUid =
-      String(
-        data.vendorUid || ""
-      ).trim();
+      cleanString(data.vendorUid);
 
     const status =
-      String(
-        data.status || ""
-      )
-        .trim()
-        .toLowerCase();
+      normalizeStatus(data.status);
 
     const reason =
-      String(
-        data.reason || ""
-      ).trim();
+      cleanString(data.reason);
 
     if (!vendorUid) {
       throw new HttpsError(
@@ -953,18 +1031,16 @@ exports.updateVendorStatus = onCall(
         : {};
 
     const userRole =
-      String(
+      normalizeRole(
         userData.role ||
-        userData.Role ||
-        ""
-      ).toLowerCase();
+        userData.Role
+      );
 
     const vendorRole =
-      String(
+      normalizeRole(
         vendorData.role ||
-        vendorData.Role ||
-        ""
-      ).toLowerCase();
+        vendorData.Role
+      );
 
     if (
       userRole &&
@@ -985,10 +1061,6 @@ exports.updateVendorStatus = onCall(
         "Vendor profile role is invalid."
       );
     }
-
-    // --------------------------------------------------------
-    // FINAL APPROVAL SECURITY
-    // --------------------------------------------------------
 
     if (status === "approved") {
       if (!userDoc.exists) {
@@ -1030,28 +1102,22 @@ exports.updateVendorStatus = onCall(
         );
 
       if (
-        verification.rejectedDocuments.length >
-        0
+        verification.rejectedDocuments.length > 0
       ) {
         throw new HttpsError(
           "failed-precondition",
           "Vendor approval blocked. Rejected documents: " +
-            verification.rejectedDocuments.join(
-              ", "
-            )
+            verification.rejectedDocuments.join(", ")
         );
       }
 
       if (
-        verification.missingDocuments.length >
-        0
+        verification.missingDocuments.length > 0
       ) {
         throw new HttpsError(
           "failed-precondition",
           "Vendor approval blocked. Required documents not verified: " +
-            verification.missingDocuments.join(
-              ", "
-            )
+            verification.missingDocuments.join(", ")
         );
       }
     }
@@ -1102,9 +1168,7 @@ exports.updateVendorStatus = onCall(
             }
           : {}),
       },
-      {
-        merge: true,
-      }
+      { merge: true }
     );
 
     batch.set(
@@ -1143,9 +1207,7 @@ exports.updateVendorStatus = onCall(
             }
           : {}),
       },
-      {
-        merge: true,
-      }
+      { merge: true }
     );
 
     await batch.commit();
@@ -1189,26 +1251,16 @@ exports.updateVendorDocumentStatus = onCall(
     const data = request.data || {};
 
     const vendorUid =
-      String(
-        data.vendorUid || ""
-      ).trim();
+      cleanString(data.vendorUid);
 
     const documentType =
-      String(
-        data.documentType || ""
-      ).trim();
+      cleanString(data.documentType);
 
     const status =
-      String(
-        data.status || ""
-      )
-        .trim()
-        .toLowerCase();
+      normalizeRole(data.status);
 
     const reason =
-      String(
-        data.reason || ""
-      ).trim();
+      cleanString(data.reason);
 
     if (!vendorUid) {
       throw new HttpsError(
@@ -1273,15 +1325,13 @@ exports.updateVendorDocumentStatus = onCall(
       vendorData.documents || {};
 
     const existingDocument =
-      existingDocuments[documentType] ||
-      {};
+      existingDocuments[documentType] || {};
 
     const updatedDocument = {
       ...existingDocument,
 
       status,
 
-      // Keep both names for compatibility
       verificationReason:
         reason,
 
@@ -1310,9 +1360,7 @@ exports.updateVendorDocumentStatus = onCall(
         updatedAt:
           FieldValue.serverTimestamp(),
       },
-      {
-        merge: true,
-      }
+      { merge: true }
     );
 
     return {
@@ -1353,16 +1401,13 @@ exports.updateOrderStatus = onCall(
     const data = request.data || {};
 
     const orderId =
-      String(
-        data.orderId || ""
-      ).trim();
+      cleanString(data.orderId);
 
     const requestedStatus =
-      String(
+      cleanString(
         data.newStatus ||
-        data.status ||
-        ""
-      ).trim();
+        data.status
+      );
 
     if (!orderId) {
       throw new HttpsError(
@@ -1480,23 +1525,17 @@ exports.updateOrderStatus = onCall(
             FieldValue.serverTimestamp(),
         };
 
-        if (
-          newStatus === "Confirmed"
-        ) {
+        if (newStatus === "Confirmed") {
           updateData.confirmedAt =
             FieldValue.serverTimestamp();
         }
 
-        if (
-          newStatus === "Processing"
-        ) {
+        if (newStatus === "Processing") {
           updateData.processingAt =
             FieldValue.serverTimestamp();
         }
 
-        if (
-          newStatus === "Packed"
-        ) {
+        if (newStatus === "Packed") {
           updateData.packedAt =
             FieldValue.serverTimestamp();
         }
@@ -1504,9 +1543,7 @@ exports.updateOrderStatus = onCall(
         transaction.set(
           orderRef,
           updateData,
-          {
-            merge: true,
-          }
+          { merge: true }
         );
 
         result = {
@@ -1556,34 +1593,22 @@ exports.shipOrder = onCall(
     const data = request.data || {};
 
     const orderId =
-      String(
-        data.orderId || ""
-      ).trim();
+      cleanString(data.orderId);
 
     const courierPartner =
-      String(
-        data.courierPartner || ""
-      ).trim();
+      cleanString(data.courierPartner);
 
     const trackingNumber =
-      String(
-        data.trackingNumber || ""
-      ).trim();
+      cleanString(data.trackingNumber);
 
     const trackingUrl =
-      String(
-        data.trackingUrl || ""
-      ).trim();
+      cleanString(data.trackingUrl);
 
     const courierPersonName =
-      String(
-        data.courierPersonName || ""
-      ).trim();
+      cleanString(data.courierPersonName);
 
     const courierPhone =
-      String(
-        data.courierPhone || ""
-      ).trim();
+      cleanString(data.courierPhone);
 
     if (!orderId) {
       throw new HttpsError(
@@ -1647,8 +1672,7 @@ exports.shipOrder = onCall(
             orderData.statusHistory,
             {
               status: "Shipped",
-              previousStatus:
-                "Packed",
+              previousStatus: "Packed",
               updatedBy: "Admin",
               updatedByUid:
                 adminUid,
@@ -1665,14 +1689,11 @@ exports.shipOrder = onCall(
           statusHistory:
             newHistory,
 
-          courierPartner:
-            courierPartner,
+          courierPartner,
 
-          trackingNumber:
-            trackingNumber,
+          trackingNumber,
 
-          trackingUrl:
-            trackingUrl,
+          trackingUrl,
 
           trackingStatus:
             "Shipped",
@@ -1703,9 +1724,7 @@ exports.shipOrder = onCall(
         transaction.set(
           orderRef,
           updateData,
-          {
-            merge: true,
-          }
+          { merge: true }
         );
 
         result = {
@@ -1756,14 +1775,10 @@ exports.cancelOrder = onCall(
     const data = request.data || {};
 
     const orderId =
-      String(
-        data.orderId || ""
-      ).trim();
+      cleanString(data.orderId);
 
     const reason =
-      String(
-        data.reason || ""
-      ).trim();
+      cleanString(data.reason);
 
     if (!orderId) {
       throw new HttpsError(
@@ -1867,9 +1882,7 @@ exports.cancelOrder = onCall(
             updatedAt:
               FieldValue.serverTimestamp(),
           },
-          {
-            merge: true,
-          }
+          { merge: true }
         );
       }
     );
@@ -1896,16 +1909,22 @@ exports.cancelOrder = onCall(
 //
 // SECURITY:
 //
-// Courier MUST:
-// - exist in users
-// - exist in couriers
-// - role courier in both
-// - status approved in both
-// - active true in both
-// - approvedByAdmin true in both
+// Target courier MUST:
 //
-// Order MUST be:
-// Shipped
+// users/{uid}
+// couriers/{uid}
+//
+// role = courier
+// status = approved
+// active = true
+// approvedByAdmin = true
+//
+// Order MUST:
+//
+// status = Shipped
+//
+// Courier information is NEVER trusted from client.
+// It is read from Firestore.
 // ============================================================
 
 exports.assignOrderToCourier = onCall(
@@ -1919,14 +1938,10 @@ exports.assignOrderToCourier = onCall(
     const data = request.data || {};
 
     const orderId =
-      String(
-        data.orderId || ""
-      ).trim();
+      cleanString(data.orderId);
 
     const courierId =
-      String(
-        data.courierId || ""
-      ).trim();
+      cleanString(data.courierId);
 
     if (!orderId) {
       throw new HttpsError(
@@ -1942,164 +1957,18 @@ exports.assignOrderToCourier = onCall(
       );
     }
 
-    const courierUserRef = db
-      .collection("users")
-      .doc(courierId);
+    // --------------------------------------------------------
+    // NEVER TRUST COURIER NAME / PHONE FROM CLIENT
+    // --------------------------------------------------------
 
-    const courierRef = db
-      .collection("couriers")
-      .doc(courierId);
+    const courier =
+      await verifyTargetCourier(
+        courierId
+      );
 
     const orderRef = db
       .collection("orders")
       .doc(orderId);
-
-    const [
-      courierUserDoc,
-      courierDoc,
-    ] = await Promise.all([
-      courierUserRef.get(),
-      courierRef.get(),
-    ]);
-
-    // --------------------------------------------------------
-    // USER PROFILE CHECK
-    // --------------------------------------------------------
-
-    if (!courierUserDoc.exists) {
-      throw new HttpsError(
-        "not-found",
-        "Courier user account not found."
-      );
-    }
-
-    // --------------------------------------------------------
-    // COURIER PROFILE CHECK
-    // --------------------------------------------------------
-
-    if (!courierDoc.exists) {
-      throw new HttpsError(
-        "not-found",
-        "Courier profile not found."
-      );
-    }
-
-    const courierUserData =
-      courierUserDoc.data() || {};
-
-    const courierData =
-      courierDoc.data() || {};
-
-    const courierUserRole =
-      String(
-        courierUserData.role ||
-        courierUserData.Role ||
-        ""
-      ).toLowerCase();
-
-    const courierRole =
-      String(
-        courierData.role ||
-        courierData.Role ||
-        ""
-      ).toLowerCase();
-
-    if (
-      courierUserRole !== "courier" ||
-      courierRole !== "courier"
-    ) {
-      throw new HttpsError(
-        "failed-precondition",
-        "Selected user is not a valid courier."
-      );
-    }
-
-    // --------------------------------------------------------
-    // ADMIN APPROVAL CHECK
-    // --------------------------------------------------------
-
-    if (
-      courierUserData.status !==
-      "approved"
-    ) {
-      throw new HttpsError(
-        "failed-precondition",
-        "Courier is not approved in users profile."
-      );
-    }
-
-    if (
-      courierData.status !==
-      "approved"
-    ) {
-      throw new HttpsError(
-        "failed-precondition",
-        "Courier is not approved in courier profile."
-      );
-    }
-
-    if (
-      courierUserData.approvedByAdmin !==
-      true
-    ) {
-      throw new HttpsError(
-        "failed-precondition",
-        "Courier has not been approved by Admin."
-      );
-    }
-
-    if (
-      courierData.approvedByAdmin !==
-      true
-    ) {
-      throw new HttpsError(
-        "failed-precondition",
-        "Courier profile has not been approved by Admin."
-      );
-    }
-
-    // --------------------------------------------------------
-    // ACTIVE CHECK
-    // --------------------------------------------------------
-
-    if (
-      courierUserData.active !== true ||
-      courierData.active !== true
-    ) {
-      throw new HttpsError(
-        "failed-precondition",
-        "Selected courier is inactive."
-      );
-    }
-
-    let courierName =
-      String(
-        courierUserData.name ||
-        courierUserData.displayName ||
-        ""
-      ).trim();
-
-    let courierPhone =
-      String(
-        courierUserData.phone ||
-        ""
-      ).trim();
-
-    courierName =
-      String(
-        courierData.name ||
-        courierName
-      ).trim();
-
-    courierPhone =
-      String(
-        courierData.phone ||
-        courierPhone
-      ).trim();
-
-    // --------------------------------------------------------
-    // ORDER TRANSACTION
-    // --------------------------------------------------------
 
     await db.runTransaction(
       async (transaction) => {
@@ -2132,9 +2001,9 @@ exports.assignOrderToCourier = onCall(
         }
 
         const existingCourierId =
-          String(
-            orderData.courierId || ""
-          ).trim();
+          cleanString(
+            orderData.courierId
+          );
 
         if (
           existingCourierId &&
@@ -2152,10 +2021,10 @@ exports.assignOrderToCourier = onCall(
             courierId,
 
             courierPersonName:
-              courierName,
+              courier.name,
 
             courierPhone:
-              courierPhone,
+              courier.phone,
 
             courierAssignedAt:
               FieldValue.serverTimestamp(),
@@ -2166,9 +2035,7 @@ exports.assignOrderToCourier = onCall(
             updatedAt:
               FieldValue.serverTimestamp(),
           },
-          {
-            merge: true,
-          }
+          { merge: true }
         );
       }
     );
@@ -2181,9 +2048,10 @@ exports.assignOrderToCourier = onCall(
       courierId,
 
       courierPersonName:
-        courierName,
+        courier.name,
 
-      courierPhone,
+      courierPhone:
+        courier.phone,
 
       assignedBy:
         adminUid,
@@ -2206,8 +2074,11 @@ exports.assignOrderToCourier = onCall(
 //    ↓
 // Delivered
 //
-// verifyCourier() ensures:
-// approved + active + Admin approval
+// IMPORTANT:
+//
+// Courier can ONLY change delivery-status fields.
+// Payment/COD/order-total fields are NEVER accepted
+// from courier request.
 // ============================================================
 
 exports.updateCourierOrderStatus = onCall(
@@ -2221,14 +2092,10 @@ exports.updateCourierOrderStatus = onCall(
     const data = request.data || {};
 
     const orderId =
-      String(
-        data.orderId || ""
-      ).trim();
+      cleanString(data.orderId);
 
     const requestedStatus =
-      String(
-        data.status || ""
-      ).trim();
+      cleanString(data.status);
 
     if (!orderId) {
       throw new HttpsError(
@@ -2249,12 +2116,16 @@ exports.updateCourierOrderStatus = onCall(
         requestedStatus
       );
 
+    const allowedCourierStatuses = [
+      "Picked by Courier",
+      "Out for Delivery",
+      "Delivered",
+    ];
+
     if (
-      ![
-        "Picked by Courier",
-        "Out for Delivery",
-        "Delivered",
-      ].includes(newStatus)
+      !allowedCourierStatuses.includes(
+        newStatus
+      )
     ) {
       throw new HttpsError(
         "invalid-argument",
@@ -2285,16 +2156,14 @@ exports.updateCourierOrderStatus = onCall(
         const orderData =
           orderDoc.data() || {};
 
-        const currentStatus =
-          normalizeOrderStatus(
-            orderData.orderStatus ||
-            orderData.status
-          );
+        // ----------------------------------------------------
+        // VERIFY ASSIGNMENT
+        // ----------------------------------------------------
 
         const assignedCourierId =
-          String(
-            orderData.courierId || ""
-          ).trim();
+          cleanString(
+            orderData.courierId
+          );
 
         if (!assignedCourierId) {
           throw new HttpsError(
@@ -2312,6 +2181,16 @@ exports.updateCourierOrderStatus = onCall(
             "This order is assigned to another courier."
           );
         }
+
+        // ----------------------------------------------------
+        // VERIFY CURRENT STATUS
+        // ----------------------------------------------------
+
+        const currentStatus =
+          normalizeOrderStatus(
+            orderData.orderStatus ||
+            orderData.status
+          );
 
         const allowedNextStatus = {
           Shipped:
@@ -2345,6 +2224,17 @@ exports.updateCourierOrderStatus = onCall(
               expectedNext
           );
         }
+
+        // ----------------------------------------------------
+        // IMPORTANT COD / PAYMENT PROTECTION
+        //
+        // We intentionally construct updateData ONLY with
+        // courier delivery fields.
+        //
+        // Client cannot pass paymentMethod,
+        // paymentStatus, codAmount, totalAmount,
+        // subtotal, discount, deliveryFee, etc.
+        // ----------------------------------------------------
 
         const newHistory =
           buildStatusHistory(
@@ -2418,9 +2308,7 @@ exports.updateCourierOrderStatus = onCall(
         transaction.set(
           orderRef,
           updateData,
-          {
-            merge: true,
-          }
+          { merge: true }
         );
 
         result = {
