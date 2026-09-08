@@ -11,12 +11,17 @@ class VendorDocumentsPage extends StatefulWidget {
   });
 
   @override
-  State<VendorDocumentsPage> createState() => _VendorDocumentsPageState();
+  State<VendorDocumentsPage> createState() =>
+      _VendorDocumentsPageState();
 }
 
-class _VendorDocumentsPageState extends State<VendorDocumentsPage> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+class _VendorDocumentsPageState
+    extends State<VendorDocumentsPage> {
+  final FirebaseFirestore _firestore =
+      FirebaseFirestore.instance;
+
+  final FirebaseAuth _auth =
+      FirebaseAuth.instance;
 
   bool _loading = true;
   bool _saving = false;
@@ -28,15 +33,18 @@ class _VendorDocumentsPageState extends State<VendorDocumentsPage> {
   String _vendorEmail = '';
 
   String _status = 'pending_documents';
+
   bool _documentsSubmitted = false;
   bool _active = false;
   bool _approvedByAdmin = false;
 
   String _rejectionReason = '';
 
-  final Map<String, String> _documentNumbers = {};
+  final Map<String, TextEditingController>
+      _controllers = {};
 
-  final Map<String, String> _documentTitles = {
+  final Map<String, String>
+      _documentTitles = {
     'pan': 'PAN Card',
     'aadhaar': 'Aadhaar / ID Proof',
     'gst': 'GST Number',
@@ -44,15 +52,18 @@ class _VendorDocumentsPageState extends State<VendorDocumentsPage> {
     'addressProof': 'Address Proof',
   };
 
-  final Map<String, String> _documentHints = {
-    'pan': 'Example: ABCDE1234F',
-    'aadhaar': 'Example: 123456789012',
-    'gst': 'Example: 08ABCDE1234F1Z5',
-    'bank': 'Example: Account Number / Bank Details',
-    'addressProof': 'Example: Voter ID / Passport / Other ID No.',
+  final Map<String, String>
+      _documentHints = {
+    'pan': 'ABCDE1234F',
+    'aadhaar': '123456789012',
+    'gst': '08ABCDE1234F1Z5',
+    'bank': 'Account Number / Bank Details',
+    'addressProof':
+        'Voter ID / Passport / Other ID Number',
   };
 
-  final List<String> _requiredDocumentKeys = const [
+  final List<String>
+      _requiredDocumentKeys = const [
     'pan',
     'aadhaar',
     'gst',
@@ -60,16 +71,16 @@ class _VendorDocumentsPageState extends State<VendorDocumentsPage> {
     'addressProof',
   ];
 
-  final Map<String, TextEditingController> _controllers = {};
-
   @override
   void initState() {
     super.initState();
 
-    _uid = widget.vendorUid ?? _auth.currentUser?.uid;
+    _uid = widget.vendorUid ??
+        _auth.currentUser?.uid;
 
     for (final key in _requiredDocumentKeys) {
-      _controllers[key] = TextEditingController();
+      _controllers[key] =
+          TextEditingController();
     }
 
     _loadVendorData();
@@ -77,12 +88,17 @@ class _VendorDocumentsPageState extends State<VendorDocumentsPage> {
 
   @override
   void dispose() {
-    for (final controller in _controllers.values) {
+    for (final controller
+        in _controllers.values) {
       controller.dispose();
     }
 
     super.dispose();
   }
+
+  // ============================================================
+  // LOAD VENDOR
+  // ============================================================
 
   Future<void> _loadVendorData() async {
     if (_uid == null) {
@@ -95,60 +111,99 @@ class _VendorDocumentsPageState extends State<VendorDocumentsPage> {
     }
 
     try {
-      final vendorRef = _firestore.collection('vendors').doc(_uid);
-      final userRef = _firestore.collection('users').doc(_uid);
+      final vendorRef =
+          _firestore.collection('vendors').doc(_uid);
 
-      final vendorSnapshot = await vendorRef.get();
+      final userRef =
+          _firestore.collection('users').doc(_uid);
+
+      final vendorSnapshot =
+          await vendorRef.get();
 
       Map<String, dynamic> data = {};
 
       if (vendorSnapshot.exists) {
-        data = vendorSnapshot.data() ?? {};
+        data =
+            vendorSnapshot.data() ?? {};
       } else {
-        final userSnapshot = await userRef.get();
-        final userData = userSnapshot.data() ?? {};
+        final userSnapshot =
+            await userRef.get();
+
+        final userData =
+            userSnapshot.data() ?? {};
 
         final role =
-            userData['role']?.toString().toLowerCase().trim() ?? '';
+            (userData['role'] ?? '')
+                .toString()
+                .trim()
+                .toLowerCase();
 
         if (role == 'vendor') {
           data = {
             'uid': _uid,
             'role': 'vendor',
-            'name': userData['name'] ??
-                _auth.currentUser?.displayName ??
-                '',
-            'phone': userData['phone'] ??
-                _auth.currentUser?.phoneNumber ??
-                '',
-            'email': userData['email'] ??
-                _auth.currentUser?.email ??
-                '',
-            'status': userData['status'] ?? 'pending_documents',
+            'name':
+                userData['name'] ??
+                    _auth.currentUser
+                        ?.displayName ??
+                    '',
+            'phone':
+                userData['phone'] ??
+                    _auth.currentUser
+                        ?.phoneNumber ??
+                    '',
+            'email':
+                userData['email'] ??
+                    _auth.currentUser
+                        ?.email ??
+                    '',
+            'status':
+                userData['status'] ??
+                    'pending_documents',
             'registrationStatus':
-                userData['registrationStatus'] ?? 'pending_documents',
-            'active': userData['active'] == true,
+                userData[
+                        'registrationStatus'] ??
+                    'pending_documents',
+            'active':
+                userData['active'] == true,
             'documentsSubmitted':
-                userData['documentsSubmitted'] == true,
+                userData[
+                        'documentsSubmitted'] ==
+                    true,
             'approvedByAdmin':
-                userData['approvedByAdmin'] == true,
+                userData[
+                        'approvedByAdmin'] ==
+                    true,
             'documents': {},
           };
 
           await vendorRef.set(
             {
               ...data,
-              'createdAt': FieldValue.serverTimestamp(),
-              'updatedAt': FieldValue.serverTimestamp(),
+              'createdAt':
+                  FieldValue.serverTimestamp(),
+              'updatedAt':
+                  FieldValue.serverTimestamp(),
             },
             SetOptions(merge: true),
           );
         }
       }
 
-      _vendorName = data['name']?.toString().trim() ?? '';
-      _vendorPhone = data['phone']?.toString().trim() ?? '';
-      _vendorEmail = data['email']?.toString().trim() ?? '';
+      _vendorName =
+          (data['name'] ?? '')
+              .toString()
+              .trim();
+
+      _vendorPhone =
+          (data['phone'] ?? '')
+              .toString()
+              .trim();
+
+      _vendorEmail =
+          (data['email'] ?? '')
+              .toString()
+              .trim();
 
       _status = _normalizeStatus(
         data['status'] ??
@@ -156,40 +211,46 @@ class _VendorDocumentsPageState extends State<VendorDocumentsPage> {
             'pending_documents',
       );
 
-      _documentsSubmitted = data['documentsSubmitted'] == true;
-      _active = data['active'] == true;
-      _approvedByAdmin = data['approvedByAdmin'] == true;
+      _documentsSubmitted =
+          data['documentsSubmitted'] ==
+              true;
+
+      _active =
+          data['active'] == true;
+
+      _approvedByAdmin =
+          data['approvedByAdmin'] ==
+              true;
 
       _rejectionReason =
-          data['rejectionReason']?.toString().trim() ?? '';
+          (data['rejectionReason'] ?? '')
+              .toString()
+              .trim();
 
-      _documentNumbers.clear();
+      final documents =
+          data['documents'];
 
-      final documentsData = data['documents'];
+      if (documents is Map) {
+        for (final key
+            in _requiredDocumentKeys) {
+          final document =
+              documents[key];
 
-      if (documentsData is Map) {
-        for (final key in _requiredDocumentKeys) {
-          final document = documentsData[key];
+          String number = '';
 
           if (document is Map) {
-            final number =
-                document['number']?.toString().trim() ?? '';
-
-            if (number.isNotEmpty) {
-              _documentNumbers[key] = number;
-            }
+            number =
+                (document['number'] ?? '')
+                    .toString()
+                    .trim();
           } else if (document != null) {
-            final number = document.toString().trim();
-
-            if (number.isNotEmpty) {
-              _documentNumbers[key] = number;
-            }
+            number =
+                document.toString().trim();
           }
-        }
-      }
 
-      for (final key in _requiredDocumentKeys) {
-        _controllers[key]!.text = _documentNumbers[key] ?? '';
+          _controllers[key]!.text =
+              number;
+        }
       }
 
       if (mounted) {
@@ -204,23 +265,27 @@ class _VendorDocumentsPageState extends State<VendorDocumentsPage> {
         });
 
         _showMessage(
-          'Vendor details load nahi ho paye.\n$e',
-          isError: true,
+          'Vendor details load nahi ho paye.',
+          error: true,
         );
       }
     }
   }
 
+  // ============================================================
+  // STATUS
+  // ============================================================
+
   String _normalizeStatus(dynamic value) {
-    return value
-            ?.toString()
-            .toLowerCase()
-            .trim()
-            .replaceAll(' ', '_') ??
-        '';
+    return (value ?? '')
+        .toString()
+        .trim()
+        .toLowerCase()
+        .replaceAll(' ', '_');
   }
 
-  bool get _isPendingApproval => _status == 'pending_approval';
+  bool get _isPendingApproval =>
+      _status == 'pending_approval';
 
   bool get _isApproved =>
       _status == 'approved' &&
@@ -228,219 +293,146 @@ class _VendorDocumentsPageState extends State<VendorDocumentsPage> {
       _approvedByAdmin;
 
   bool get _canEditDocuments {
-    if (_isPendingApproval) return false;
-    if (_isApproved) return false;
+    if (_isPendingApproval) {
+      return false;
+    }
+
+    if (_isApproved) {
+      return false;
+    }
+
     return true;
   }
 
-  Widget _buildStatusHeader() {
-    String title;
-    String message;
-    IconData icon;
-    Color color;
+  // ============================================================
+  // STATUS INFORMATION
+  // ============================================================
 
-    if (_status == 'pending_documents' || !_documentsSubmitted) {
-      title = 'KYC Details Pending';
-      message =
-          'Vendor registration successful hai. Sabhi required KYC details enter karke Admin approval ke liye submit karein.';
-      icon = Icons.assignment_outlined;
-      color = Colors.orange;
-    } else if (_status == 'pending_approval') {
-      title = 'Admin Approval Pending';
-      message =
-          'Aapki Vendor application Admin approval ke liye submit ho chuki hai. Approval milne tak Vendor account active nahi hoga.';
-      icon = Icons.hourglass_top;
-      color = Colors.orange;
-    } else if (_status == 'rejected') {
-      title = 'Application Rejected';
-      message =
-          'Admin ne application reject ki hai. Rejection reason check karke details correct karein aur dobara submit karein.';
-      icon = Icons.cancel_outlined;
-      color = Colors.red;
-    } else if (_isApproved) {
-      title = 'Vendor Approved';
-      message =
-          'Aapka Vendor account Admin dwara approved aur active hai.';
-      icon = Icons.check_circle;
-      color = Colors.green;
-    } else {
-      title = 'Application Status';
-      message = 'Aapka Vendor application verification mein hai.';
-      icon = Icons.info_outline;
-      color = Colors.blue;
+  String get _statusTitle {
+    if (_status == 'pending_documents' ||
+        !_documentsSubmitted) {
+      return 'KYC Details Required';
     }
 
-    return Card(
-      elevation: 3,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: color.withValues(alpha: 0.35),
-          ),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                icon,
-                color: color,
-                size: 28,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.bold,
-                      color: color,
-                    ),
-                  ),
-                  const SizedBox(height: 7),
-                  Text(
-                    message,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      height: 1.45,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    if (_status == 'pending_approval') {
+      return 'Admin Approval Pending';
+    }
+
+    if (_status == 'rejected') {
+      return 'Application Rejected';
+    }
+
+    if (_isApproved) {
+      return 'Vendor Approved';
+    }
+
+    return 'Application Under Review';
   }
 
-  Widget _buildVendorProfileCard() {
-    final firstLetter = _vendorName.isNotEmpty
-        ? _vendorName[0].toUpperCase()
-        : 'V';
+  String get _statusMessage {
+    if (_status == 'pending_documents' ||
+        !_documentsSubmitted) {
+      return 'Required KYC details complete karke '
+          'Admin approval ke liye submit karein.';
+    }
 
-    return Card(
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 29,
-              child: Text(
-                firstLetter,
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _vendorName.isEmpty ? 'Vendor' : _vendorName,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  if (_vendorPhone.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        _vendorPhone,
-                        style: const TextStyle(
-                          color: Colors.grey,
-                        ),
-                      ),
-                    ),
-                  if (_vendorEmail.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        _vendorEmail,
-                        style: const TextStyle(
-                          color: Colors.grey,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    if (_status == 'pending_approval') {
+      return 'Aapki KYC details Admin ko bhej di gayi hain. '
+          'Approval ka wait karein.';
+    }
+
+    if (_status == 'rejected') {
+      return 'Admin ne application reject ki hai. '
+          'Reason check karke details correct karein.';
+    }
+
+    if (_isApproved) {
+      return 'Aapka Vendor account Admin dwara '
+          'approved aur active hai.';
+    }
+
+    return 'Aapka Vendor application verification mein hai.';
   }
 
-  Widget _buildDocumentCard(String key) {
-    final controller = _controllers[key]!;
-    final editable = _canEditDocuments && !_saving;
+  Color get _statusColor {
+    if (_status == 'rejected') {
+      return Colors.red;
+    }
 
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 14),
-      child: Padding(
-        padding: const EdgeInsets.all(15),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.verified_user_outlined),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    _documentTitles[key]!,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: controller,
-              enabled: editable,
-              textCapitalization: TextCapitalization.characters,
-              decoration: InputDecoration(
-                labelText: 'Enter ${_documentTitles[key]}',
-                hintText: _documentHints[key],
-                border: const OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    if (_isApproved) {
+      return Colors.green;
+    }
+
+    if (_status == 'pending_approval') {
+      return Colors.orange;
+    }
+
+    return Colors.blue;
   }
 
-  Future<void> _saveDocumentNumbers() async {
-    if (_uid == null) return;
+  IconData get _statusIcon {
+    if (_status == 'rejected') {
+      return Icons.cancel_rounded;
+    }
 
-    for (final key in _requiredDocumentKeys) {
-      if (_controllers[key]!.text.trim().isEmpty) {
+    if (_isApproved) {
+      return Icons.verified_rounded;
+    }
+
+    if (_status == 'pending_approval') {
+      return Icons.hourglass_top_rounded;
+    }
+
+    return Icons.assignment_rounded;
+  }
+
+  // ============================================================
+  // PROGRESS
+  // ============================================================
+
+  int get _completedDocuments {
+    int count = 0;
+
+    for (final key
+        in _requiredDocumentKeys) {
+      if (_controllers[key]!
+          .text
+          .trim()
+          .isNotEmpty) {
+        count++;
+      }
+    }
+
+    return count;
+  }
+
+  double get _progress {
+    if (_requiredDocumentKeys.isEmpty) {
+      return 0;
+    }
+
+    return _completedDocuments /
+        _requiredDocumentKeys.length;
+  }
+
+  // ============================================================
+  // SAVE
+  // ============================================================
+
+  Future<void> _saveKycDetails() async {
+    if (_uid == null) {
+      return;
+    }
+
+    for (final key
+        in _requiredDocumentKeys) {
+      if (_controllers[key]!
+          .text
+          .trim()
+          .isEmpty) {
         _showMessage(
           '${_documentTitles[key]} enter karein.',
-          isError: true,
+          error: true,
         );
         return;
       }
@@ -451,56 +443,86 @@ class _VendorDocumentsPageState extends State<VendorDocumentsPage> {
     });
 
     try {
-      final Map<String, dynamic> documents = {};
+      final Map<String, dynamic>
+          documents = {};
 
-      for (final key in _requiredDocumentKeys) {
-        final number = _controllers[key]!.text.trim();
-
+      for (final key
+          in _requiredDocumentKeys) {
         documents[key] = {
-          'number': number,
+          'number':
+              _controllers[key]!
+                  .text
+                  .trim(),
           'status': 'pending',
           'rejectionReason': '',
-          'updatedAt': FieldValue.serverTimestamp(),
+          'updatedAt':
+              FieldValue.serverTimestamp(),
         };
       }
 
-      await _firestore.collection('vendors').doc(_uid).update({
-        'documents': documents,
-        'updatedAt': FieldValue.serverTimestamp(),
+      await _firestore
+          .collection('vendors')
+          .doc(_uid)
+          .set(
+        {
+          'documents': documents,
+          'updatedAt':
+              FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _saving = false;
       });
 
-      if (mounted) {
-        setState(() {
-          _saving = false;
-        });
-      }
-
-      _showMessage('KYC details save ho gayi hain.');
+      _showMessage(
+        'KYC details save ho gayi hain.',
+      );
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _saving = false;
-        });
-      }
+      if (!mounted) return;
+
+      setState(() {
+        _saving = false;
+      });
 
       _showMessage(
-        'KYC details save nahi ho payi.\n$e',
-        isError: true,
+        'KYC details save nahi ho payi.',
+        error: true,
       );
     }
   }
 
-  Future<void> _submitForApproval() async {
-    if (_uid == null) return;
+  // ============================================================
+  // SUBMIT FOR ADMIN APPROVAL
+  // ============================================================
 
-    for (final key in _requiredDocumentKeys) {
-      if (_controllers[key]!.text.trim().isEmpty) {
+  Future<void> _submitForApproval() async {
+    if (_uid == null) {
+      return;
+    }
+
+    for (final key
+        in _requiredDocumentKeys) {
+      if (_controllers[key]!
+          .text
+          .trim()
+          .isEmpty) {
         _showMessage(
           '${_documentTitles[key]} enter karein.',
-          isError: true,
+          error: true,
         );
         return;
       }
+    }
+
+    final shouldSubmit =
+        await _confirmSubmit();
+
+    if (!shouldSubmit) {
+      return;
     }
 
     setState(() {
@@ -508,39 +530,58 @@ class _VendorDocumentsPageState extends State<VendorDocumentsPage> {
     });
 
     try {
-      final Map<String, dynamic> documents = {};
+      final Map<String, dynamic>
+          documents = {};
 
-      for (final key in _requiredDocumentKeys) {
-        final number = _controllers[key]!.text.trim();
-
+      for (final key
+          in _requiredDocumentKeys) {
         documents[key] = {
-          'number': number,
+          'number':
+              _controllers[key]!
+                  .text
+                  .trim(),
           'status': 'pending',
           'rejectionReason': '',
-          'updatedAt': FieldValue.serverTimestamp(),
+          'updatedAt':
+              FieldValue.serverTimestamp(),
         };
       }
 
-      final batch = _firestore.batch();
+      final batch =
+          _firestore.batch();
 
       final vendorRef =
-          _firestore.collection('vendors').doc(_uid);
+          _firestore
+              .collection('vendors')
+              .doc(_uid);
 
       final userRef =
-          _firestore.collection('users').doc(_uid);
+          _firestore
+              .collection('users')
+              .doc(_uid);
 
-      batch.update(vendorRef, {
-        'documents': documents,
-        'documentsSubmitted': true,
-        'status': 'pending_approval',
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      batch.set(
+        vendorRef,
+        {
+          'documents': documents,
+          'documentsSubmitted': true,
+          'status': 'pending_approval',
+          'updatedAt':
+              FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
 
-      batch.update(userRef, {
-        'documentsSubmitted': true,
-        'status': 'pending_approval',
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      batch.set(
+        userRef,
+        {
+          'documentsSubmitted': true,
+          'status': 'pending_approval',
+          'updatedAt':
+              FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
 
       await batch.commit();
 
@@ -552,242 +593,867 @@ class _VendorDocumentsPageState extends State<VendorDocumentsPage> {
         _status = 'pending_approval';
       });
 
-      await showDialog(
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            title: const Text('Submitted Successfully'),
-            content: const Text(
-              'Aapki Vendor KYC details Admin approval ke liye submit ho gayi hain.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                },
-                child: const Text('OK'),
-              ),
-            ],
-          );
-        },
-      );
+      await _showSubmittedDialog();
 
       if (mounted) {
         Navigator.pop(context);
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _saving = false;
-        });
-      }
+      if (!mounted) return;
+
+      setState(() {
+        _saving = false;
+      });
 
       _showMessage(
-        'Application submit nahi ho payi.\n$e',
-        isError: true,
+        'Application submit nahi ho payi.',
+        error: true,
       );
     }
   }
 
-  Widget _buildProgressCard() {
-    int completed = 0;
+  // ============================================================
+  // CONFIRM SUBMIT
+  // ============================================================
 
-    for (final key in _requiredDocumentKeys) {
-      if (_controllers[key]!.text.trim().isNotEmpty) {
-        completed++;
-      }
-    }
-
-    final total = _requiredDocumentKeys.length;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'KYC Progress: $completed / $total',
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
+  Future<bool> _confirmSubmit() async {
+    final result =
+        await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius:
+                BorderRadius.circular(22),
+          ),
+          title: const Text(
+            'Submit KYC?',
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
             ),
-            const SizedBox(height: 10),
-            LinearProgressIndicator(
-              value: total == 0 ? 0 : completed / total,
-              minHeight: 8,
-              borderRadius: BorderRadius.circular(10),
+          ),
+          content: const Text(
+            'KYC details Admin approval ke liye '
+            'submit karne ke baad details temporarily lock ho jayengi.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () =>
+                  Navigator.pop(
+                context,
+                false,
+              ),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.pop(
+                context,
+                true,
+              ),
+              child: const Text('Submit'),
             ),
           ],
+        );
+      },
+    );
+
+    return result == true;
+  }
+
+  // ============================================================
+  // SUCCESS DIALOG
+  // ============================================================
+
+  Future<void> _showSubmittedDialog() async {
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius:
+                BorderRadius.circular(22),
+          ),
+          icon: const Icon(
+            Icons.check_circle_rounded,
+            color: Colors.green,
+            size: 55,
+          ),
+          title: const Text(
+            'Submitted Successfully',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          content: const Text(
+            'Aapki Vendor KYC details Admin approval ke liye submit ho gayi hain.',
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () =>
+                  Navigator.pop(context),
+              child: const Text('Done'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // ============================================================
+  // STATUS CARD
+  // ============================================================
+
+  Widget _buildStatusCard() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            _statusColor,
+            _statusColor.withOpacity(0.75),
+          ],
         ),
+        borderRadius:
+            BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+            color:
+                _statusColor.withOpacity(0.18),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color:
+                  Colors.white.withOpacity(0.18),
+              borderRadius:
+                  BorderRadius.circular(17),
+            ),
+            child: Icon(
+              _statusIcon,
+              color: Colors.white,
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _statusTitle,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _statusMessage,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    height: 1.45,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
+  // ============================================================
+  // VENDOR PROFILE
+  // ============================================================
+
+  Widget _buildVendorCard() {
+    final letter =
+        _vendorName.isEmpty
+            ? 'V'
+            : _vendorName[0]
+                .toUpperCase();
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius:
+            BorderRadius.circular(22),
+        border: Border.all(
+          color: Colors.grey.shade200,
+        ),
+        boxShadow: [
+          BoxShadow(
+            blurRadius: 18,
+            offset: const Offset(0, 7),
+            color:
+                Colors.black.withOpacity(0.04),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 58,
+            height: 58,
+            decoration: BoxDecoration(
+              gradient:
+                  const LinearGradient(
+                colors: [
+                  Color(0xFF111827),
+                  Color(0xFF374151),
+                ],
+              ),
+              borderRadius:
+                  BorderRadius.circular(18),
+            ),
+            child: Center(
+              child: Text(
+                letter,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 25,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _vendorName.isEmpty
+                      ? 'Vendor'
+                      : _vendorName,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                if (_vendorPhone.isNotEmpty)
+                  Padding(
+                    padding:
+                        const EdgeInsets.only(
+                      top: 5,
+                    ),
+                    child: Text(
+                      _vendorPhone,
+                      style: TextStyle(
+                        color:
+                            Colors.grey.shade600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                if (_vendorEmail.isNotEmpty)
+                  Padding(
+                    padding:
+                        const EdgeInsets.only(
+                      top: 2,
+                    ),
+                    child: Text(
+                      _vendorEmail,
+                      maxLines: 1,
+                      overflow:
+                          TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color:
+                            Colors.grey.shade600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // PROGRESS CARD
+  // ============================================================
+
+  Widget _buildProgressCard() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius:
+            BorderRadius.circular(22),
+        border: Border.all(
+          color: Colors.grey.shade200,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.task_alt_rounded,
+                size: 22,
+              ),
+              const SizedBox(width: 9),
+              const Expanded(
+                child: Text(
+                  'KYC Progress',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Text(
+                '$_completedDocuments/${_requiredDocumentKeys.length}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius:
+                BorderRadius.circular(10),
+            child: LinearProgressIndicator(
+              value: _progress,
+              minHeight: 9,
+              backgroundColor:
+                  Colors.grey.shade200,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _completedDocuments ==
+                    _requiredDocumentKeys.length
+                ? 'All required details completed'
+                : 'Sabhi required details complete karein',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // REJECTION CARD
+  // ============================================================
+
   Widget _buildRejectionCard() {
-    if (_status != 'rejected' || _rejectionReason.isEmpty) {
+    if (_status != 'rejected' ||
+        _rejectionReason.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    return Card(
-      color: Colors.red.withValues(alpha: 0.08),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(
-              Icons.warning_amber_rounded,
-              color: Colors.red,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Rejection Reason',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(_rejectionReason),
-                ],
-              ),
-            ),
-          ],
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.red.withOpacity(0.07),
+        borderRadius:
+            BorderRadius.circular(18),
+        border: Border.all(
+          color: Colors.red.withOpacity(0.20),
         ),
+      ),
+      child: Row(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.warning_amber_rounded,
+            color: Colors.red,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Admin Remark',
+                  style: TextStyle(
+                    color: Colors.red,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  _rejectionReason,
+                  style: const TextStyle(
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
+
+  // ============================================================
+  // DOCUMENT FIELD
+  // ============================================================
+
+  Widget _buildDocumentField(
+    String key,
+    int index,
+  ) {
+    final controller =
+        _controllers[key]!;
+
+    final editable =
+        _canEditDocuments &&
+            !_saving;
+
+    return Container(
+      margin:
+          const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius:
+            BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.grey.shade200,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color:
+                      const Color(0xFFF1F5F9),
+                  borderRadius:
+                      BorderRadius.circular(12),
+                ),
+                child: Center(
+                  child: Text(
+                    '${index + 1}',
+                    style: const TextStyle(
+                      fontWeight:
+                          FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _documentTitles[key]!,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 13),
+          TextField(
+            controller: controller,
+            enabled: editable,
+            textCapitalization:
+                TextCapitalization.characters,
+            decoration: InputDecoration(
+              labelText:
+                  _documentTitles[key],
+              hintText:
+                  _documentHints[key],
+              prefixIcon: const Icon(
+                Icons.badge_outlined,
+              ),
+              filled: true,
+              fillColor:
+                  const Color(0xFFF8F9FC),
+              border: OutlineInputBorder(
+                borderRadius:
+                    BorderRadius.circular(15),
+                borderSide:
+                    BorderSide.none,
+              ),
+              disabledBorder:
+                  OutlineInputBorder(
+                borderRadius:
+                    BorderRadius.circular(15),
+                borderSide:
+                    BorderSide.none,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // MESSAGE
+  // ============================================================
 
   void _showMessage(
     String message, {
-    bool isError = false,
+    bool error = false,
   }) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? Colors.red : Colors.green,
-      ),
-    );
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior:
+              SnackBarBehavior.floating,
+          margin:
+              const EdgeInsets.all(16),
+          backgroundColor:
+              error
+                  ? Colors.red.shade700
+                  : Colors.green.shade700,
+          shape: RoundedRectangleBorder(
+            borderRadius:
+                BorderRadius.circular(14),
+          ),
+        ),
+      );
   }
+
+  // ============================================================
+  // BUILD
+  // ============================================================
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor:
+          const Color(0xFFF7F8FC),
       appBar: AppBar(
-        title: const Text('Vendor KYC & Documents'),
+        title: const Text(
+          'Vendor KYC',
+          style: TextStyle(
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        centerTitle: false,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        surfaceTintColor:
+            Colors.transparent,
       ),
       body: _loading
           ? const Center(
-              child: CircularProgressIndicator(),
+              child:
+                  CircularProgressIndicator(),
             )
           : RefreshIndicator(
               onRefresh: _loadVendorData,
               child: ListView(
-                padding: const EdgeInsets.all(16),
+                physics:
+                    const AlwaysScrollableScrollPhysics(),
+                padding:
+                    const EdgeInsets.fromLTRB(
+                  16,
+                  8,
+                  16,
+                  35,
+                ),
                 children: [
-                  _buildStatusHeader(),
+                  // HEADER
+                  _buildStatusCard(),
+
                   const SizedBox(height: 14),
-                  _buildVendorProfileCard(),
+
+                  // PROFILE
+                  _buildVendorCard(),
+
                   const SizedBox(height: 14),
+
+                  // REJECTION
                   _buildRejectionCard(),
-                  const SizedBox(height: 14),
+
+                  if (_status == 'rejected' &&
+                      _rejectionReason.isNotEmpty)
+                    const SizedBox(height: 14),
+
+                  // PROGRESS
                   _buildProgressCard(),
-                  const SizedBox(height: 18),
+
+                  const SizedBox(height: 22),
+
                   const Text(
                     'Required KYC Details',
                     style: TextStyle(
                       fontSize: 20,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  for (final key in _requiredDocumentKeys)
-                    _buildDocumentCard(key),
-                  const SizedBox(height: 8),
-                  if (_canEditDocuments)
-                    Column(
-                      children: [
-                        SizedBox(
-                          width: double.infinity,
-                          height: 50,
-                          child: OutlinedButton.icon(
-                            onPressed:
-                                _saving ? null : _saveDocumentNumbers,
-                            icon: const Icon(Icons.save_outlined),
-                            label: Text(
-                              _saving
-                                  ? 'Saving...'
-                                  : 'Save KYC Details',
+
+                  const SizedBox(height: 5),
+
+                  Text(
+                    'Neeche sabhi required details carefully enter karein.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color:
+                          Colors.grey.shade600,
+                    ),
+                  ),
+
+                  const SizedBox(height: 15),
+
+                  // DOCUMENT FIELDS
+                  for (int i = 0;
+                      i <
+                          _requiredDocumentKeys
+                              .length;
+                      i++)
+                    _buildDocumentField(
+                      _requiredDocumentKeys[i],
+                      i,
+                    ),
+
+                  const SizedBox(height: 4),
+
+                  // ACTIONS
+                  if (_canEditDocuments) ...[
+                    SizedBox(
+                      height: 52,
+                      child: OutlinedButton.icon(
+                        onPressed: _saving
+                            ? null
+                            : _saveKycDetails,
+                        icon: const Icon(
+                          Icons.save_outlined,
+                        ),
+                        label: Text(
+                          _saving
+                              ? 'Saving...'
+                              : 'Save KYC Details',
+                          style:
+                              const TextStyle(
+                            fontWeight:
+                                FontWeight.w800,
+                          ),
+                        ),
+                        style:
+                            OutlinedButton.styleFrom(
+                          shape:
+                              RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.circular(
+                              16,
                             ),
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 52,
-                          child: ElevatedButton.icon(
-                            onPressed:
-                                _saving ? null : _submitForApproval,
-                            icon: _saving
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child:
-                                        CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.send_outlined,
-                                  ),
-                            label: Text(
-                              _saving
-                                  ? 'Submitting...'
-                                  : 'Submit for Admin Approval',
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    SizedBox(
+                      height: 54,
+                      child: FilledButton.icon(
+                        onPressed: _saving
+                            ? null
+                            : _submitForApproval,
+                        icon: _saving
+                            ? const SizedBox(
+                                width: 21,
+                                height: 21,
+                                child:
+                                    CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color:
+                                      Colors.white,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.send_rounded,
+                              ),
+                        label: Text(
+                          _saving
+                              ? 'Submitting...'
+                              : 'Submit for Admin Approval',
+                          style:
+                              const TextStyle(
+                            fontWeight:
+                                FontWeight.w900,
+                          ),
+                        ),
+                        style:
+                            FilledButton.styleFrom(
+                          backgroundColor:
+                              const Color(
+                            0xFF111827,
+                          ),
+                          shape:
+                              RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.circular(
+                              16,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+
+                  // PENDING
+                  if (_isPendingApproval)
+                    Container(
+                      margin:
+                          const EdgeInsets.only(
+                        top: 8,
+                      ),
+                      padding:
+                          const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.orange
+                            .withOpacity(0.08),
+                        borderRadius:
+                            BorderRadius.circular(
+                          18,
+                        ),
+                        border: Border.all(
+                          color: Colors.orange
+                              .withOpacity(0.20),
+                        ),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons
+                                .hourglass_top_rounded,
+                            color:
+                                Colors.orange,
+                          ),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'KYC submit ho chuki hai. Admin approval ka wait karein.',
+                              style: TextStyle(
+                                fontWeight:
+                                    FontWeight.w700,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  // APPROVED
+                  if (_isApproved)
+                    Container(
+                      margin:
+                          const EdgeInsets.only(
+                        top: 8,
+                      ),
+                      padding:
+                          const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.green
+                            .withOpacity(0.08),
+                        borderRadius:
+                            BorderRadius.circular(
+                          18,
+                        ),
+                        border: Border.all(
+                          color: Colors.green
+                              .withOpacity(0.20),
+                        ),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons
+                                .verified_rounded,
+                            color:
+                                Colors.green,
+                          ),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Vendor approved hai. KYC details locked hain.',
+                              style: TextStyle(
+                                fontWeight:
+                                    FontWeight.w700,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  const SizedBox(height: 18),
+
+                  // SECURITY
+                  Container(
+                    padding:
+                        const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius:
+                          BorderRadius.circular(
+                        18,
+                      ),
+                      border: Border.all(
+                        color:
+                            Colors.grey.shade200,
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons
+                              .security_rounded,
+                          size: 21,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Security: Admin approval ke bina Vendor account active nahi hoga aur Vendor Panel access nahi milega.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors
+                                  .grey.shade700,
+                              height: 1.45,
                             ),
                           ),
                         ),
                       ],
-                    ),
-                  if (_isPendingApproval)
-                    const Card(
-                      child: Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Text(
-                          'KYC details submit ho chuki hain. Admin approval ka wait karein.',
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                  if (_isApproved)
-                    const Card(
-                      child: Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Text(
-                          'Vendor approved hai. KYC details ab locked hain.',
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: 20),
-                  const Card(
-                    child: Padding(
-                      padding: EdgeInsets.all(15),
-                      child: Text(
-                        'Security: Admin approval ke bina Vendor account active nahi hoga aur Vendor Panel access nahi milega.',
-                        style: TextStyle(
-                          fontSize: 13,
-                          height: 1.4,
-                        ),
-                      ),
                     ),
                   ),
                 ],
