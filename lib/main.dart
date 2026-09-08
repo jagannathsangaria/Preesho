@@ -12,6 +12,8 @@ import 'courier_documents_page.dart';
 import 'courier_panel.dart';
 
 import 'product_details_page.dart';
+import 'profile_page.dart';
+
 import 'models/preesho_models.dart';
 import 'cart/cart_controller.dart';
 import 'cart/cart_page.dart';
@@ -155,7 +157,8 @@ class AppEntry extends StatelessWidget {
     return FutureBuilder<Widget>(
       future: _getStartPage(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (snapshot.connectionState ==
+            ConnectionState.waiting) {
           return const Scaffold(
             body: Center(
               child: CircularProgressIndicator(),
@@ -182,7 +185,8 @@ class CartIconButton extends StatefulWidget {
   });
 
   @override
-  State<CartIconButton> createState() => _CartIconButtonState();
+  State<CartIconButton> createState() =>
+      _CartIconButtonState();
 }
 
 class _CartIconButtonState extends State<CartIconButton> {
@@ -215,7 +219,10 @@ class _CartIconButtonState extends State<CartIconButton> {
       icon: Stack(
         clipBehavior: Clip.none,
         children: [
-          const Icon(Icons.shopping_bag_outlined, size: 26),
+          const Icon(
+            Icons.shopping_bag_outlined,
+            size: 26,
+          ),
           if (count > 0)
             Positioned(
               right: -7,
@@ -340,56 +347,84 @@ class ProductStream extends StatelessWidget {
   ) {
     return Product(
       id: id,
-      name: (data['Name'] ?? data['name'] ?? '').toString(),
-      category:
-          (data['Category'] ?? data['category'] ?? '').toString(),
-      price: data['Price'] ?? data['price'] ?? 0,
-      stock: int.tryParse(
-            (data['Stock'] ?? data['stock'] ?? 0).toString(),
+      name: (
+        data['Name'] ??
+        data['name'] ??
+        ''
+      ).toString(),
+      category: (
+        data['Category'] ??
+        data['category'] ??
+        ''
+      ).toString(),
+      price:
+          data['Price'] ??
+          data['price'] ??
+          0,
+      stock:
+          int.tryParse(
+            (
+              data['Stock'] ??
+              data['stock'] ??
+              0
+            ).toString(),
           ) ??
           0,
-      imageUrl:
-          (data['Imageurl'] ??
-                  data['ImageUrl'] ??
-                  data['imageUrl'] ??
-                  data['image'] ??
-                  '')
-              .toString(),
-      description:
-          (data['Description'] ??
-                  data['description'] ??
-                  '')
-              .toString(),
+      imageUrl: (
+        data['Imageurl'] ??
+        data['ImageUrl'] ??
+        data['imageUrl'] ??
+        data['image'] ??
+        ''
+      ).toString(),
+      description: (
+        data['Description'] ??
+        data['description'] ??
+        ''
+      ).toString(),
       active: data['Active'] == null
           ? (data['active'] ?? true) == true
           : data['Active'] == true,
-      mrp: data['MRP'] ?? data['Mrp'] ?? data['mrp'],
+      mrp:
+          data['MRP'] ??
+          data['Mrp'] ??
+          data['mrp'],
       discountPercent:
           data['DiscountPercent'] ??
           data['Discount'] ??
           data['discountPercent'],
       vendorUid:
-          (data['vendorUid'] ?? data['vendorUID'] ?? '')
+          (data['vendorUid'] ??
+                  data['vendorUID'] ??
+                  '')
               .toString()
               .trim()
               .isEmpty
           ? null
-          : (data['vendorUid'] ?? data['vendorUID']).toString(),
+          : (
+              data['vendorUid'] ??
+              data['vendorUID']
+            ).toString(),
       vendorName:
-          (data['vendorName'] ?? '').toString().trim().isEmpty
-          ? null
-          : data['vendorName'].toString(),
+          (data['vendorName'] ?? '')
+                  .toString()
+                  .trim()
+                  .isEmpty
+              ? null
+              : data['vendorName'].toString(),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+    return StreamBuilder<
+        QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
           .collection('products')
           .snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        if (snapshot.connectionState ==
+            ConnectionState.waiting) {
           return const Center(
             child: CircularProgressIndicator(),
           );
@@ -400,7 +435,8 @@ class ProductStream extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(20),
               child: Text(
-                'Products load nahi ho pa rahe.\n${snapshot.error}',
+                'Products load nahi ho pa rahe.\n'
+                '${snapshot.error}',
                 textAlign: TextAlign.center,
               ),
             ),
@@ -409,14 +445,16 @@ class ProductStream extends StatelessWidget {
 
         final products = <Product>[];
 
-        for (final doc in snapshot.data?.docs ?? []) {
+        for (final doc
+            in snapshot.data?.docs ?? []) {
           try {
             final product = _fromFirestore(
               doc.id,
               doc.data(),
             );
 
-            if (product.active && product.stock > 0) {
+            if (product.active &&
+                product.stock > 0) {
               products.add(product);
             }
           } catch (_) {}
@@ -464,18 +502,23 @@ class HomePage extends StatelessWidget {
                 ),
               );
             },
-            icon: const Icon(Icons.receipt_long_outlined),
+            icon: const Icon(
+              Icons.receipt_long_outlined,
+            ),
           ),
           IconButton(
             tooltip: 'Notifications',
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                  content: Text('Notifications coming soon'),
+                  content:
+                      Text('Notifications coming soon'),
                 ),
               );
             },
-            icon: const Icon(Icons.notifications_none_rounded),
+            icon: const Icon(
+              Icons.notifications_none_rounded,
+            ),
           ),
           CartIconButton(
             onCartChanged: onCartChanged,
@@ -488,12 +531,14 @@ class HomePage extends StatelessWidget {
           return RefreshIndicator(
             onRefresh: () async {
               onCartChanged?.call();
+
               await Future<void>.delayed(
                 const Duration(milliseconds: 300),
               );
             },
             child: CustomScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
+              physics:
+                  const AlwaysScrollableScrollPhysics(),
               slivers: [
                 SliverToBoxAdapter(
                   child: Padding(
@@ -510,7 +555,8 @@ class HomePage extends StatelessWidget {
                           MaterialPageRoute(
                             builder: (_) => ProductSearch(
                               products: products,
-                              onCartChanged: onCartChanged,
+                              onCartChanged:
+                                  onCartChanged,
                             ),
                           ),
                         );
@@ -519,12 +565,15 @@ class HomePage extends StatelessWidget {
                         height: 54,
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(18),
+                          borderRadius:
+                              BorderRadius.circular(18),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
+                              color: Colors.black
+                                  .withOpacity(0.05),
                               blurRadius: 18,
-                              offset: const Offset(0, 7),
+                              offset:
+                                  const Offset(0, 7),
                             ),
                           ],
                         ),
@@ -558,7 +607,8 @@ class HomePage extends StatelessWidget {
                     child: Container(
                       height: 175,
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(28),
+                        borderRadius:
+                            BorderRadius.circular(28),
                         gradient: const LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
@@ -569,10 +619,10 @@ class HomePage extends StatelessWidget {
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF5B35D5)
-                                .withOpacity(0.25),
+                            color: Color(0x405B35D5),
                             blurRadius: 22,
-                            offset: const Offset(0, 10),
+                            offset:
+                                Offset(0, 10),
                           ),
                         ],
                       ),
@@ -584,9 +634,12 @@ class HomePage extends StatelessWidget {
                             child: Container(
                               width: 150,
                               height: 150,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.white.withOpacity(0.08),
+                              decoration:
+                                  BoxDecoration(
+                                shape:
+                                    BoxShape.circle,
+                                color: Colors.white
+                                    .withOpacity(0.08),
                               ),
                             ),
                           ),
@@ -603,14 +656,16 @@ class HomePage extends StatelessWidget {
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 28,
-                                    fontWeight: FontWeight.w900,
+                                    fontWeight:
+                                        FontWeight.w900,
                                   ),
                                 ),
                                 SizedBox(height: 5),
                                 Text(
                                   'Best products. Great prices.',
                                   style: TextStyle(
-                                    color: Colors.white70,
+                                    color:
+                                        Colors.white70,
                                     fontSize: 14,
                                   ),
                                 ),
@@ -618,16 +673,20 @@ class HomePage extends StatelessWidget {
                                 Row(
                                   children: [
                                     Icon(
-                                      Icons.local_shipping_outlined,
-                                      color: Colors.white,
+                                      Icons
+                                          .local_shipping_outlined,
+                                      color:
+                                          Colors.white,
                                       size: 18,
                                     ),
                                     SizedBox(width: 7),
                                     Text(
                                       'Fast & reliable delivery',
                                       style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
+                                        color:
+                                            Colors.white,
+                                        fontWeight:
+                                            FontWeight.w600,
                                       ),
                                     ),
                                   ],
@@ -663,22 +722,26 @@ class HomePage extends StatelessWidget {
                   child: SizedBox(
                     height: 112,
                     child: ListView(
-                      padding: const EdgeInsets.symmetric(
+                      padding:
+                          const EdgeInsets.symmetric(
                         horizontal: 20,
                       ),
                       scrollDirection: Axis.horizontal,
                       children: [
                         CategoryCard(
                           title: 'Electronics',
-                          icon: Icons.devices_outlined,
+                          icon:
+                              Icons.devices_outlined,
                           onTap: () {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (_) =>
                                     CategoryProductsPage(
-                                  category: 'Electronics',
-                                  onCartChanged: onCartChanged,
+                                  category:
+                                      'Electronics',
+                                  onCartChanged:
+                                      onCartChanged,
                                 ),
                               ),
                             );
@@ -686,7 +749,8 @@ class HomePage extends StatelessWidget {
                         ),
                         CategoryCard(
                           title: 'Fashion',
-                          icon: Icons.checkroom_outlined,
+                          icon:
+                              Icons.checkroom_outlined,
                           onTap: () {
                             Navigator.push(
                               context,
@@ -694,7 +758,8 @@ class HomePage extends StatelessWidget {
                                 builder: (_) =>
                                     CategoryProductsPage(
                                   category: 'Fashion',
-                                  onCartChanged: onCartChanged,
+                                  onCartChanged:
+                                      onCartChanged,
                                 ),
                               ),
                             );
@@ -710,7 +775,8 @@ class HomePage extends StatelessWidget {
                                 builder: (_) =>
                                     CategoryProductsPage(
                                   category: 'Home',
-                                  onCartChanged: onCartChanged,
+                                  onCartChanged:
+                                      onCartChanged,
                                 ),
                               ),
                             );
@@ -718,15 +784,18 @@ class HomePage extends StatelessWidget {
                         ),
                         CategoryCard(
                           title: 'Accessories',
-                          icon: Icons.watch_outlined,
+                          icon:
+                              Icons.watch_outlined,
                           onTap: () {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (_) =>
                                     CategoryProductsPage(
-                                  category: 'Accessories',
-                                  onCartChanged: onCartChanged,
+                                  category:
+                                      'Accessories',
+                                  onCartChanged:
+                                      onCartChanged,
                                 ),
                               ),
                             );
@@ -759,8 +828,10 @@ class HomePage extends StatelessWidget {
                         Text(
                           '${products.length} items',
                           style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontWeight: FontWeight.w600,
+                            color:
+                                Colors.grey.shade600,
+                            fontWeight:
+                                FontWeight.w600,
                           ),
                         ),
                       ],
@@ -788,11 +859,13 @@ class HomePage extends StatelessWidget {
                       30,
                     ),
                     sliver: SliverGrid(
-                      delegate: SliverChildBuilderDelegate(
+                      delegate:
+                          SliverChildBuilderDelegate(
                         (context, index) {
                           return ProductTile(
                             product: products[index],
-                            onCartChanged: onCartChanged,
+                            onCartChanged:
+                                onCartChanged,
                           );
                         },
                         childCount: products.length,
@@ -837,10 +910,12 @@ class CategoryCard extends StatelessWidget {
       onTap: onTap,
       child: Container(
         width: 96,
-        margin: const EdgeInsets.only(right: 12),
+        margin:
+            const EdgeInsets.only(right: 12),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius:
+              BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.04),
@@ -850,25 +925,30 @@ class CategoryCard extends StatelessWidget {
           ],
         ),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisAlignment:
+              MainAxisAlignment.center,
           children: [
             Container(
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: const Color(0xFFF0EBFF),
-                borderRadius: BorderRadius.circular(16),
+                color:
+                    const Color(0xFFF0EBFF),
+                borderRadius:
+                    BorderRadius.circular(16),
               ),
-              child: const Icon(
-                Icons.category_outlined,
-                color: Color(0xFF5B35D5),
+              child: Icon(
+                icon,
+                color:
+                    const Color(0xFF5B35D5),
               ),
             ),
             const SizedBox(height: 8),
             Text(
               title,
               maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              overflow:
+                  TextOverflow.ellipsis,
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
@@ -915,7 +995,8 @@ class CategoriesPage extends StatelessWidget {
           final categoryMap = <String, int>{};
 
           for (final product in products) {
-            final category = product.category.trim();
+            final category =
+                product.category.trim();
 
             if (category.isNotEmpty) {
               categoryMap[category] =
@@ -923,11 +1004,14 @@ class CategoriesPage extends StatelessWidget {
             }
           }
 
-          final categories = categoryMap.keys.toList()..sort();
+          final categories =
+              categoryMap.keys.toList()..sort();
 
           if (categories.isEmpty) {
             return const Center(
-              child: Text('No categories available.'),
+              child: Text(
+                'No categories available.',
+              ),
             );
           }
 
@@ -941,59 +1025,81 @@ class CategoriesPage extends StatelessWidget {
               mainAxisSpacing: 14,
               childAspectRatio: 1.15,
             ),
-            itemBuilder: (context, index) {
-              final category = categories[index];
+            itemBuilder:
+                (context, index) {
+              final category =
+                  categories[index];
 
               return InkWell(
-                borderRadius: BorderRadius.circular(24),
+                borderRadius:
+                    BorderRadius.circular(24),
                 onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => CategoryProductsPage(
+                      builder: (_) =>
+                          CategoryProductsPage(
                         category: category,
-                        onCartChanged: onCartChanged,
+                        onCartChanged:
+                            onCartChanged,
                       ),
                     ),
                   );
                 },
                 child: Container(
-                  decoration: BoxDecoration(
+                  decoration:
+                      BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius:
+                        BorderRadius.circular(
+                      24,
+                    ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
+                        color: Colors.black
+                            .withOpacity(0.05),
                         blurRadius: 18,
-                        offset: const Offset(0, 7),
+                        offset:
+                            const Offset(0, 7),
                       ),
                     ],
                   ),
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisAlignment:
+                        MainAxisAlignment.center,
                     children: [
                       Container(
                         width: 62,
                         height: 62,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF0EBFF),
+                        decoration:
+                            BoxDecoration(
+                          color: const Color(
+                            0xFFF0EBFF,
+                          ),
                           borderRadius:
-                              BorderRadius.circular(20),
+                              BorderRadius.circular(
+                            20,
+                          ),
                         ),
                         child: const Icon(
                           Icons.category_rounded,
                           size: 30,
-                          color: Color(0xFF5B35D5),
+                          color:
+                              Color(0xFF5B35D5),
                         ),
                       ),
                       const SizedBox(height: 12),
                       Text(
                         category,
-                        textAlign: TextAlign.center,
+                        textAlign:
+                            TextAlign.center,
                         maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
+                        overflow:
+                            TextOverflow.ellipsis,
+                        style:
+                            const TextStyle(
+                          fontWeight:
+                              FontWeight.w800,
                           fontSize: 15,
                         ),
                       ),
@@ -1001,7 +1107,8 @@ class CategoriesPage extends StatelessWidget {
                       Text(
                         '${categoryMap[category]} products',
                         style: TextStyle(
-                          color: Colors.grey.shade600,
+                          color:
+                              Colors.grey.shade600,
                           fontSize: 12,
                         ),
                       ),
@@ -1021,7 +1128,8 @@ class CategoriesPage extends StatelessWidget {
 // CATEGORY PRODUCTS PAGE
 // ============================================================
 
-class CategoryProductsPage extends StatelessWidget {
+class CategoryProductsPage
+    extends StatelessWidget {
   final String category;
   final VoidCallback? onCartChanged;
 
@@ -1050,9 +1158,14 @@ class CategoryProductsPage extends StatelessWidget {
       ),
       body: ProductStream(
         builder: (products) {
-          final filtered = products.where((product) {
-            return product.category.trim().toLowerCase() ==
-                category.trim().toLowerCase();
+          final filtered =
+              products.where((product) {
+            return product.category
+                    .trim()
+                    .toLowerCase() ==
+                category
+                    .trim()
+                    .toLowerCase();
           }).toList();
 
           if (filtered.isEmpty) {
@@ -1064,7 +1177,8 @@ class CategoryProductsPage extends StatelessWidget {
           }
 
           return GridView.builder(
-            padding: const EdgeInsets.fromLTRB(
+            padding:
+                const EdgeInsets.fromLTRB(
               20,
               10,
               20,
@@ -1078,10 +1192,12 @@ class CategoryProductsPage extends StatelessWidget {
               mainAxisSpacing: 16,
               childAspectRatio: 0.68,
             ),
-            itemBuilder: (context, index) {
+            itemBuilder:
+                (context, index) {
               return ProductTile(
                 product: filtered[index],
-                onCartChanged: onCartChanged,
+                onCartChanged:
+                    onCartChanged,
               );
             },
           );
@@ -1106,45 +1222,59 @@ class ProductTile extends StatefulWidget {
   });
 
   @override
-  State<ProductTile> createState() => _ProductTileState();
+  State<ProductTile> createState() =>
+      _ProductTileState();
 }
 
-class _ProductTileState extends State<ProductTile> {
+class _ProductTileState
+    extends State<ProductTile> {
   Product get product => widget.product;
 
   int get cartQuantity {
-    return CartController.findItem(product.id)?.quantity ?? 0;
+    return CartController
+            .findItem(product.id)
+            ?.quantity ??
+        0;
   }
 
   double get discount {
     if (product.hasDiscount &&
         product.originalPrice > 0) {
-      return ((product.originalPrice - product.numericPrice) /
+      return ((product.originalPrice -
+                  product.numericPrice) /
               product.originalPrice) *
           100;
     }
 
-    final raw = product.discountPercent;
+    final raw =
+        product.discountPercent;
 
     if (raw is num) {
       return raw.toDouble();
     }
 
     return double.tryParse(
-          raw.toString().replaceAll('%', '').trim(),
+          raw.toString()
+              .replaceAll('%', '')
+              .trim(),
         ) ??
         0;
   }
 
   Future<void> addOne() async {
-    final success = await CartController.addProduct(product);
+    final success =
+        await CartController.addProduct(
+      product,
+    );
 
     if (!mounted) return;
 
     if (!success) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
         const SnackBar(
-          content: Text('Stock available nahi hai.'),
+          content:
+              Text('Stock available nahi hai.'),
         ),
       );
       return;
@@ -1156,14 +1286,20 @@ class _ProductTileState extends State<ProductTile> {
 
   Future<void> increase() async {
     final success =
-        await CartController.increaseQuantity(product.id);
+        await CartController
+            .increaseQuantity(
+      product.id,
+    );
 
     if (!mounted) return;
 
     if (!success) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
         const SnackBar(
-          content: Text('Maximum available stock reached.'),
+          content: Text(
+            'Maximum available stock reached.',
+          ),
         ),
       );
       return;
@@ -1174,7 +1310,9 @@ class _ProductTileState extends State<ProductTile> {
   }
 
   Future<void> decrease() async {
-    await CartController.decreaseQuantity(product.id);
+    await CartController.decreaseQuantity(
+      product.id,
+    );
 
     if (!mounted) return;
 
@@ -1191,9 +1329,11 @@ class _ProductTileState extends State<ProductTile> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => ProductDetailsPage(
+            builder: (_) =>
+                ProductDetailsPage(
               product: product,
-              onCartChanged: widget.onCartChanged,
+              onCartChanged:
+                  widget.onCartChanged,
             ),
           ),
         );
@@ -1201,31 +1341,44 @@ class _ProductTileState extends State<ProductTile> {
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
+          borderRadius:
+              BorderRadius.circular(22),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.045),
+              color: Colors.black
+                  .withOpacity(0.045),
               blurRadius: 16,
-              offset: const Offset(0, 7),
+              offset:
+                  const Offset(0, 7),
             ),
           ],
         ),
-        clipBehavior: Clip.antiAlias,
+        clipBehavior:
+            Clip.antiAlias,
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
           children: [
             Expanded(
               child: Stack(
                 children: [
                   Positioned.fill(
                     child: Container(
-                      color: const Color(0xFFF5F5F8),
-                      child: product.imageUrl.trim().isEmpty
+                      color:
+                          const Color(
+                        0xFFF5F5F8,
+                      ),
+                      child: product
+                              .imageUrl
+                              .trim()
+                              .isEmpty
                           ? const Center(
                               child: Icon(
-                                Icons.image_outlined,
+                                Icons
+                                    .image_outlined,
                                 size: 48,
-                                color: Colors.grey,
+                                color:
+                                    Colors.grey,
                               ),
                             )
                           : Image.network(
@@ -1235,9 +1388,11 @@ class _ProductTileState extends State<ProductTile> {
                                   (_, __, ___) {
                                 return const Center(
                                   child: Icon(
-                                    Icons.broken_image_outlined,
+                                    Icons
+                                        .broken_image_outlined,
                                     size: 44,
-                                    color: Colors.grey,
+                                    color:
+                                        Colors.grey,
                                   ),
                                 );
                               },
@@ -1249,21 +1404,33 @@ class _ProductTileState extends State<ProductTile> {
                       left: 10,
                       top: 10,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(
+                        padding:
+                            const EdgeInsets
+                                .symmetric(
                           horizontal: 8,
                           vertical: 5,
                         ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE53935),
+                        decoration:
+                            BoxDecoration(
+                          color:
+                              const Color(
+                            0xFFE53935,
+                          ),
                           borderRadius:
-                              BorderRadius.circular(10),
+                              BorderRadius
+                                  .circular(
+                            10,
+                          ),
                         ),
                         child: Text(
                           '${discount.round()}% OFF',
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style:
+                              const TextStyle(
+                            color:
+                                Colors.white,
                             fontSize: 10,
-                            fontWeight: FontWeight.w900,
+                            fontWeight:
+                                FontWeight.w900,
                           ),
                         ),
                       ),
@@ -1273,7 +1440,8 @@ class _ProductTileState extends State<ProductTile> {
             ),
 
             Padding(
-              padding: const EdgeInsets.fromLTRB(
+              padding:
+                  const EdgeInsets.fromLTRB(
                 12,
                 11,
                 12,
@@ -1281,27 +1449,34 @@ class _ProductTileState extends State<ProductTile> {
               ),
               child: Column(
                 crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                    CrossAxisAlignment
+                        .start,
                 children: [
                   Text(
                     product.category,
                     maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    overflow:
+                        TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: Colors.grey.shade600,
+                      color:
+                          Colors.grey.shade600,
                       fontSize: 11,
-                      fontWeight: FontWeight.w600,
+                      fontWeight:
+                          FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     product.name,
                     maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    overflow:
+                        TextOverflow.ellipsis,
+                    style:
+                        const TextStyle(
                       fontSize: 14,
                       height: 1.2,
-                      fontWeight: FontWeight.w800,
+                      fontWeight:
+                          FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -1310,20 +1485,25 @@ class _ProductTileState extends State<ProductTile> {
                     children: [
                       Text(
                         '₹${product.numericPrice.toStringAsFixed(0)}',
-                        style: const TextStyle(
+                        style:
+                            const TextStyle(
                           fontSize: 17,
-                          fontWeight: FontWeight.w900,
+                          fontWeight:
+                              FontWeight.w900,
                         ),
                       ),
-                      if (product.hasDiscount) ...[
+                      if (product
+                          .hasDiscount) ...[
                         const SizedBox(width: 6),
                         Text(
                           '₹${product.originalPrice.toStringAsFixed(0)}',
                           style: TextStyle(
-                            color: Colors.grey.shade500,
+                            color: Colors
+                                .grey.shade500,
                             fontSize: 11,
                             decoration:
-                                TextDecoration.lineThrough,
+                                TextDecoration
+                                    .lineThrough,
                           ),
                         ),
                       ],
@@ -1334,25 +1514,38 @@ class _ProductTileState extends State<ProductTile> {
 
                   if (quantity == 0)
                     SizedBox(
-                      width: double.infinity,
+                      width:
+                          double.infinity,
                       height: 38,
-                      child: FilledButton.icon(
+                      child:
+                          FilledButton.icon(
                         onPressed: addOne,
-                        icon: const Icon(
-                          Icons.add_shopping_cart,
+                        icon:
+                            const Icon(
+                          Icons
+                              .add_shopping_cart,
                           size: 17,
                         ),
-                        label: const Text(
+                        label:
+                            const Text(
                           'Add to Cart',
-                          style: TextStyle(
+                          style:
+                              TextStyle(
                             fontSize: 12,
-                            fontWeight: FontWeight.w800,
+                            fontWeight:
+                                FontWeight.w800,
                           ),
                         ),
-                        style: FilledButton.styleFrom(
-                          shape: RoundedRectangleBorder(
+                        style:
+                            FilledButton
+                                .styleFrom(
+                          shape:
+                              RoundedRectangleBorder(
                             borderRadius:
-                                BorderRadius.circular(12),
+                                BorderRadius
+                                    .circular(
+                              12,
+                            ),
                           ),
                         ),
                       ),
@@ -1360,22 +1553,33 @@ class _ProductTileState extends State<ProductTile> {
                   else
                     Container(
                       height: 38,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF0EBFF),
+                      decoration:
+                          BoxDecoration(
+                        color:
+                            const Color(
+                          0xFFF0EBFF,
+                        ),
                         borderRadius:
-                            BorderRadius.circular(12),
+                            BorderRadius
+                                .circular(
+                          12,
+                        ),
                       ),
                       child: Row(
                         mainAxisAlignment:
-                            MainAxisAlignment.spaceBetween,
+                            MainAxisAlignment
+                                .spaceBetween,
                         children: [
                           IconButton(
-                            onPressed: decrease,
-                            icon: const Icon(
+                            onPressed:
+                                decrease,
+                            icon:
+                                const Icon(
                               Icons.remove,
                               size: 17,
                             ),
-                            padding: EdgeInsets.zero,
+                            padding:
+                                EdgeInsets.zero,
                             constraints:
                                 const BoxConstraints(
                               minWidth: 38,
@@ -1383,17 +1587,23 @@ class _ProductTileState extends State<ProductTile> {
                           ),
                           Text(
                             '$quantity',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w900,
+                            style:
+                                const TextStyle(
+                              fontWeight:
+                                  FontWeight
+                                      .w900,
                             ),
                           ),
                           IconButton(
-                            onPressed: increase,
-                            icon: const Icon(
+                            onPressed:
+                                increase,
+                            icon:
+                                const Icon(
                               Icons.add,
                               size: 17,
                             ),
-                            padding: EdgeInsets.zero,
+                            padding:
+                                EdgeInsets.zero,
                             constraints:
                                 const BoxConstraints(
                               minWidth: 38,
@@ -1407,284 +1617,6 @@ class _ProductTileState extends State<ProductTile> {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-// ============================================================
-// PROFILE PAGE
-// ============================================================
-
-class ProfilePage extends StatelessWidget {
-  final VoidCallback? onCartChanged;
-
-  const ProfilePage({
-    super.key,
-    this.onCartChanged,
-  });
-
-  Future<void> logout(BuildContext context) async {
-    await FirebaseAuth.instance.signOut();
-
-    if (!context.mounted) return;
-
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const MainShell(),
-      ),
-      (_) => false,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'My Profile',
-          style: TextStyle(
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        actions: [
-          CartIconButton(
-            onCartChanged: onCartChanged,
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(
-          20,
-          10,
-          20,
-          30,
-        ),
-        children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [
-                  Color(0xFF6C45E8),
-                  Color(0xFF4324B5),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(26),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF5B35D5)
-                      .withOpacity(0.22),
-                  blurRadius: 20,
-                  offset: const Offset(0, 9),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 30,
-                  backgroundColor:
-                      Colors.white.withOpacity(0.18),
-                  child: const Icon(
-                    Icons.person,
-                    color: Colors.white,
-                    size: 32,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        user == null
-                            ? 'Welcome to Preesho'
-                            : 'Welcome back!',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 19,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        user?.email ??
-                            'Login to manage your account',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          if (user == null)
-            _ProfileMenuTile(
-              icon: Icons.login_rounded,
-              title: 'Login / Sign Up',
-              subtitle: 'Access your Preesho account',
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const LoginPage(),
-                  ),
-                );
-              },
-            )
-          else
-            _ProfileMenuTile(
-              icon: Icons.logout_rounded,
-              title: 'Logout',
-              subtitle: 'Sign out from your account',
-              onTap: () => logout(context),
-            ),
-
-          _ProfileMenuTile(
-            icon: Icons.receipt_long_outlined,
-            title: 'My Orders',
-            subtitle: 'View your orders and delivery status',
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const OrdersPage(),
-                ),
-              );
-            },
-          ),
-
-          _ProfileMenuTile(
-            icon: Icons.location_on_outlined,
-            title: 'Saved Addresses',
-            subtitle: 'Manage your delivery addresses',
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'Address management coming soon',
-                  ),
-                ),
-              );
-            },
-          ),
-
-          _ProfileMenuTile(
-            icon: Icons.admin_panel_settings_outlined,
-            title: 'Admin Login',
-            subtitle: 'Open admin management panel',
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const AdminLoginPage(),
-                ),
-              );
-            },
-          ),
-
-          _ProfileMenuTile(
-            icon: Icons.support_agent_outlined,
-            title: 'Help & Support',
-            subtitle: 'Get help with your Preesho order',
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'Support section coming soon',
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ============================================================
-// PROFILE MENU TILE
-// ============================================================
-
-class _ProfileMenuTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _ProfileMenuTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.035),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 7,
-        ),
-        leading: Container(
-          width: 46,
-          height: 46,
-          decoration: BoxDecoration(
-            color: const Color(0xFFF0EBFF),
-            borderRadius: BorderRadius.circular(15),
-          ),
-          child: Icon(
-            icon,
-            color: const Color(0xFF5B35D5),
-          ),
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 3),
-          child: Text(
-            subtitle,
-            style: TextStyle(
-              color: Colors.grey.shade600,
-              fontSize: 12,
-            ),
-          ),
-        ),
-        trailing: const Icon(
-          Icons.chevron_right_rounded,
-        ),
-        onTap: onTap,
       ),
     );
   }
@@ -1705,10 +1637,12 @@ class ProductSearch extends StatefulWidget {
   });
 
   @override
-  State<ProductSearch> createState() => _ProductSearchState();
+  State<ProductSearch> createState() =>
+      _ProductSearchState();
 }
 
-class _ProductSearchState extends State<ProductSearch> {
+class _ProductSearchState
+    extends State<ProductSearch> {
   final TextEditingController controller =
       TextEditingController();
 
@@ -1722,12 +1656,15 @@ class _ProductSearchState extends State<ProductSearch> {
 
   @override
   Widget build(BuildContext context) {
-    final filtered = widget.products.where((product) {
+    final filtered =
+        widget.products.where((product) {
       final text =
           '${product.name} ${product.category}'
               .toLowerCase();
 
-      return text.contains(query.toLowerCase().trim());
+      return text.contains(
+        query.toLowerCase().trim(),
+      );
     }).toList();
 
     return Scaffold(
@@ -1741,33 +1678,47 @@ class _ProductSearchState extends State<ProductSearch> {
               query = value;
             });
           },
-          decoration: InputDecoration(
-            hintText: 'Search products...',
+          decoration:
+              InputDecoration(
+            hintText:
+                'Search products...',
             filled: true,
             fillColor: Colors.white,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide.none,
+            border:
+                OutlineInputBorder(
+              borderRadius:
+                  BorderRadius.circular(
+                16,
+              ),
+              borderSide:
+                  BorderSide.none,
             ),
-            prefixIcon: const Icon(
+            prefixIcon:
+                const Icon(
               Icons.search_rounded,
             ),
             suffixIcon: query.isEmpty
                 ? null
                 : IconButton(
                     onPressed: () {
-                      controller.clear();
+                      controller
+                          .clear();
+
                       setState(() {
                         query = '';
                       });
                     },
-                    icon: const Icon(Icons.clear),
+                    icon:
+                        const Icon(
+                      Icons.clear,
+                    ),
                   ),
           ),
         ),
         actions: [
           CartIconButton(
-            onCartChanged: widget.onCartChanged,
+            onCartChanged:
+                widget.onCartChanged,
           ),
           const SizedBox(width: 8),
         ],
@@ -1777,24 +1728,34 @@ class _ProductSearchState extends State<ProductSearch> {
               child: Text(
                 'No products found.',
                 style: TextStyle(
-                  fontWeight: FontWeight.w700,
+                  fontWeight:
+                      FontWeight.w700,
                 ),
               ),
             )
           : ListView.builder(
-              padding: const EdgeInsets.all(20),
-              itemCount: filtered.length,
-              itemBuilder: (context, index) {
-                final product = filtered[index];
+              padding:
+                  const EdgeInsets.all(
+                20,
+              ),
+              itemCount:
+                  filtered.length,
+              itemBuilder:
+                  (context, index) {
+                final product =
+                    filtered[index];
 
                 return Padding(
-                  padding: const EdgeInsets.only(
+                  padding:
+                      const EdgeInsets.only(
                     bottom: 12,
                   ),
-                  child: _SearchProductTile(
+                  child:
+                      _SearchProductTile(
                     product: product,
                     onCartChanged:
-                        widget.onCartChanged,
+                        widget
+                            .onCartChanged,
                   ),
                 );
               },
@@ -1807,7 +1768,8 @@ class _ProductSearchState extends State<ProductSearch> {
 // SEARCH PRODUCT TILE
 // ============================================================
 
-class _SearchProductTile extends StatelessWidget {
+class _SearchProductTile
+    extends StatelessWidget {
   final Product product;
   final VoidCallback? onCartChanged;
 
@@ -1823,40 +1785,56 @@ class _SearchProductTile extends StatelessWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => ProductDetailsPage(
+            builder: (_) =>
+                ProductDetailsPage(
               product: product,
-              onCartChanged: onCartChanged,
+              onCartChanged:
+                  onCartChanged,
             ),
           ),
         );
       },
       child: Container(
         height: 112,
-        padding: const EdgeInsets.all(10),
+        padding:
+            const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius:
+              BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black
+                  .withOpacity(0.04),
               blurRadius: 14,
-              offset: const Offset(0, 6),
+              offset:
+                  const Offset(0, 6),
             ),
           ],
         ),
         child: Row(
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius:
+                  BorderRadius.circular(
+                14,
+              ),
               child: SizedBox(
                 width: 92,
                 height: 92,
-                child: product.imageUrl.trim().isEmpty
+                child: product
+                        .imageUrl
+                        .trim()
+                        .isEmpty
                     ? const ColoredBox(
-                        color: Color(0xFFF5F5F8),
+                        color: Color(
+                          0xFFF5F5F8,
+                        ),
                         child: Icon(
-                          Icons.image_outlined,
-                          color: Colors.grey,
+                          Icons
+                              .image_outlined,
+                          color:
+                              Colors.grey,
                         ),
                       )
                     : Image.network(
@@ -1865,10 +1843,14 @@ class _SearchProductTile extends StatelessWidget {
                         errorBuilder:
                             (_, __, ___) {
                           return const ColoredBox(
-                            color: Color(0xFFF5F5F8),
+                            color: Color(
+                              0xFFF5F5F8,
+                            ),
                             child: Icon(
-                              Icons.broken_image_outlined,
-                              color: Colors.grey,
+                              Icons
+                                  .broken_image_outlined,
+                              color:
+                                  Colors.grey,
                             ),
                           );
                         },
@@ -1881,12 +1863,14 @@ class _SearchProductTile extends StatelessWidget {
                 mainAxisAlignment:
                     MainAxisAlignment.center,
                 crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                    CrossAxisAlignment
+                        .start,
                 children: [
                   Text(
                     product.category,
                     style: TextStyle(
-                      color: Colors.grey.shade600,
+                      color:
+                          Colors.grey.shade600,
                       fontSize: 11,
                     ),
                   ),
@@ -1894,16 +1878,21 @@ class _SearchProductTile extends StatelessWidget {
                   Text(
                     product.name,
                     maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
+                    overflow:
+                        TextOverflow.ellipsis,
+                    style:
+                        const TextStyle(
+                      fontWeight:
+                          FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     '₹${product.numericPrice.toStringAsFixed(0)}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w900,
+                    style:
+                        const TextStyle(
+                      fontWeight:
+                          FontWeight.w900,
                       fontSize: 16,
                     ),
                   ),
