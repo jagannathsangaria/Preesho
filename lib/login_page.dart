@@ -64,7 +64,9 @@ class _LoginPageState extends State<LoginPage> {
       final userData = userSnapshot.data() ?? {};
       final role = userData['role']?.toString();
 
-      // Customer / other user
+      // ----------------------------------------------------------
+      // Sirf Courier ko courier-status checking mein bhejna hai
+      // ----------------------------------------------------------
       if (role != 'courier') {
         return false;
       }
@@ -90,14 +92,15 @@ class _LoginPageState extends State<LoginPage> {
       final approvedByAdmin =
           courierData['approvedByAdmin'] == true;
 
-      // ----------------------------------------------------------
-      // 1. Registration complete, documents pending
-      // ----------------------------------------------------------
+      // ==========================================================
+      // 1. COURIER REGISTERED BUT DOCUMENTS NOT UPLOADED
+      // ==========================================================
+
       if (status == 'pending_documents' ||
           !documentsSubmitted) {
-        showMessage(
-          'Documents complete karke approval ke liye submit karein.',
-        );
+        // IMPORTANT:
+        // Login BLOCK nahi hoga.
+        // Courier ko Documents Page par bhejna hai.
 
         if (!mounted) return true;
 
@@ -113,15 +116,16 @@ class _LoginPageState extends State<LoginPage> {
         return true;
       }
 
-      // ----------------------------------------------------------
-      // 2. Documents submitted, Admin approval pending
-      // ----------------------------------------------------------
+      // ==========================================================
+      // 2. DOCUMENTS SUBMITTED - ADMIN APPROVAL PENDING
+      // ==========================================================
+
       if (status == 'pending_approval') {
-        showMessage(
-          'Documents submit ho chuke hain. Admin approval ka wait karein.',
-        );
-
         if (!mounted) return true;
+
+        showMessage(
+          'Documents submit ho chuke hain. Admin approval pending hai.',
+        );
 
         await Navigator.push(
           context,
@@ -135,16 +139,17 @@ class _LoginPageState extends State<LoginPage> {
         return true;
       }
 
-      // ----------------------------------------------------------
-      // 3. Documents rejected
-      // ----------------------------------------------------------
+      // ==========================================================
+      // 3. DOCUMENTS REJECTED
+      // ==========================================================
+
       if (status == 'rejected') {
+        if (!mounted) return true;
+
         showMessage(
           'Documents reject hue hain. Documents check/update karein.',
         );
 
-        if (!mounted) return true;
-
         await Navigator.push(
           context,
           MaterialPageRoute(
@@ -157,20 +162,25 @@ class _LoginPageState extends State<LoginPage> {
         return true;
       }
 
-      // ----------------------------------------------------------
-      // 4. Only fully approved and active courier continues
-      // ----------------------------------------------------------
+      // ==========================================================
+      // 4. FULLY APPROVED COURIER
+      // ==========================================================
+
       if (status == 'approved' &&
           active &&
           approvedByAdmin) {
+        // FALSE ka matlab:
+        // Courier login successfully ho gaya.
+        // Ab caller Courier Panel open kar sakta hai.
         return false;
       }
 
-      // ----------------------------------------------------------
-      // 5. Any other condition = block Courier Panel
-      // ----------------------------------------------------------
+      // ==========================================================
+      // 5. ANY OTHER UNAPPROVED CONDITION
+      // ==========================================================
+
       showMessage(
-        'Courier account abhi active/approved nahi hai.',
+        'Courier account abhi Admin approval ke baad active hoga.',
       );
 
       return true;
@@ -204,8 +214,7 @@ class _LoginPageState extends State<LoginPage> {
 
       final snapshot = await userRef.get();
 
-      // IMPORTANT:
-      // Existing courier/vendor/customer data ko overwrite nahi karna.
+      // Existing Courier/Vendor/Customer ko overwrite nahi karna.
       if (!snapshot.exists) {
         await userRef.set({
           'uid': user.uid,
@@ -551,19 +560,6 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      /*
-       * TEST ACCOUNT:
-       *
-       * Mobile: 9111111111
-       * OTP/Password: 911111
-       *
-       * Mobile: 9666666666
-       * OTP/Password: 966666
-       *
-       * Ye test accounts Firebase Email/Password auth
-       * ke through login karte hain.
-       */
-
       final email = '$mobile@preesho.test';
 
       UserCredential credential;
@@ -621,13 +617,11 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> loginWithOtp() async {
     final mobile = mobileController.text.trim();
 
-    // Test courier
     if (mobile == '9111111111') {
       await verifyTestOtp();
       return;
     }
 
-    // Test vendor
     if (mobile == '9666666666') {
       await verifyTestOtp();
       return;
@@ -661,9 +655,6 @@ class _LoginPageState extends State<LoginPage> {
 
       final snapshot = await userRef.get();
 
-      // IMPORTANT:
-      // Existing courier/vendor/customer ka role/status
-      // overwrite nahi hoga.
       if (!snapshot.exists) {
         await userRef.set({
           'uid': user.uid,
@@ -756,7 +747,6 @@ class _LoginPageState extends State<LoginPage> {
 
               const SizedBox(height: 30),
 
-              // EMAIL
               TextField(
                 controller: emailController,
                 keyboardType:
@@ -773,7 +763,6 @@ class _LoginPageState extends State<LoginPage> {
 
               const SizedBox(height: 15),
 
-              // PASSWORD
               TextField(
                 controller: passwordController,
                 obscureText: obscurePassword,
@@ -781,9 +770,7 @@ class _LoginPageState extends State<LoginPage> {
                     InputDecoration(
                   labelText: 'Password',
                   prefixIcon:
-                      const Icon(
-                    Icons.lock_outline,
-                  ),
+                      const Icon(Icons.lock_outline),
                   border:
                       const OutlineInputBorder(),
                   suffixIcon:
@@ -820,7 +807,6 @@ class _LoginPageState extends State<LoginPage> {
 
               const SizedBox(height: 5),
 
-              // EMAIL LOGIN
               ElevatedButton(
                 onPressed:
                     isLoading
@@ -835,9 +821,7 @@ class _LoginPageState extends State<LoginPage> {
 
               const Row(
                 children: [
-                  Expanded(
-                    child: Divider(),
-                  ),
+                  Expanded(child: Divider()),
                   Padding(
                     padding:
                         EdgeInsets.symmetric(
@@ -845,15 +829,12 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                     child: Text('OR'),
                   ),
-                  Expanded(
-                    child: Divider(),
-                  ),
+                  Expanded(child: Divider()),
                 ],
               ),
 
               const SizedBox(height: 25),
 
-              // MOBILE
               TextField(
                 controller:
                     mobileController,
@@ -866,9 +847,7 @@ class _LoginPageState extends State<LoginPage> {
                       'Mobile Number',
                   prefixText: '+91 ',
                   prefixIcon:
-                      Icon(
-                    Icons.phone_android,
-                  ),
+                      Icon(Icons.phone_android),
                   border:
                       OutlineInputBorder(),
                   counterText: '',
@@ -877,18 +856,17 @@ class _LoginPageState extends State<LoginPage> {
 
               const SizedBox(height: 15),
 
-              // SEND OTP
               if (!otpSent)
                 ElevatedButton(
-                  onPressed: isLoading
-                      ? null
-                      : sendOtp,
+                  onPressed:
+                      isLoading
+                          ? null
+                          : sendOtp,
                   child: const Text(
                     'Send OTP',
                   ),
                 ),
 
-              // OTP
               if (otpSent) ...[
                 const SizedBox(height: 5),
 
@@ -900,12 +878,9 @@ class _LoginPageState extends State<LoginPage> {
                   maxLength: 6,
                   decoration:
                       const InputDecoration(
-                    labelText:
-                        'Enter OTP',
+                    labelText: 'Enter OTP',
                     prefixIcon:
-                        Icon(
-                      Icons.password,
-                    ),
+                        Icon(Icons.password),
                     border:
                         OutlineInputBorder(),
                     counterText: '',
@@ -915,9 +890,10 @@ class _LoginPageState extends State<LoginPage> {
                 const SizedBox(height: 15),
 
                 ElevatedButton(
-                  onPressed: isLoading
-                      ? null
-                      : loginWithOtp,
+                  onPressed:
+                      isLoading
+                          ? null
+                          : loginWithOtp,
                   child: isLoading
                       ? const SizedBox(
                           height: 20,
@@ -942,8 +918,7 @@ class _LoginPageState extends State<LoginPage> {
                             otpSent = false;
                             verificationId =
                                 null;
-                            otpController
-                                .clear();
+                            otpController.clear();
                           });
                         },
                   child: const Text(
@@ -957,9 +932,7 @@ class _LoginPageState extends State<LoginPage> {
               const Text(
                 'Test Courier: 9111111111 / OTP 911111',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 12,
-                ),
+                style: TextStyle(fontSize: 12),
               ),
 
               const SizedBox(height: 5),
@@ -967,9 +940,7 @@ class _LoginPageState extends State<LoginPage> {
               const Text(
                 'Test Vendor: 9666666666 / OTP 966666',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 12,
-                ),
+                style: TextStyle(fontSize: 12),
               ),
             ],
           ),
