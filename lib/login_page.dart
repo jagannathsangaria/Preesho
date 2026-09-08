@@ -47,12 +47,18 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   // ============================================================
-  // COURIER LOGIN / STATUS CHECK
+  // COURIER LOGIN ROUTING
   // ============================================================
 
   Future<bool> handleCourierAfterLogin(User user) async {
     try {
-      final userSnapshot = await FirebaseFirestore.instance
+      final firestore = FirebaseFirestore.instance;
+
+      // ----------------------------------------------------------
+      // USERS PROFILE
+      // ----------------------------------------------------------
+
+      final userSnapshot = await firestore
           .collection('users')
           .doc(user.uid)
           .get();
@@ -62,16 +68,21 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       final userData = userSnapshot.data() ?? {};
-      final role = userData['role']?.toString();
+      final userRole = userData['role']?.toString().toLowerCase();
 
       // ----------------------------------------------------------
-      // Sirf Courier ko courier-status checking mein bhejna hai
+      // CUSTOMER / OTHER USER
       // ----------------------------------------------------------
-      if (role != 'courier') {
+
+      if (userRole != 'courier') {
         return false;
       }
 
-      final courierSnapshot = await FirebaseFirestore.instance
+      // ----------------------------------------------------------
+      // COURIER PROFILE
+      // ----------------------------------------------------------
+
+      final courierSnapshot = await firestore
           .collection('couriers')
           .doc(user.uid)
           .get();
@@ -85,22 +96,27 @@ class _LoginPageState extends State<LoginPage> {
 
       final courierData = courierSnapshot.data() ?? {};
 
-      final status = courierData['status']?.toString() ?? '';
+      final status =
+          courierData['status']?.toString().toLowerCase() ?? '';
+
       final documentsSubmitted =
           courierData['documentsSubmitted'] == true;
-      final active = courierData['active'] == true;
+
+      final active =
+          courierData['active'] == true;
+
       final approvedByAdmin =
           courierData['approvedByAdmin'] == true;
 
       // ==========================================================
-      // 1. COURIER REGISTERED BUT DOCUMENTS NOT UPLOADED
+      // 1. REGISTERED BUT DOCUMENTS NOT SUBMITTED
       // ==========================================================
 
       if (status == 'pending_documents' ||
           !documentsSubmitted) {
         // IMPORTANT:
-        // Login BLOCK nahi hoga.
-        // Courier ko Documents Page par bhejna hai.
+        // Login BLOCK nahi karna hai.
+        // Direct Documents Page open karna hai.
 
         if (!mounted) return true;
 
@@ -123,10 +139,6 @@ class _LoginPageState extends State<LoginPage> {
       if (status == 'pending_approval') {
         if (!mounted) return true;
 
-        showMessage(
-          'Documents submit ho chuke hain. Admin approval pending hai.',
-        );
-
         await Navigator.push(
           context,
           MaterialPageRoute(
@@ -145,10 +157,6 @@ class _LoginPageState extends State<LoginPage> {
 
       if (status == 'rejected') {
         if (!mounted) return true;
-
-        showMessage(
-          'Documents reject hue hain. Documents check/update karein.',
-        );
 
         await Navigator.push(
           context,
@@ -169,26 +177,29 @@ class _LoginPageState extends State<LoginPage> {
       if (status == 'approved' &&
           active &&
           approvedByAdmin) {
-        // FALSE ka matlab:
-        // Courier login successfully ho gaya.
-        // Ab caller Courier Panel open kar sakta hai.
+        // Courier Panel ko open karne ki permission.
         return false;
       }
 
       // ==========================================================
-      // 5. ANY OTHER UNAPPROVED CONDITION
+      // 5. OTHER UNAPPROVED STATUS
       // ==========================================================
 
-      showMessage(
-        'Courier account abhi Admin approval ke baad active hoga.',
+      if (!mounted) return true;
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CourierDocumentsPage(
+            courierUid: user.uid,
+          ),
+        ),
       );
 
       return true;
     } catch (e) {
       if (kDebugMode) {
-        debugPrint(
-          'Courier login check error: $e',
-        );
+        debugPrint('Courier routing error: $e');
       }
 
       showMessage(
@@ -214,7 +225,7 @@ class _LoginPageState extends State<LoginPage> {
 
       final snapshot = await userRef.get();
 
-      // Existing Courier/Vendor/Customer ko overwrite nahi karna.
+      // Existing Courier / Vendor / Customer ko overwrite nahi karna.
       if (!snapshot.exists) {
         await userRef.set({
           'uid': user.uid,
@@ -229,9 +240,7 @@ class _LoginPageState extends State<LoginPage> {
       }
     } catch (e) {
       if (kDebugMode) {
-        debugPrint(
-          'Save user profile error: $e',
-        );
+        debugPrint('Save user profile error: $e');
       }
     }
   }
@@ -245,9 +254,7 @@ class _LoginPageState extends State<LoginPage> {
     final password = passwordController.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
-      showMessage(
-        'Email aur password enter karein.',
-      );
+      showMessage('Email aur password enter karein.');
       return;
     }
 
@@ -314,9 +321,7 @@ class _LoginPageState extends State<LoginPage> {
       showMessage(message);
     } catch (e) {
       if (kDebugMode) {
-        debugPrint(
-          'Email login error: $e',
-        );
+        debugPrint('Email login error: $e');
       }
 
       showMessage(
@@ -339,9 +344,7 @@ class _LoginPageState extends State<LoginPage> {
     final mobile = mobileController.text.trim();
 
     if (mobile.isEmpty || mobile.length != 10) {
-      showMessage(
-        '10 digit mobile number enter karein.',
-      );
+      showMessage('10 digit mobile number enter karein.');
       return;
     }
 
@@ -406,9 +409,7 @@ class _LoginPageState extends State<LoginPage> {
             isLoading = false;
           });
 
-          showMessage(
-            'OTP send ho gaya.',
-          );
+          showMessage('OTP send ho gaya.');
         },
 
         codeAutoRetrievalTimeout:
@@ -432,36 +433,28 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       if (kDebugMode) {
-        debugPrint(
-          'Send OTP error: $e',
-        );
+        debugPrint('Send OTP error: $e');
       }
 
-      showMessage(
-        'OTP send nahi ho paya.',
-      );
+      showMessage('OTP send nahi ho paya.');
     }
   }
 
   // ============================================================
-  // VERIFY NORMAL FIREBASE OTP
+  // VERIFY FIREBASE OTP
   // ============================================================
 
   Future<void> verifyFirebaseOtp() async {
     final otp = otpController.text.trim();
 
     if (otp.isEmpty || otp.length != 6) {
-      showMessage(
-        '6 digit OTP enter karein.',
-      );
+      showMessage('6 digit OTP enter karein.');
       return;
     }
 
     if (verificationId == null ||
         verificationId!.isEmpty) {
-      showMessage(
-        'Pehle OTP send karein.',
-      );
+      showMessage('Pehle OTP send karein.');
       return;
     }
 
@@ -482,9 +475,7 @@ class _LoginPageState extends State<LoginPage> {
       final user = result.user;
 
       if (user == null) {
-        showMessage(
-          'OTP login failed.',
-        );
+        showMessage('OTP login failed.');
         return;
       }
 
@@ -513,9 +504,7 @@ class _LoginPageState extends State<LoginPage> {
         );
       }
 
-      showMessage(
-        'OTP verification failed.',
-      );
+      showMessage('OTP verification failed.');
     } finally {
       if (mounted) {
         setState(() {
@@ -549,9 +538,7 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     if (otp != expectedOtp) {
-      showMessage(
-        'Invalid OTP.',
-      );
+      showMessage('Invalid OTP.');
       return;
     }
 
@@ -581,9 +568,7 @@ class _LoginPageState extends State<LoginPage> {
       final user = credential.user;
 
       if (user == null) {
-        showMessage(
-          'Test login failed.',
-        );
+        showMessage('Test login failed.');
         return;
       }
 
@@ -593,14 +578,10 @@ class _LoginPageState extends State<LoginPage> {
       );
     } catch (e) {
       if (kDebugMode) {
-        debugPrint(
-          'Test OTP login error: $e',
-        );
+        debugPrint('Test OTP login error: $e');
       }
 
-      showMessage(
-        'Test OTP login failed.',
-      );
+      showMessage('Test OTP login failed.');
     } finally {
       if (mounted) {
         setState(() {
@@ -642,9 +623,7 @@ class _LoginPageState extends State<LoginPage> {
         existingUser ?? FirebaseAuth.instance.currentUser;
 
     if (user == null) {
-      showMessage(
-        'User login nahi hua.',
-      );
+      showMessage('User login nahi hua.');
       return;
     }
 
@@ -672,8 +651,7 @@ class _LoginPageState extends State<LoginPage> {
             'uid': user.uid,
             'phone': mobile,
             'email': user.email ?? '',
-            'updatedAt':
-                FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
             'loginType': 'mobile',
           },
           SetOptions(merge: true),
@@ -692,9 +670,7 @@ class _LoginPageState extends State<LoginPage> {
       Navigator.pop(context, true);
     } catch (e) {
       if (kDebugMode) {
-        debugPrint(
-          'Save mobile profile error: $e',
-        );
+        debugPrint('Save mobile profile error: $e');
       }
 
       showMessage(
@@ -711,8 +687,7 @@ class _LoginPageState extends State<LoginPage> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            const ForgotPasswordPage(),
+        builder: (_) => const ForgotPasswordPage(),
       ),
     );
   }
@@ -751,13 +726,11 @@ class _LoginPageState extends State<LoginPage> {
                 controller: emailController,
                 keyboardType:
                     TextInputType.emailAddress,
-                decoration:
-                    const InputDecoration(
+                decoration: const InputDecoration(
                   labelText: 'Email',
                   prefixIcon:
                       Icon(Icons.email_outlined),
-                  border:
-                      OutlineInputBorder(),
+                  border: OutlineInputBorder(),
                 ),
               ),
 
@@ -766,15 +739,12 @@ class _LoginPageState extends State<LoginPage> {
               TextField(
                 controller: passwordController,
                 obscureText: obscurePassword,
-                decoration:
-                    InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Password',
                   prefixIcon:
                       const Icon(Icons.lock_outline),
-                  border:
-                      const OutlineInputBorder(),
-                  suffixIcon:
-                      IconButton(
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
                     icon: Icon(
                       obscurePassword
                           ? Icons.visibility_off
@@ -793,8 +763,7 @@ class _LoginPageState extends State<LoginPage> {
               const SizedBox(height: 10),
 
               Align(
-                alignment:
-                    Alignment.centerRight,
+                alignment: Alignment.centerRight,
                 child: TextButton(
                   onPressed: isLoading
                       ? null
@@ -809,9 +778,7 @@ class _LoginPageState extends State<LoginPage> {
 
               ElevatedButton(
                 onPressed:
-                    isLoading
-                        ? null
-                        : loginWithEmail,
+                    isLoading ? null : loginWithEmail,
                 child: const Text(
                   'Login with Email',
                 ),
@@ -836,20 +803,16 @@ class _LoginPageState extends State<LoginPage> {
               const SizedBox(height: 25),
 
               TextField(
-                controller:
-                    mobileController,
+                controller: mobileController,
                 keyboardType:
                     TextInputType.phone,
                 maxLength: 10,
-                decoration:
-                    const InputDecoration(
-                  labelText:
-                      'Mobile Number',
+                decoration: const InputDecoration(
+                  labelText: 'Mobile Number',
                   prefixText: '+91 ',
                   prefixIcon:
                       Icon(Icons.phone_android),
-                  border:
-                      OutlineInputBorder(),
+                  border: OutlineInputBorder(),
                   counterText: '',
                 ),
               ),
@@ -859,30 +822,23 @@ class _LoginPageState extends State<LoginPage> {
               if (!otpSent)
                 ElevatedButton(
                   onPressed:
-                      isLoading
-                          ? null
-                          : sendOtp,
-                  child: const Text(
-                    'Send OTP',
-                  ),
+                      isLoading ? null : sendOtp,
+                  child: const Text('Send OTP'),
                 ),
 
               if (otpSent) ...[
                 const SizedBox(height: 5),
 
                 TextField(
-                  controller:
-                      otpController,
+                  controller: otpController,
                   keyboardType:
                       TextInputType.number,
                   maxLength: 6,
-                  decoration:
-                      const InputDecoration(
+                  decoration: const InputDecoration(
                     labelText: 'Enter OTP',
                     prefixIcon:
                         Icon(Icons.password),
-                    border:
-                        OutlineInputBorder(),
+                    border: OutlineInputBorder(),
                     counterText: '',
                   ),
                 ),
@@ -891,9 +847,7 @@ class _LoginPageState extends State<LoginPage> {
 
                 ElevatedButton(
                   onPressed:
-                      isLoading
-                          ? null
-                          : loginWithOtp,
+                      isLoading ? null : loginWithOtp,
                   child: isLoading
                       ? const SizedBox(
                           height: 20,
@@ -916,8 +870,7 @@ class _LoginPageState extends State<LoginPage> {
                       : () {
                           setState(() {
                             otpSent = false;
-                            verificationId =
-                                null;
+                            verificationId = null;
                             otpController.clear();
                           });
                         },
