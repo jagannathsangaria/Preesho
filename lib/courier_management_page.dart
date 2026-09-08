@@ -6,19 +6,14 @@ class CourierManagementPage extends StatefulWidget {
   const CourierManagementPage({super.key});
 
   @override
-  State<CourierManagementPage> createState() =>
-      _CourierManagementPageState();
+  State<CourierManagementPage> createState() => _CourierManagementPageState();
 }
 
-class _CourierManagementPageState
-    extends State<CourierManagementPage> {
-  final FirebaseFirestore _firestore =
-      FirebaseFirestore.instance;
+class _CourierManagementPageState extends State<CourierManagementPage> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   final FirebaseFunctions _functions =
-      FirebaseFunctions.instanceFor(
-    region: 'asia-south1',
-  );
+      FirebaseFunctions.instanceFor(region: 'asia-south1');
 
   final nameController = TextEditingController();
   final emailController = TextEditingController();
@@ -28,189 +23,119 @@ class _CourierManagementPageState
   bool saving = false;
   bool obscurePassword = true;
 
-  // ============================================================
-  // HELPERS
-  // ============================================================
+  final List<String> requiredDocumentKeys = const [
+    'profilePhoto',
+    'aadhaar',
+    'drivingLicence',
+    'vehicleRc',
+    'addressProof',
+  ];
 
   String _stringValue(dynamic value) {
     if (value == null) return '';
-
-    final text = value.toString().trim();
-
-    if (text == 'null') return '';
-
-    return text;
+    return value.toString().trim();
   }
 
   String _normalizeStatus(dynamic value) {
-    final status =
-        _stringValue(value).toLowerCase();
+    return _stringValue(value).toLowerCase().replaceAll(' ', '_');
+  }
+
+  String _statusLabel(dynamic value) {
+    final status = _normalizeStatus(value);
 
     switch (status) {
-      case 'pending_documents':
-      case 'pending documents':
-        return 'pending_documents';
-
-      case 'pending_approval':
-      case 'pending approval':
-        return 'pending_approval';
-
       case 'approved':
-        return 'approved';
-
+        return 'Approved';
+      case 'pending_approval':
+        return 'Pending Approval';
+      case 'pending_documents':
+        return 'Documents Pending';
       case 'rejected':
-        return 'rejected';
-
+        return 'Rejected';
       default:
-        return status;
+        return status.isEmpty ? 'Unknown' : status;
     }
   }
 
-  String _statusLabel(String status) {
+  Color _statusColor(dynamic value) {
+    final status = _normalizeStatus(value);
+
     switch (status) {
-      case 'pending_documents':
-        return 'DOCUMENTS PENDING';
-
-      case 'pending_approval':
-        return 'PENDING APPROVAL';
-
-      case 'approved':
-        return 'APPROVED';
-
-      case 'rejected':
-        return 'REJECTED';
-
-      default:
-        return status.isEmpty
-            ? 'NOT SUBMITTED'
-            : status.toUpperCase();
-    }
-  }
-
-  Color _statusColor(String status) {
-    switch (status) {
-      case 'pending_documents':
-        return Colors.orange;
-
-      case 'pending_approval':
-        return Colors.blue;
-
       case 'approved':
         return Colors.green;
-
+      case 'pending_approval':
+        return Colors.orange;
+      case 'pending_documents':
+        return Colors.blue;
       case 'rejected':
         return Colors.red;
-
       default:
         return Colors.grey;
     }
   }
 
   String _normalizeOrderStatus(dynamic value) {
-    if (value == null) return 'Placed';
-
-    final status = value.toString().trim();
-
-    switch (status.toLowerCase()) {
-      case 'placed':
-        return 'Placed';
-
-      case 'confirmed':
-        return 'Confirmed';
-
-      case 'processing':
-        return 'Processing';
-
-      case 'packed':
-        return 'Packed';
-
-      case 'shipped':
-        return 'Shipped';
-
-      case 'picked by courier':
-      case 'picked_by_courier':
-      case 'picked':
-        return 'Picked by Courier';
-
-      case 'out for delivery':
-      case 'out_for_delivery':
-      case 'outfordelivery':
-        return 'Out for Delivery';
-
-      case 'delivered':
-        return 'Delivered';
-
-      case 'cancelled':
-      case 'canceled':
-        return 'Cancelled';
-
-      default:
-        return status;
-    }
+    return _stringValue(value).toLowerCase().replaceAll(' ', '_');
   }
 
   String _dateText(dynamic value) {
-    if (value is! Timestamp) {
-      return '';
+    if (value == null) return '-';
+
+    DateTime? date;
+
+    if (value is Timestamp) {
+      date = value.toDate();
+    } else if (value is DateTime) {
+      date = value;
     }
 
-    final date = value.toDate().toLocal();
+    if (date == null) return '-';
 
-    final day =
-        date.day.toString().padLeft(2, '0');
-
-    final month =
-        date.month.toString().padLeft(2, '0');
-
-    final year = date.year.toString();
-
-    return '$day/$month/$year';
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year} '
+        '${date.hour.toString().padLeft(2, '0')}:'
+        '${date.minute.toString().padLeft(2, '0')}';
   }
 
-  void _showMessage(String message) {
+  void _showMessage(String message, {bool error = false}) {
     if (!mounted) return;
-
-    ScaffoldMessenger.of(context)
-        .hideCurrentSnackBar();
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        behavior: SnackBarBehavior.floating,
+        backgroundColor: error ? Colors.red : null,
       ),
     );
   }
 
-  // ============================================================
-  // ADD COURIER
-  // ============================================================
-
-  Future<void> _addCourier() async {
+  Future<bool> _addCourier() async {
     final name = nameController.text.trim();
+    final email = emailController.text.trim();
+    final phone = phoneController.text.trim();
+    final password = passwordController.text.trim();
 
-    final email =
-        emailController.text.trim().toLowerCase();
+    if (name.isEmpty) {
+      _showMessage('Courier name enter karein.', error: true);
+      return false;
+    }
 
-    final phone =
-        phoneController.text.trim();
+    if (email.isEmpty || !email.contains('@')) {
+      _showMessage('Valid email enter karein.', error: true);
+      return false;
+    }
 
-    final password =
-        passwordController.text;
-
-    if (name.isEmpty ||
-        email.isEmpty ||
-        password.isEmpty) {
-      _showMessage(
-        'Courier name, email and password are required.',
-      );
-      return;
+    if (phone.isEmpty) {
+      _showMessage('Mobile number enter karein.', error: true);
+      return false;
     }
 
     if (password.length < 6) {
       _showMessage(
-        'Password must contain at least 6 characters.',
+        'Password minimum 6 characters ka hona chahiye.',
+        error: true,
       );
-      return;
+      return false;
     }
 
     setState(() {
@@ -218,10 +143,7 @@ class _CourierManagementPageState
     });
 
     try {
-      final callable =
-          _functions.httpsCallable(
-        'createCourierAccount',
-      );
+      final callable = _functions.httpsCallable('createCourierAccount');
 
       final result = await callable.call({
         'name': name,
@@ -230,61 +152,42 @@ class _CourierManagementPageState
         'password': password,
       });
 
-      if (!mounted) return;
+      final data = result.data;
 
-      final resultData =
-          result.data is Map
-              ? Map<String, dynamic>.from(
-                  result.data as Map,
-                )
-              : <String, dynamic>{};
+      String courierId = '';
 
-      Navigator.pop(context);
-
-      _showMessage(
-        resultData['message']?.toString() ??
-            'Courier account created successfully.',
-      );
-    } on FirebaseFunctionsException catch (e) {
-      if (!mounted) return;
-
-      String message;
-
-      switch (e.code) {
-        case 'unauthenticated':
-          message =
-              'Please login again as Admin.';
-          break;
-
-        case 'permission-denied':
-          message =
-              'Only Admin can create courier accounts.';
-          break;
-
-        case 'already-exists':
-          message =
-              'A Firebase account already exists with this email.';
-          break;
-
-        case 'invalid-argument':
-          message =
-              e.message ??
-                  'Please check courier details.';
-          break;
-
-        default:
-          message =
-              e.message ??
-                  'Unable to create courier account.';
+      if (data is Map) {
+        courierId = _stringValue(
+          data['uid'] ?? data['courierId'] ?? data['userId'],
+        );
       }
 
-      _showMessage(message);
-    } catch (e) {
-      if (!mounted) return;
+      if (!mounted) return false;
 
       _showMessage(
-        'Unable to create courier account.\n$e',
+        courierId.isEmpty
+            ? 'Courier successfully create ho gaya.'
+            : 'Courier successfully create ho gaya. ID: $courierId',
       );
+
+      nameController.clear();
+      emailController.clear();
+      phoneController.clear();
+      passwordController.clear();
+
+      return true;
+    } on FirebaseFunctionsException catch (e) {
+      _showMessage(
+        e.message ?? 'Courier create karte waqt error aaya.',
+        error: true,
+      );
+      return false;
+    } catch (e) {
+      _showMessage(
+        'Courier create karte waqt error aaya: $e',
+        error: true,
+      );
+      return false;
     } finally {
       if (mounted) {
         setState(() {
@@ -294,90 +197,63 @@ class _CourierManagementPageState
     }
   }
 
-  // ============================================================
-  // UPDATE COURIER
-  // ============================================================
-
   Future<void> _updateCourier(
     String courierId,
     Map<String, dynamic> data,
   ) async {
-    try {
-      await _firestore
-          .collection('couriers')
-          .doc(courierId)
-          .update({
-        ...data,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      if (mounted) {
-        _showMessage('Courier updated.');
-      }
-    } catch (e) {
-      if (mounted) {
-        _showMessage(
-          'Unable to update courier.\n$e',
+    await _firestore.collection('couriers').doc(courierId).set(
+          {
+            ...data,
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
         );
-      }
-    }
   }
-
-  // ============================================================
-  // APPROVE COURIER
-  // ============================================================
 
   Future<void> _approveCourier(
     String courierId,
-    Map<String, dynamic> data,
+    Map<String, dynamic> courierData,
   ) async {
-    final name =
-        _stringValue(data['name']).isNotEmpty
-            ? _stringValue(data['name'])
-            : 'Courier';
+    final documents = courierData['documents'];
 
-    final documentsSubmitted =
-        data['documentsSubmitted'] == true;
+    final documentsComplete = documents is Map &&
+        requiredDocumentKeys.every((key) {
+          final document = documents[key];
 
-    if (!documentsSubmitted) {
+          if (document is! Map) {
+            return false;
+          }
+
+          final url = _stringValue(document['url']);
+
+          return url.isNotEmpty;
+        });
+
+    if (!documentsComplete) {
       _showMessage(
-        '$name has not submitted all required documents.',
+        'Approval se pehle courier ke saare required documents upload hone chahiye.',
+        error: true,
       );
       return;
     }
 
-    final confirm =
-        await showDialog<bool>(
+    final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
-          title: const Text(
-            'Approve Courier?',
-          ),
+          title: const Text('Approve Courier'),
           content: Text(
-            'Approve $name as an active Preesho courier?',
+            'Kya aap "${_stringValue(courierData['name'])}" ko approve karna chahte hain?\n\n'
+            'Approve hone ke baad courier active kiya ja sakta hai aur orders receive kar sakta hai.',
           ),
           actions: [
             TextButton(
-              onPressed: () =>
-                  Navigator.pop(
-                context,
-                false,
-              ),
-              child:
-                  const Text('Cancel'),
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
             ),
-            FilledButton.icon(
-              onPressed: () =>
-                  Navigator.pop(
-                context,
-                true,
-              ),
-              icon: const Icon(
-                Icons.check_circle,
-              ),
-              label:
-                  const Text('Approve'),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Approve'),
             ),
           ],
         );
@@ -387,137 +263,98 @@ class _CourierManagementPageState
     if (confirm != true) return;
 
     try {
-      await _firestore
-          .collection('couriers')
-          .doc(courierId)
-          .update({
-        'status': 'approved',
-        'registrationStatus': 'approved',
-        'active': true,
-        'approvedByAdmin': true,
-        'approvedAt':
-            FieldValue.serverTimestamp(),
-        'updatedAt':
-            FieldValue.serverTimestamp(),
-      });
+      final courierRef =
+          _firestore.collection('couriers').doc(courierId);
 
-      // Keep users collection in sync.
-      await _firestore
-          .collection('users')
-          .doc(courierId)
-          .set({
-        'uid': courierId,
-        'role': 'courier',
-        'name': name,
-        'status': 'approved',
-        'registrationStatus': 'approved',
-        'active': true,
-        'approvedByAdmin': true,
-        'approvedAt':
-            FieldValue.serverTimestamp(),
-        'updatedAt':
-            FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      final userRef =
+          _firestore.collection('users').doc(courierId);
 
-      if (mounted) {
-        _showMessage(
-          '$name approved successfully. Courier is now ACTIVE.',
-        );
-      }
+      final now = FieldValue.serverTimestamp();
+
+      final batch = _firestore.batch();
+
+      batch.set(
+        courierRef,
+        {
+          'status': 'approved',
+          'registrationStatus': 'approved',
+          'active': true,
+          'approvedByAdmin': true,
+          'approvedAt': now,
+          'updatedAt': now,
+        },
+        SetOptions(merge: true),
+      );
+
+      batch.set(
+        userRef,
+        {
+          'uid': courierId,
+          'role': 'courier',
+          'name': _stringValue(courierData['name']),
+          'email': _stringValue(courierData['email']),
+          'phone': _stringValue(courierData['phone']),
+          'status': 'approved',
+          'registrationStatus': 'approved',
+          'active': true,
+          'approvedByAdmin': true,
+          'approvedAt': now,
+          'updatedAt': now,
+        },
+        SetOptions(merge: true),
+      );
+
+      await batch.commit();
+
+      _showMessage('Courier successfully approved.');
     } catch (e) {
-      if (mounted) {
-        _showMessage(
-          'Unable to approve courier.\n$e',
-        );
-      }
+      _showMessage(
+        'Courier approve karte waqt error aaya: $e',
+        error: true,
+      );
     }
   }
 
-  // ============================================================
-  // REJECT COURIER
-  // ============================================================
-
   Future<void> _rejectCourier(
     String courierId,
-    Map<String, dynamic> data,
+    Map<String, dynamic> courierData,
   ) async {
-    final name =
-        _stringValue(data['name']).isNotEmpty
-            ? _stringValue(data['name'])
-            : 'Courier';
+    final reasonController = TextEditingController();
 
-    final reasonController =
-        TextEditingController();
-
-    final reason =
-        await showDialog<String>(
+    final reason = await showDialog<String>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
-          title: const Text(
-            'Reject Courier',
-          ),
-          content: Column(
-            mainAxisSize:
-                MainAxisSize.min,
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Reason for rejecting $name',
-                style:
-                    const TextStyle(
-                  fontWeight:
-                      FontWeight.w600,
-                ),
-              ),
-              const SizedBox(
-                height: 12,
-              ),
-              TextField(
-                controller:
-                    reasonController,
-                maxLines: 4,
-                decoration:
-                    const InputDecoration(
-                  hintText:
-                      'Example: Driving licence is not clear.',
-                  border:
-                      OutlineInputBorder(),
-                ),
-              ),
-            ],
+          title: const Text('Reject Courier'),
+          content: TextField(
+            controller: reasonController,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              labelText: 'Rejection Reason',
+              hintText: 'Reason enter karein',
+              border: OutlineInputBorder(),
+            ),
           ),
           actions: [
             TextButton(
-              onPressed: () =>
-                  Navigator.pop(
-                context,
-              ),
-              child:
-                  const Text('Cancel'),
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
             ),
-            FilledButton(
-              style:
-                  FilledButton.styleFrom(
-                backgroundColor:
-                    Colors.red,
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
               ),
               onPressed: () {
-                final reason =
-                    reasonController
-                        .text
-                        .trim();
+                final reason = reasonController.text.trim();
 
-                Navigator.pop(
-                  context,
-                  reason.isEmpty
-                      ? 'Documents/details need correction.'
-                      : reason,
-                );
+                if (reason.isEmpty) {
+                  return;
+                }
+
+                Navigator.pop(dialogContext, reason);
               },
-              child:
-                  const Text('Reject'),
+              child: const Text('Reject'),
             ),
           ],
         );
@@ -526,234 +363,126 @@ class _CourierManagementPageState
 
     reasonController.dispose();
 
-    if (reason == null) return;
+    if (reason == null || reason.trim().isEmpty) {
+      return;
+    }
 
     try {
-      await _firestore
-          .collection('couriers')
-          .doc(courierId)
-          .update({
-        'status': 'rejected',
-        'registrationStatus': 'rejected',
-        'active': false,
-        'approvedByAdmin': false,
-        'rejectionReason': reason,
-        'rejectedAt':
-            FieldValue.serverTimestamp(),
-        'updatedAt':
-            FieldValue.serverTimestamp(),
-      });
+      final courierRef =
+          _firestore.collection('couriers').doc(courierId);
 
-      await _firestore
-          .collection('users')
-          .doc(courierId)
-          .set({
-        'status': 'rejected',
-        'registrationStatus': 'rejected',
-        'active': false,
-        'approvedByAdmin': false,
-        'rejectionReason': reason,
-        'rejectedAt':
-            FieldValue.serverTimestamp(),
-        'updatedAt':
-            FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      final userRef =
+          _firestore.collection('users').doc(courierId);
 
-      if (mounted) {
-        _showMessage(
-          '$name rejected. Courier can correct documents and resubmit.',
-        );
-      }
+      final now = FieldValue.serverTimestamp();
+
+      final batch = _firestore.batch();
+
+      batch.set(
+        courierRef,
+        {
+          'status': 'rejected',
+          'registrationStatus': 'rejected',
+          'active': false,
+          'approvedByAdmin': false,
+          'rejectionReason': reason.trim(),
+          'rejectedAt': now,
+          'updatedAt': now,
+        },
+        SetOptions(merge: true),
+      );
+
+      batch.set(
+        userRef,
+        {
+          'uid': courierId,
+          'role': 'courier',
+          'name': _stringValue(courierData['name']),
+          'email': _stringValue(courierData['email']),
+          'phone': _stringValue(courierData['phone']),
+          'status': 'rejected',
+          'registrationStatus': 'rejected',
+          'active': false,
+          'approvedByAdmin': false,
+          'rejectionReason': reason.trim(),
+          'rejectedAt': now,
+          'updatedAt': now,
+        },
+        SetOptions(merge: true),
+      );
+
+      await batch.commit();
+
+      _showMessage('Courier rejected.');
     } catch (e) {
-      if (mounted) {
-        _showMessage(
-          'Unable to reject courier.\n$e',
-        );
-      }
+      _showMessage(
+        'Courier reject karte waqt error aaya: $e',
+        error: true,
+      );
     }
   }
 
-  // ============================================================
-  // DOCUMENT VIEWER
-  // ============================================================
-
-  void _showDocumentsDialog(
+  Future<void> _showDocumentsDialog(
     String courierId,
-    Map<String, dynamic> data,
-  ) {
-    final name =
-        _stringValue(data['name']).isNotEmpty
-            ? _stringValue(data['name'])
-            : 'Courier';
+    Map<String, dynamic> courierData,
+  ) async {
+    final documents = courierData['documents'];
 
-    final documents =
-        data['documents'] is Map
-            ? Map<String, dynamic>.from(
-                data['documents'] as Map,
-              )
-            : <String, dynamic>{};
-
-    final registrationType =
-        _stringValue(
-      data['registrationType'],
-    );
-
-    final registrationNo =
-        _stringValue(
-      data['registrationNo'],
-    );
-
-    final rejectionReason =
-        _stringValue(
-      data['rejectionReason'],
-    );
-
-    showDialog(
+    await showDialog(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
-          title: Text(
-            '$name - Documents',
-            style:
-                const TextStyle(
-              fontWeight:
-                  FontWeight.bold,
-            ),
+          title: Row(
+            children: [
+              const Icon(Icons.description),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${_stringValue(courierData['name'])} - Documents',
+                ),
+              ),
+            ],
           ),
           content: SizedBox(
-            width:
-                double.maxFinite,
+            width: double.maxFinite,
             child: SingleChildScrollView(
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment
-                        .start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (registrationType
-                          .isNotEmpty ||
-                      registrationNo
-                          .isNotEmpty)
-                    Card(
-                      child:
-                          Padding(
-                        padding:
-                            const EdgeInsets
-                                .all(
-                          12,
-                        ),
-                        child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment
-                                  .start,
-                          children: [
-                            const Text(
-                              'Registration Details',
-                              style:
-                                  TextStyle(
-                                fontWeight:
-                                    FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(
-                              height: 8,
-                            ),
-                            if (registrationType
-                                .isNotEmpty)
-                              Text(
-                                'Type: $registrationType',
-                              ),
-                            if (registrationNo
-                                .isNotEmpty)
-                              Text(
-                                'Number: $registrationNo',
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                  if (rejectionReason
-                      .isNotEmpty)
+                  _infoRow(
+                    'Registration Type',
+                    _stringValue(courierData['registrationType']),
+                  ),
+                  _infoRow(
+                    'Registration No.',
+                    _stringValue(courierData['registrationNo']),
+                  ),
+                  const SizedBox(height: 12),
+                  if (_stringValue(courierData['rejectionReason']).isNotEmpty)
                     Container(
-                      width:
-                          double.infinity,
-                      margin:
-                          const EdgeInsets
-                              .only(
-                        bottom: 12,
-                      ),
-                      padding:
-                          const EdgeInsets
-                              .all(
-                        12,
-                      ),
-                      decoration:
-                          BoxDecoration(
-                        color:
-                            Colors.red.shade50,
-                        borderRadius:
-                            BorderRadius
-                                .circular(
-                          10,
-                        ),
-                        border:
-                            Border.all(
-                          color:
-                              Colors.red.shade200,
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: Colors.red.shade200,
                         ),
                       ),
                       child: Text(
-                        'Previous rejection: $rejectionReason',
-                        style:
-                            TextStyle(
-                          color:
-                              Colors.red.shade800,
+                        'Previous Rejection:\n'
+                        '${_stringValue(courierData['rejectionReason'])}',
+                        style: TextStyle(
+                          color: Colors.red.shade800,
                         ),
                       ),
                     ),
-
-                  const Text(
-                    'Uploaded Documents',
-                    style:
-                        TextStyle(
-                      fontSize: 17,
-                      fontWeight:
-                          FontWeight.bold,
+                  const SizedBox(height: 16),
+                  ...requiredDocumentKeys.map(
+                    (key) => _documentPreview(
+                      key,
+                      documents is Map ? documents[key] : null,
                     ),
-                  ),
-
-                  const SizedBox(
-                    height: 10,
-                  ),
-
-                  _documentPreview(
-                    'Profile Photo',
-                    documents[
-                        'profilePhoto'],
-                  ),
-
-                  _documentPreview(
-                    'Aadhaar Card',
-                    documents[
-                        'aadhaar'],
-                  ),
-
-                  _documentPreview(
-                    'Driving Licence',
-                    documents[
-                        'drivingLicence'],
-                  ),
-
-                  _documentPreview(
-                    'Vehicle RC',
-                    documents[
-                        'vehicleRc'],
-                  ),
-
-                  _documentPreview(
-                    'Address Proof',
-                    documents[
-                        'addressProof'],
                   ),
                 ],
               ),
@@ -761,12 +490,8 @@ class _CourierManagementPageState
           ),
           actions: [
             TextButton(
-              onPressed: () =>
-                  Navigator.pop(
-                context,
-              ),
-              child:
-                  const Text('Close'),
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Close'),
             ),
           ],
         );
@@ -774,238 +499,262 @@ class _CourierManagementPageState
     );
   }
 
-  Widget _documentPreview(
-    String title,
-    dynamic rawDocument,
-  ) {
-    Map<String, dynamic> document = {};
+  Widget _infoRow(String title, String value) {
+    if (value.isEmpty) return const SizedBox.shrink();
 
-    if (rawDocument is Map) {
-      document =
-          Map<String, dynamic>.from(
-        rawDocument,
-      );
-    }
-
-    final url =
-        _stringValue(
-      document['url'],
-    );
-
-    final status =
-        _stringValue(
-      document['status'],
-    );
-
-    final rejectionReason =
-        _stringValue(
-      document['rejectionReason'],
-    );
-
-    return Card(
-      margin:
-          const EdgeInsets.only(
-        bottom: 12,
-      ),
-      clipBehavior:
-          Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment
-                .start,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ListTile(
-            dense: true,
-            title: Text(
-              title,
-              style:
-                  const TextStyle(
-                fontWeight:
-                    FontWeight.bold,
+          SizedBox(
+            width: 125,
+            child: Text(
+              '$title:',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
               ),
             ),
-            trailing:
-                status.isEmpty
-                    ? null
-                    : Text(
-                        status.toUpperCase(),
-                        style:
-                            TextStyle(
-                          fontSize: 10,
-                          fontWeight:
-                              FontWeight.bold,
-                          color:
-                              status ==
-                                      'approved'
-                                  ? Colors
-                                      .green
-                                  : status ==
-                                          'rejected'
-                                      ? Colors
-                                          .red
-                                      : Colors
-                                          .orange,
-                        ),
-                      ),
           ),
-
-          if (url.isNotEmpty)
-            SizedBox(
-              height: 220,
-              width:
-                  double.infinity,
-              child: Image.network(
-                url,
-                fit: BoxFit.contain,
-                errorBuilder:
-                    (
-                  context,
-                  error,
-                  stack,
-                ) {
-                  return const Center(
-                    child: Text(
-                      'Document image could not be loaded.',
-                    ),
-                  );
-                },
-                loadingBuilder:
-                    (
-                  context,
-                  child,
-                  loadingProgress,
-                ) {
-                  if (loadingProgress ==
-                      null) {
-                    return child;
-                  }
-
-                  return const Center(
-                    child:
-                        CircularProgressIndicator(),
-                  );
-                },
-              ),
-            )
-          else
-            const Padding(
-              padding:
-                  EdgeInsets.all(20),
-              child: Center(
-                child: Text(
-                  'Document not uploaded',
-                  style:
-                      TextStyle(
-                    color:
-                        Colors.grey,
-                  ),
-                ),
-              ),
-            ),
-
-          if (rejectionReason
-              .isNotEmpty)
-            Padding(
-              padding:
-                  const EdgeInsets.all(
-                12,
-              ),
-              child: Text(
-                'Reason: $rejectionReason',
-                style:
-                    const TextStyle(
-                  color: Colors.red,
-                ),
-              ),
-            ),
+          Expanded(
+            child: Text(value),
+          ),
         ],
       ),
     );
   }
 
-  // ============================================================
-  // TOGGLE
-  // ============================================================
+  Widget _documentPreview(
+    String key,
+    dynamic document,
+  ) {
+    String title;
+
+    switch (key) {
+      case 'profilePhoto':
+        title = 'Profile Photo';
+        break;
+      case 'aadhaar':
+        title = 'Aadhaar Card';
+        break;
+      case 'drivingLicence':
+        title = 'Driving Licence';
+        break;
+      case 'vehicleRc':
+        title = 'Vehicle RC';
+        break;
+      case 'addressProof':
+        title = 'Address Proof';
+        break;
+      default:
+        title = key;
+    }
+
+    String url = '';
+    String status = '';
+    String rejectionReason = '';
+
+    if (document is Map) {
+      url = _stringValue(document['url']);
+      status = _normalizeStatus(document['status']);
+      rejectionReason = _stringValue(document['rejectionReason']);
+    }
+
+    final uploaded = url.isNotEmpty;
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: uploaded ? Colors.green.shade300 : Colors.grey.shade300,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                uploaded ? Icons.check_circle : Icons.cancel,
+                color: uploaded ? Colors.green : Colors.red,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              if (status.isNotEmpty)
+                Text(
+                  status,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: status == 'approved'
+                        ? Colors.green
+                        : Colors.orange,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (uploaded)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                url,
+                height: 180,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                loadingBuilder: (
+                  context,
+                  child,
+                  loadingProgress,
+                ) {
+                  if (loadingProgress == null) {
+                    return child;
+                  }
+
+                  return const SizedBox(
+                    height: 180,
+                    child: Center(
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+                },
+                errorBuilder: (
+                  context,
+                  error,
+                  stackTrace,
+                ) {
+                  return Container(
+                    height: 180,
+                    alignment: Alignment.center,
+                    color: Colors.grey.shade200,
+                    child: const Text(
+                      'Document preview nahi ho paya.',
+                    ),
+                  );
+                },
+              ),
+            )
+          else
+            Container(
+              height: 80,
+              width: double.infinity,
+              alignment: Alignment.center,
+              color: Colors.grey.shade100,
+              child: const Text(
+                'Document upload nahi hua',
+              ),
+            ),
+          if (rejectionReason.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Reason: $rejectionReason',
+              style: const TextStyle(
+                color: Colors.red,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 
   Future<void> _toggleCourier(
     String courierId,
-    bool currentStatus,
+    Map<String, dynamic> courierData,
   ) async {
-    // Never allow an unapproved courier
-    // to become active.
+    final currentStatus = courierData['active'] == true;
+
     if (!currentStatus) {
-      final snapshot =
-          await _firestore
-              .collection('couriers')
-              .doc(courierId)
-              .get();
+      final status = _normalizeStatus(courierData['status']);
+      final approvedByAdmin =
+          courierData['approvedByAdmin'] == true;
 
-      final data =
-          snapshot.data() ?? {};
-
-      final approved =
-          _normalizeStatus(
-                data['status'],
-              ) ==
-              'approved' &&
-          data['approvedByAdmin'] ==
-              true;
-
-      if (!approved) {
+      if (status != 'approved' || !approvedByAdmin) {
         _showMessage(
-          'Courier must be approved by Admin before activation.',
+          'Courier ko active karne se pehle Admin approval zaroori hai.',
+          error: true,
         );
         return;
       }
     }
 
-    await _updateCourier(
-      courierId,
-      {
-        'active': !currentStatus,
-      },
-    );
-  }
+    try {
+      final courierRef =
+          _firestore.collection('couriers').doc(courierId);
 
-  // ============================================================
-  // DELETE
-  // ============================================================
+      final userRef =
+          _firestore.collection('users').doc(courierId);
+
+      final updateData = {
+        'active': !currentStatus,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      final batch = _firestore.batch();
+
+      batch.set(
+        courierRef,
+        updateData,
+        SetOptions(merge: true),
+      );
+
+      batch.set(
+        userRef,
+        updateData,
+        SetOptions(merge: true),
+      );
+
+      await batch.commit();
+
+      _showMessage(
+        currentStatus
+            ? 'Courier deactivated.'
+            : 'Courier activated.',
+      );
+    } catch (e) {
+      _showMessage(
+        'Courier status update error: $e',
+        error: true,
+      );
+    }
+  }
 
   Future<void> _deleteCourier(
     String courierId,
+    Map<String, dynamic> courierData,
   ) async {
-    final confirm =
-        await showDialog<bool>(
+    final name = _stringValue(courierData['name']);
+
+    final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
-          title: const Text(
-            'Delete Courier?',
-          ),
-          content: const Text(
-            'The courier record will be removed from '
-            'Courier Management. Firebase Authentication '
-            'account and existing order history will not '
-            'be deleted.',
+          title: const Text('Delete Courier'),
+          content: Text(
+            'Kya aap "$name" ko courier list se delete karna chahte hain?\n\n'
+            'Note: Firebase Authentication account automatically delete nahi hoga.',
           ),
           actions: [
             TextButton(
-              onPressed: () =>
-                  Navigator.pop(
-                context,
-                false,
-              ),
-              child:
-                  const Text('Cancel'),
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
             ),
-            FilledButton(
-              onPressed: () =>
-                  Navigator.pop(
-                context,
-                true,
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
               ),
-              child:
-                  const Text('Delete'),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Delete'),
             ),
           ],
         );
@@ -1020,171 +769,101 @@ class _CourierManagementPageState
           .doc(courierId)
           .delete();
 
-      if (mounted) {
-        _showMessage(
-          'Courier removed.',
-        );
-      }
+      _showMessage('Courier profile deleted.');
     } catch (e) {
-      if (mounted) {
-        _showMessage(
-          'Unable to delete courier.\n$e',
-        );
-      }
+      _showMessage(
+        'Courier delete karte waqt error aaya: $e',
+        error: true,
+      );
     }
   }
 
-  // ============================================================
-  // ADD DIALOG
-  // ============================================================
-
-  void _showAddCourierDialog() {
+  Future<void> _showAddCourierDialog() async {
     nameController.clear();
     emailController.clear();
     phoneController.clear();
     passwordController.clear();
 
-    obscurePassword = true;
+    bool dialogSaving = false;
 
-    showDialog(
+    await showDialog(
       context: context,
-      barrierDismissible:
-          !saving,
+      barrierDismissible: !saving,
       builder: (dialogContext) {
-        bool dialogSaving = false;
-
         return StatefulBuilder(
-          builder: (
-            context,
-            setDialogState,
-          ) {
+          builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Text(
-                'Add Courier',
-                style:
-                    TextStyle(
-                  fontWeight:
-                      FontWeight.bold,
-                ),
+              title: const Row(
+                children: [
+                  Icon(Icons.delivery_dining),
+                  SizedBox(width: 8),
+                  Text('Add Courier'),
+                ],
               ),
-              content:
-                  SingleChildScrollView(
+              content: SingleChildScrollView(
                 child: Column(
-                  mainAxisSize:
-                      MainAxisSize.min,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     TextField(
-                      controller:
-                          nameController,
-                      textCapitalization:
-                          TextCapitalization
-                              .words,
-                      decoration:
-                          const InputDecoration(
-                        labelText:
-                            'Courier Name',
-                        prefixIcon:
-                            Icon(
-                          Icons
-                              .person_outline,
-                        ),
-                        border:
-                            OutlineInputBorder(),
+                      controller: nameController,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        labelText: 'Courier Name',
+                        prefixIcon: Icon(Icons.person),
+                        border: OutlineInputBorder(),
                       ),
                     ),
-                    const SizedBox(
-                      height: 14,
-                    ),
+                    const SizedBox(height: 12),
                     TextField(
-                      controller:
-                          emailController,
-                      keyboardType:
-                          TextInputType
-                              .emailAddress,
-                      decoration:
-                          const InputDecoration(
-                        labelText:
-                            'Courier Email',
-                        prefixIcon:
-                            Icon(
-                          Icons
-                              .email_outlined,
-                        ),
-                        border:
-                            OutlineInputBorder(),
+                      controller: emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        labelText: 'Email',
+                        prefixIcon: Icon(Icons.email),
+                        border: OutlineInputBorder(),
                       ),
                     ),
-                    const SizedBox(
-                      height: 14,
-                    ),
+                    const SizedBox(height: 12),
                     TextField(
-                      controller:
-                          phoneController,
-                      keyboardType:
-                          TextInputType.phone,
-                      decoration:
-                          const InputDecoration(
-                        labelText:
-                            'Phone Number',
-                        prefixIcon:
-                            Icon(
-                          Icons
-                              .phone_outlined,
-                        ),
-                        border:
-                            OutlineInputBorder(),
+                      controller: phoneController,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(
+                        labelText: 'Mobile Number',
+                        prefixIcon: Icon(Icons.phone),
+                        border: OutlineInputBorder(),
                       ),
                     ),
-                    const SizedBox(
-                      height: 14,
-                    ),
+                    const SizedBox(height: 12),
                     TextField(
-                      controller:
-                          passwordController,
-                      obscureText:
-                          obscurePassword,
-                      decoration:
-                          InputDecoration(
-                        labelText:
-                            'Login Password',
-                        prefixIcon:
-                            const Icon(
-                          Icons
-                              .lock_outline,
-                        ),
-                        border:
-                            const OutlineInputBorder(),
-                        suffixIcon:
-                            IconButton(
+                      controller: passwordController,
+                      obscureText: obscurePassword,
+                      decoration: InputDecoration(
+                        labelText: 'Password',
+                        prefixIcon: const Icon(Icons.lock),
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
                           onPressed: () {
                             setDialogState(() {
-                              obscurePassword =
-                                  !obscurePassword;
+                              obscurePassword = !obscurePassword;
                             });
                           },
                           icon: Icon(
                             obscurePassword
-                                ? Icons
-                                    .visibility_outlined
-                                : Icons
-                                    .visibility_off_outlined,
+                                ? Icons.visibility
+                                : Icons.visibility_off,
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(
-                      height: 8,
-                    ),
+                    const SizedBox(height: 12),
                     const Align(
-                      alignment:
-                          Alignment.centerLeft,
+                      alignment: Alignment.centerLeft,
                       child: Text(
-                        'Minimum 6 characters',
-                        style:
-                            TextStyle(
+                        'Courier account create hone ke baad courier '
+                        'same email/password se login kar sakta hai.',
+                        style: TextStyle(
                           fontSize: 12,
-                          color:
-                              Colors.grey,
+                          color: Colors.grey,
                         ),
                       ),
                     ),
@@ -1193,55 +872,40 @@ class _CourierManagementPageState
               ),
               actions: [
                 TextButton(
-                  onPressed:
-                      dialogSaving
-                          ? null
-                          : () =>
-                              Navigator.pop(
-                            context,
-                          ),
-                  child:
-                      const Text(
-                    'Cancel',
-                  ),
+                  onPressed: dialogSaving
+                      ? null
+                      : () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
                 ),
-                FilledButton.icon(
-                  onPressed:
-                      dialogSaving
-                          ? null
-                          : () async {
-                              setDialogState(() {
-                                dialogSaving =
-                                    true;
-                              });
+                ElevatedButton(
+                  onPressed: dialogSaving
+                      ? null
+                      : () async {
+                          setDialogState(() {
+                            dialogSaving = true;
+                          });
 
-                              await _addCourier();
+                          final created = await _addCourier();
 
-                              if (mounted) {
-                                setDialogState(() {
-                                  dialogSaving =
-                                      false;
-                                });
-                              }
-                            },
-                  icon: dialogSaving
+                          if (!mounted) return;
+
+                          setDialogState(() {
+                            dialogSaving = false;
+                          });
+
+                          if (created && dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                          }
+                        },
+                  child: dialogSaving
                       ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child:
-                              CircularProgressIndicator(
-                            strokeWidth:
-                                2,
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
                           ),
                         )
-                      : const Icon(
-                          Icons.add,
-                        ),
-                  label: Text(
-                    dialogSaving
-                        ? 'Creating...'
-                        : 'Create Courier',
-                  ),
+                      : const Text('Create Courier'),
                 ),
               ],
             );
@@ -1251,470 +915,292 @@ class _CourierManagementPageState
     );
   }
 
-  // ============================================================
-  // EDIT DIALOG
-  // ============================================================
-
-  void _showEditCourierDialog(
+  Future<void> _showEditCourierDialog(
     String courierId,
-    Map<String, dynamic> data,
-  ) {
-    final editNameController =
-        TextEditingController(
-      text:
-          _stringValue(
-        data['name'],
-      ),
+    Map<String, dynamic> courierData,
+  ) async {
+    final editNameController = TextEditingController(
+      text: _stringValue(courierData['name']),
     );
 
-    final editEmailController =
-        TextEditingController(
-      text:
-          _stringValue(
-        data['email'],
-      ),
+    final editEmailController = TextEditingController(
+      text: _stringValue(courierData['email']),
     );
 
-    final editPhoneController =
-        TextEditingController(
-      text:
-          _stringValue(
-        data['phone'],
-      ),
+    final editPhoneController = TextEditingController(
+      text: _stringValue(courierData['phone']),
     );
 
-    showDialog(
-      context: context,
-      builder: (context) {
-        bool updating = false;
+    bool editSaving = false;
 
-        return StatefulBuilder(
-          builder: (
-            context,
-            setDialogState,
-          ) {
-            return AlertDialog(
-              title: const Text(
-                'Edit Courier',
-                style:
-                    TextStyle(
-                  fontWeight:
-                      FontWeight.bold,
-                ),
-              ),
-              content:
-                  SingleChildScrollView(
-                child: Column(
-                  mainAxisSize:
-                      MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller:
-                          editNameController,
-                      textCapitalization:
-                          TextCapitalization
-                              .words,
-                      decoration:
-                          const InputDecoration(
-                        labelText:
-                            'Courier Name',
-                        border:
-                            OutlineInputBorder(),
+    try {
+      await showDialog(
+        context: context,
+        builder: (dialogContext) {
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              return AlertDialog(
+                title: const Text('Edit Courier'),
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        controller: editNameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Name',
+                          prefixIcon: Icon(Icons.person),
+                          border: OutlineInputBorder(),
+                        ),
                       ),
-                    ),
-                    const SizedBox(
-                      height: 14,
-                    ),
-                    TextField(
-                      controller:
-                          editEmailController,
-                      keyboardType:
-                          TextInputType
-                              .emailAddress,
-                      decoration:
-                          const InputDecoration(
-                        labelText:
-                            'Courier Email',
-                        border:
-                            OutlineInputBorder(),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: editEmailController,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: const InputDecoration(
+                          labelText: 'Email',
+                          prefixIcon: Icon(Icons.email),
+                          border: OutlineInputBorder(),
+                        ),
                       ),
-                    ),
-                    const SizedBox(
-                      height: 14,
-                    ),
-                    TextField(
-                      controller:
-                          editPhoneController,
-                      keyboardType:
-                          TextInputType.phone,
-                      decoration:
-                          const InputDecoration(
-                        labelText:
-                            'Phone Number',
-                        border:
-                            OutlineInputBorder(),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: editPhoneController,
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(
+                          labelText: 'Phone',
+                          prefixIcon: Icon(Icons.phone),
+                          border: OutlineInputBorder(),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed:
-                      updating
-                          ? null
-                          : () =>
-                              Navigator.pop(
-                            context,
-                          ),
-                  child:
-                      const Text(
-                    'Cancel',
+                    ],
                   ),
                 ),
-                FilledButton(
-                  onPressed:
-                      updating
-                          ? null
-                          : () async {
-                              final name =
-                                  editNameController
-                                      .text
-                                      .trim();
+                actions: [
+                  TextButton(
+                    onPressed: editSaving
+                        ? null
+                        : () => Navigator.pop(dialogContext),
+                    child: const Text('Cancel'),
+                  ),
+                  ElevatedButton(
+                    onPressed: editSaving
+                        ? null
+                        : () async {
+                            final name =
+                                editNameController.text.trim();
+                            final email =
+                                editEmailController.text.trim();
+                            final phone =
+                                editPhoneController.text.trim();
 
-                              final email =
-                                  editEmailController
-                                      .text
-                                      .trim()
-                                      .toLowerCase();
+                            if (name.isEmpty ||
+                                email.isEmpty ||
+                                phone.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'All fields required hain.',
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
 
-                              final phone =
-                                  editPhoneController
-                                      .text
-                                      .trim();
+                            setDialogState(() {
+                              editSaving = true;
+                            });
 
-                              if (name.isEmpty ||
-                                  email.isEmpty) {
-                                _showMessage(
-                                  'Name and email are required.',
-                                );
-                                return;
-                              }
+                            try {
+                              final courierRef = _firestore
+                                  .collection('couriers')
+                                  .doc(courierId);
 
-                              setDialogState(() {
-                                updating =
-                                    true;
-                              });
+                              final userRef = _firestore
+                                  .collection('users')
+                                  .doc(courierId);
 
-                              await _updateCourier(
-                                courierId,
-                                {
-                                  'name':
-                                      name,
-                                  'email':
-                                      email,
-                                  'phone':
-                                      phone,
-                                },
+                              final updateData = {
+                                'name': name,
+                                'email': email,
+                                'phone': phone,
+                                'updatedAt':
+                                    FieldValue.serverTimestamp(),
+                              };
+
+                              final batch = _firestore.batch();
+
+                              batch.set(
+                                courierRef,
+                                updateData,
+                                SetOptions(merge: true),
                               );
 
-                              // Keep users name in sync.
-                              await _firestore
-                                  .collection(
-                                    'users',
-                                  )
-                                  .doc(
-                                    courierId,
-                                  )
-                                  .set({
-                                'name':
-                                    name,
-                                'email':
-                                    email,
-                                'phone':
-                                    phone,
-                                'updatedAt':
-                                    FieldValue
-                                        .serverTimestamp(),
-                              }, SetOptions(
-                                merge:
-                                    true,
-                              ));
+                              batch.set(
+                                userRef,
+                                updateData,
+                                SetOptions(merge: true),
+                              );
 
-                              if (context
-                                  .mounted) {
-                                Navigator.pop(
-                                  context,
-                                );
+                              await batch.commit();
+
+                              if (dialogContext.mounted) {
+                                Navigator.pop(dialogContext);
                               }
-                            },
-                  child: updating
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child:
-                              CircularProgressIndicator(
-                            strokeWidth:
-                                2,
-                          ),
-                        )
-                      : const Text(
-                          'Save',
-                        ),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
 
-  // ============================================================
-  // ORDER ASSIGNMENT
-  // ============================================================
+                              _showMessage(
+                                'Courier details updated.',
+                              );
+                            } catch (e) {
+                              _showMessage(
+                                'Courier update error: $e',
+                                error: true,
+                              );
+
+                              if (context.mounted) {
+                                setDialogState(() {
+                                  editSaving = false;
+                                });
+                              }
+                            }
+                          },
+                    child: editSaving
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text('Save'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      editNameController.dispose();
+      editEmailController.dispose();
+      editPhoneController.dispose();
+    }
+  }
 
   Future<void> _assignOrderToCourier(
     String orderId,
     String courierId,
+    String courierName,
   ) async {
     try {
       final callable =
-          _functions.httpsCallable(
-        'assignOrderToCourier',
-      );
+          _functions.httpsCallable('assignOrderToCourier');
 
       await callable.call({
         'orderId': orderId,
         'courierId': courierId,
       });
 
-      if (mounted) {
-        _showMessage(
-          'Order assigned to courier successfully.',
-        );
-      }
+      _showMessage(
+        'Order assigned to $courierName.',
+      );
     } on FirebaseFunctionsException catch (e) {
-      if (!mounted) return;
-
-      String message =
-          e.message ??
-              'Unable to assign order to courier.';
-
-      switch (e.code) {
-        case 'unauthenticated':
-          message =
-              'Please login again as Admin.';
-          break;
-
-        case 'permission-denied':
-          message =
-              e.message ??
-                  'Only Admin can assign courier.';
-          break;
-
-        case 'not-found':
-          message =
-              e.message ??
-                  'Order or courier not found.';
-          break;
-
-        case 'failed-precondition':
-          message =
-              e.message ??
-                  'This order is not eligible for courier assignment.';
-          break;
-
-        case 'invalid-argument':
-          message =
-              e.message ??
-                  'Invalid order or courier details.';
-          break;
-      }
-
-      _showMessage(message);
+      _showMessage(
+        e.message ?? 'Order assign karte waqt error aaya.',
+        error: true,
+      );
     } catch (e) {
-      if (!mounted) return;
-
-      String message = e.toString();
-
-      if (message.startsWith(
-        'Exception: ',
-      )) {
-        message =
-            message.substring(
-          'Exception: '.length,
-        );
-      }
-
-      _showMessage(message);
+      _showMessage(
+        'Order assign error: $e',
+        error: true,
+      );
     }
   }
 
   Future<void> _showAssignOrderDialog(
-    DocumentSnapshot<Map<String, dynamic>>
-        orderDoc,
+    String orderId,
   ) async {
-    final orderData =
-        orderDoc.data() ?? {};
-
-    final orderId =
-        _stringValue(
-              orderData['orderId'],
-            ).isNotEmpty
-            ? _stringValue(
-                orderData['orderId'],
-              )
-            : orderDoc.id;
-
-    final currentCourierId =
-        _stringValue(
-      orderData['courierId'],
-    );
-
-    final currentStatus =
-        _normalizeOrderStatus(
-      orderData['orderStatus'] ??
-          orderData['status'],
-    );
-
-    if (currentStatus != 'Shipped') {
-      _showMessage(
-        'Only Shipped orders can be assigned to a courier.',
-      );
-      return;
-    }
-
     try {
-      // IMPORTANT:
-      // Only ADMIN-APPROVED + ACTIVE couriers
-      // can receive orders.
-      final courierSnapshot =
-          await _firestore
-              .collection('couriers')
-              .where(
-                'active',
-                isEqualTo: true,
-              )
-              .where(
-                'status',
-                isEqualTo: 'approved',
-              )
-              .where(
-                'approvedByAdmin',
-                isEqualTo: true,
-              )
-              .get();
+      final courierSnapshot = await _firestore
+          .collection('couriers')
+          .where('active', isEqualTo: true)
+          .get();
+
+      final couriers = courierSnapshot.docs.where((doc) {
+        final data = doc.data();
+
+        final status =
+            _normalizeStatus(data['status']);
+
+        final approvedByAdmin =
+            data['approvedByAdmin'] == true;
+
+        return status == 'approved' &&
+            approvedByAdmin;
+      }).toList();
 
       if (!mounted) return;
 
-      final couriers =
-          courierSnapshot.docs;
-
       if (couriers.isEmpty) {
         _showMessage(
-          'No approved active couriers available.',
+          'Koi approved aur active courier available nahi hai.',
+          error: true,
         );
         return;
       }
 
-      showDialog(
+      await showDialog(
         context: context,
-        builder: (context) {
+        builder: (dialogContext) {
           return AlertDialog(
-            title: Text(
-              'Assign Courier\nOrder #$orderId',
-            ),
+            title: const Text('Assign Order'),
             content: SizedBox(
-              width:
-                  double.maxFinite,
+              width: double.maxFinite,
               child: ListView.separated(
                 shrinkWrap: true,
-                itemCount:
-                    couriers.length,
-                separatorBuilder:
-                    (_, __) =>
-                        const Divider(),
-                itemBuilder:
-                    (context, index) {
-                  final courier =
-                      couriers[index];
-
-                  final data =
-                      courier.data();
+                itemCount: couriers.length,
+                separatorBuilder: (_, __) =>
+                    const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final doc = couriers[index];
+                  final data = doc.data();
 
                   final name =
-                      _stringValue(
-                                data['name'],
-                              )
-                              .isNotEmpty
-                          ? _stringValue(
-                              data['name'],
-                            )
-                          : 'Courier';
-
-                  final email =
-                      _stringValue(
-                    data['email'],
-                  );
+                      _stringValue(data['name']);
 
                   final phone =
-                      _stringValue(
-                    data['phone'],
-                  );
-
-                  final selected =
-                      currentCourierId ==
-                          courier.id;
+                      _stringValue(data['phone']);
 
                   return ListTile(
-                    leading:
-                        CircleAvatar(
+                    leading: const CircleAvatar(
                       child: Icon(
-                        Icons
-                            .local_shipping_outlined,
-                        color: selected
-                            ? Colors.green
-                            : null,
+                        Icons.delivery_dining,
                       ),
                     ),
                     title: Text(
-                      name,
-                      style:
-                          const TextStyle(
-                        fontWeight:
-                            FontWeight.bold,
-                      ),
+                      name.isEmpty
+                          ? 'Courier'
+                          : name,
                     ),
-                    subtitle:
-                        Text(
-                      [
-                        if (email.isNotEmpty)
-                          email,
-                        if (phone.isNotEmpty)
-                          phone,
-                      ].join('\n'),
+                    subtitle: Text(
+                      phone.isEmpty
+                          ? 'Approved & Active'
+                          : '$phone\nApproved & Active',
                     ),
-                    trailing:
-                        selected
-                            ? const Icon(
-                                Icons
-                                    .check_circle,
-                                color:
-                                    Colors.green,
-                              )
-                            : const Icon(
-                                Icons
-                                    .radio_button_unchecked,
-                              ),
+                    isThreeLine: phone.isNotEmpty,
+                    trailing: const Icon(
+                      Icons.arrow_forward_ios,
+                      size: 16,
+                    ),
                     onTap: () async {
-                      Navigator.pop(
-                        context,
-                      );
+                      Navigator.pop(dialogContext);
 
                       await _assignOrderToCourier(
                         orderId,
-                        courier.id,
+                        doc.id,
+                        name.isEmpty
+                            ? 'Courier'
+                            : name,
                       );
                     },
                   );
@@ -1724,28 +1210,190 @@ class _CourierManagementPageState
             actions: [
               TextButton(
                 onPressed: () =>
-                    Navigator.pop(
-                  context,
-                ),
-                child:
-                    const Text('Close'),
+                    Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
               ),
             ],
           );
         },
       );
     } catch (e) {
-      if (!mounted) return;
-
       _showMessage(
-        'Unable to load approved couriers.\n$e',
+        'Courier list load karte waqt error: $e',
+        error: true,
       );
     }
   }
 
-  // ============================================================
-  // ORDER ASSIGNMENT SECTION
-  // ============================================================
+  Widget _buildApprovalSection(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    final pendingCouriers = docs.where((doc) {
+      final data = doc.data();
+
+      return _normalizeStatus(data['status']) ==
+          'pending_approval';
+    }).toList();
+
+    if (pendingCouriers.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.pending_actions,
+                  color: Colors.orange,
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Courier Approval Pending',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                CircleAvatar(
+                  radius: 14,
+                  backgroundColor: Colors.orange,
+                  child: Text(
+                    '${pendingCouriers.length}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ...pendingCouriers.map(
+              (doc) {
+                final data = doc.data();
+
+                final name =
+                    _stringValue(data['name']);
+
+                final email =
+                    _stringValue(data['email']);
+
+                final phone =
+                    _stringValue(data['phone']);
+
+                final documentsSubmitted =
+                    data['documentsSubmitted'] == true;
+
+                return Container(
+                  margin: const EdgeInsets.only(
+                    bottom: 10,
+                  ),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    borderRadius:
+                        BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.orange.shade200,
+                    ),
+                    color: Colors.orange.shade50,
+                  ),
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name.isEmpty
+                            ? 'Courier'
+                            : name,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (email.isNotEmpty)
+                        Text(email),
+                      if (phone.isNotEmpty)
+                        Text(phone),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () =>
+                                  _showDocumentsDialog(
+                                doc.id,
+                                data,
+                              ),
+                              icon: const Icon(
+                                Icons.description,
+                              ),
+                              label: const Text(
+                                'Documents',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed:
+                                  documentsSubmitted
+                                      ? () =>
+                                          _approveCourier(
+                                            doc.id,
+                                            data,
+                                          )
+                                      : null,
+                              icon: const Icon(
+                                Icons.check,
+                              ),
+                              label: const Text(
+                                'Approve',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          style:
+                              OutlinedButton.styleFrom(
+                            foregroundColor:
+                                Colors.red,
+                          ),
+                          onPressed: () =>
+                              _rejectCourier(
+                            doc.id,
+                            data,
+                          ),
+                          icon: const Icon(
+                            Icons.close,
+                          ),
+                          label: const Text(
+                            'Reject',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildOrderAssignmentSection() {
     return StreamBuilder<
@@ -1759,199 +1407,111 @@ class _CourierManagementPageState
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
+          return Card(
+            margin: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 6,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Text(
+                'Orders load error: ${snapshot.error}',
+              ),
+            ),
+          );
+        }
+
+        if (!snapshot.hasData) {
+          return const Padding(
+            padding: EdgeInsets.all(20),
+            child: Center(
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+
+        final orders = snapshot.data!.docs;
+
+        if (orders.isEmpty) {
           return const SizedBox.shrink();
         }
 
-        if (snapshot.connectionState ==
-            ConnectionState.waiting) {
-          return const Card(
-            child: Padding(
-              padding:
-                  EdgeInsets.all(18),
-              child: Center(
-                child:
-                    CircularProgressIndicator(),
-              ),
-            ),
-          );
-        }
-
-        final orders =
-            snapshot.data?.docs ?? [];
-
-        if (orders.isEmpty) {
-          return Card(
-            margin:
-                const EdgeInsets.only(
-              bottom: 16,
-            ),
-            shape:
-                RoundedRectangleBorder(
-              borderRadius:
-                  BorderRadius.circular(
-                16,
-              ),
-            ),
-            child: const Padding(
-              padding:
-                  EdgeInsets.all(18),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons
-                        .assignment_turned_in_outlined,
-                    color: Colors.grey,
-                  ),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'No Shipped orders waiting '
-                      'for courier assignment.',
-                      style:
-                          TextStyle(
-                        color:
-                            Colors.grey,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
         return Card(
-          margin:
-              const EdgeInsets.only(
-            bottom: 16,
-          ),
-          elevation: 2,
-          shape:
-              RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.circular(
-              16,
-            ),
+          margin: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 6,
           ),
           child: Padding(
-            padding:
-                const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(14),
             child: Column(
               crossAxisAlignment:
-                  CrossAxisAlignment
-                      .start,
+                  CrossAxisAlignment.start,
               children: [
                 const Row(
                   children: [
                     Icon(
-                      Icons
-                          .local_shipping_outlined,
+                      Icons.local_shipping,
+                      color: Colors.blue,
                     ),
-                    SizedBox(width: 10),
+                    SizedBox(width: 8),
                     Text(
-                      'Courier Assignment',
-                      style:
-                          TextStyle(
-                        fontSize: 18,
-                        fontWeight:
-                            FontWeight.bold,
+                      'Shipped Orders',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  '${orders.length} Shipped order(s) available',
-                  style:
-                      const TextStyle(
-                    color:
-                        Colors.black54,
-                  ),
-                ),
-                const SizedBox(
-                  height: 12,
-                ),
+                const SizedBox(height: 10),
                 ...orders.map(
                   (doc) {
-                    final data =
-                        doc.data();
+                    final data = doc.data();
 
                     final orderId =
                         _stringValue(
-                              data['orderId'],
-                            ).isNotEmpty
-                            ? _stringValue(
-                                data['orderId'],
-                              )
-                            : doc.id;
-
-                    final customer =
-                        _stringValue(
-                              data[
-                                  'customerName'],
-                            ).isNotEmpty
-                            ? _stringValue(
-                                data[
-                                    'customerName'],
-                              )
+                      data['orderId'],
+                    ).isEmpty
+                            ? doc.id
                             : _stringValue(
-                                  data['name'],
-                                ).isNotEmpty
-                                ? _stringValue(
-                                    data['name'],
-                                  )
-                                : 'Customer';
+                                data['orderId'],
+                              );
 
-                    final assignedCourierId =
+                    final assignedCourier =
+                        _stringValue(
+                      data['courierPersonName'],
+                    );
+
+                    final courierId =
                         _stringValue(
                       data['courierId'],
                     );
 
-                    final assignedName =
-                        _stringValue(
-                      data[
-                          'courierPersonName'],
-                    );
-
                     return Container(
-                      margin:
-                          const EdgeInsets.only(
-                        bottom: 10,
+                      margin: const EdgeInsets.only(
+                        bottom: 8,
                       ),
-                      padding:
-                          const EdgeInsets.all(
-                        12,
-                      ),
-                      decoration:
-                          BoxDecoration(
-                        border: Border.all(
-                          color: Colors
-                              .grey
-                              .shade300,
-                        ),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
                         borderRadius:
-                            BorderRadius.circular(
-                          12,
+                            BorderRadius.circular(10),
+                        border: Border.all(
+                          color: Colors.grey.shade300,
                         ),
                       ),
                       child: Row(
                         children: [
                           const Icon(
-                            Icons
-                                .inventory_2_outlined,
+                            Icons.inventory_2,
                           ),
-                          const SizedBox(
-                            width: 12,
-                          ),
+                          const SizedBox(width: 10),
                           Expanded(
-                            child:
-                                Column(
+                            child: Column(
                               crossAxisAlignment:
-                                  CrossAxisAlignment
-                                      .start,
+                                  CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Order #$orderId',
+                                  'Order: $orderId',
                                   style:
                                       const TextStyle(
                                     fontWeight:
@@ -1962,56 +1522,32 @@ class _CourierManagementPageState
                                   height: 3,
                                 ),
                                 Text(
-                                  customer,
-                                  style:
-                                      const TextStyle(
-                                    color:
-                                        Colors.black54,
-                                  ),
+                                  assignedCourier.isEmpty
+                                      ? 'Not Assigned'
+                                      : 'Courier: $assignedCourier',
                                 ),
-                                if (assignedCourierId
-                                        .isNotEmpty ||
-                                    assignedName
-                                        .isNotEmpty)
-                                  Padding(
-                                    padding:
-                                        const EdgeInsets
-                                            .only(
-                                      top: 4,
-                                    ),
-                                    child:
-                                        Text(
-                                      assignedName
-                                              .isNotEmpty
-                                          ? 'Assigned: $assignedName'
-                                          : 'Courier ID: $assignedCourierId',
-                                      style:
-                                          const TextStyle(
-                                        color:
-                                            Colors.green,
-                                        fontWeight:
-                                            FontWeight.w600,
-                                      ),
+                                if (courierId.isNotEmpty)
+                                  Text(
+                                    'Courier ID: $courierId',
+                                    style:
+                                        const TextStyle(
+                                      fontSize: 11,
+                                      color:
+                                          Colors.grey,
                                     ),
                                   ),
                               ],
                             ),
                           ),
-                          const SizedBox(
-                            width: 8,
-                          ),
-                          OutlinedButton(
-                            onPressed:
-                                () {
-                              _showAssignOrderDialog(
-                                doc,
-                              );
-                            },
+                          ElevatedButton(
+                            onPressed: () =>
+                                _showAssignOrderDialog(
+                              doc.id,
+                            ),
                             child: Text(
-                              assignedCourierId
-                                      .isEmpty
+                              assignedCourier.isEmpty
                                   ? 'Assign'
-                                  : 'View / Assign',
+                                  : 'Change',
                             ),
                           ),
                         ],
@@ -2027,425 +1563,343 @@ class _CourierManagementPageState
     );
   }
 
-  // ============================================================
-  // PENDING COURIER APPROVAL
-  // ============================================================
-
-  Widget _buildApprovalSection(
-    List<QueryDocumentSnapshot<
-            Map<String, dynamic>>>
-        docs,
+  Widget _buildCourierCard(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
   ) {
-    final pending =
-        docs.where((doc) {
-      final data = doc.data();
+    final data = doc.data();
 
-      final status =
-          _normalizeStatus(
-        data['status'],
-      );
+    final courierId = doc.id;
 
-      return status ==
-          'pending_approval';
-    }).toList();
+    final name = _stringValue(data['name']);
+    final email = _stringValue(data['email']);
+    final phone = _stringValue(data['phone']);
+
+    final status = _normalizeStatus(data['status']);
+
+    final active = data['active'] == true;
+
+    final approvedByAdmin =
+        data['approvedByAdmin'] == true;
+
+    final documentsSubmitted =
+        data['documentsSubmitted'] == true;
+
+    final statusColor = _statusColor(status);
 
     return Card(
-      margin:
-          const EdgeInsets.only(
-        bottom: 16,
-      ),
-      elevation: 2,
-      shape:
-          RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.circular(
-          16,
-        ),
+      margin: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 6,
       ),
       child: Padding(
-        padding:
-            const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment:
-              CrossAxisAlignment
-                  .start,
+              CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
-                const Icon(
-                  Icons
-                      .verified_user_outlined,
-                ),
-                const SizedBox(
-                  width: 10,
-                ),
-                const Expanded(
-                  child: Text(
-                    'Courier Approval',
-                    style:
-                        TextStyle(
-                      fontSize: 19,
-                      fontWeight:
-                          FontWeight.bold,
-                    ),
+                CircleAvatar(
+                  radius: 25,
+                  child: const Icon(
+                    Icons.delivery_dining,
                   ),
                 ),
-                Container(
-                  padding:
-                      const EdgeInsets
-                          .symmetric(
-                    horizontal: 10,
-                    vertical: 5,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name.isEmpty
+                            ? 'Courier'
+                            : name,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (email.isNotEmpty)
+                        Text(
+                          email,
+                          style: const TextStyle(
+                            color: Colors.grey,
+                          ),
+                        ),
+                      if (phone.isNotEmpty)
+                        Text(phone),
+                    ],
                   ),
-                  decoration:
-                      BoxDecoration(
-                    color:
-                        pending.isEmpty
-                            ? Colors
-                                .grey
-                                .shade100
-                            : Colors
-                                .orange
-                                .shade100,
-                    borderRadius:
-                        BorderRadius
-                            .circular(
-                      20,
-                    ),
-                  ),
-                  child: Text(
-                    '${pending.length} Pending',
-                    style:
-                        TextStyle(
-                      fontSize: 11,
-                      fontWeight:
-                          FontWeight.bold,
-                      color:
-                          pending.isEmpty
-                              ? Colors.grey
-                              : Colors.orange
-                                  .shade800,
-                    ),
-                  ),
+                ),
+                PopupMenuButton<String>(
+                  onSelected: (value) async {
+                    switch (value) {
+                      case 'documents':
+                        await _showDocumentsDialog(
+                          courierId,
+                          data,
+                        );
+                        break;
+
+                      case 'approve':
+                        await _approveCourier(
+                          courierId,
+                          data,
+                        );
+                        break;
+
+                      case 'reject':
+                        await _rejectCourier(
+                          courierId,
+                          data,
+                        );
+                        break;
+
+                      case 'edit':
+                        await _showEditCourierDialog(
+                          courierId,
+                          data,
+                        );
+                        break;
+
+                      case 'toggle':
+                        await _toggleCourier(
+                          courierId,
+                          data,
+                        );
+                        break;
+
+                      case 'delete':
+                        await _deleteCourier(
+                          courierId,
+                          data,
+                        );
+                        break;
+                    }
+                  },
+                  itemBuilder: (context) {
+                    final items =
+                        <PopupMenuEntry<String>>[
+                      const PopupMenuItem(
+                        value: 'documents',
+                        child: ListTile(
+                          contentPadding:
+                              EdgeInsets.zero,
+                          leading: Icon(
+                            Icons.description,
+                          ),
+                          title: Text(
+                            'View Documents',
+                          ),
+                        ),
+                      ),
+                    ];
+
+                    if (status ==
+                        'pending_approval') {
+                      items.add(
+                        const PopupMenuItem(
+                          value: 'approve',
+                          child: ListTile(
+                            contentPadding:
+                                EdgeInsets.zero,
+                            leading: Icon(
+                              Icons.check,
+                              color: Colors.green,
+                            ),
+                            title: Text('Approve'),
+                          ),
+                        ),
+                      );
+
+                      items.add(
+                        const PopupMenuItem(
+                          value: 'reject',
+                          child: ListTile(
+                            contentPadding:
+                                EdgeInsets.zero,
+                            leading: Icon(
+                              Icons.close,
+                              color: Colors.red,
+                            ),
+                            title: Text('Reject'),
+                          ),
+                        ),
+                      );
+                    }
+
+                    items.add(
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: ListTile(
+                          contentPadding:
+                              EdgeInsets.zero,
+                          leading: Icon(
+                            Icons.edit,
+                          ),
+                          title: Text('Edit'),
+                        ),
+                      ),
+                    );
+
+                    items.add(
+                      PopupMenuItem(
+                        value: 'toggle',
+                        child: ListTile(
+                          contentPadding:
+                              EdgeInsets.zero,
+                          leading: Icon(
+                            active
+                                ? Icons.toggle_off
+                                : Icons.toggle_on,
+                          ),
+                          title: Text(
+                            active
+                                ? 'Deactivate'
+                                : 'Activate',
+                          ),
+                        ),
+                      ),
+                    );
+
+                    items.add(
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: ListTile(
+                          contentPadding:
+                              EdgeInsets.zero,
+                          leading: Icon(
+                            Icons.delete,
+                            color: Colors.red,
+                          ),
+                          title: Text('Delete'),
+                        ),
+                      ),
+                    );
+
+                    return items;
+                  },
                 ),
               ],
             ),
-
-            const SizedBox(
-              height: 8,
-            ),
-
-            const Text(
-              'Courier documents submitted for Admin approval.',
-              style: TextStyle(
-                color:
-                    Colors.black54,
-              ),
-            ),
-
-            const SizedBox(
-              height: 14,
-            ),
-
-            if (pending.isEmpty)
-              Container(
-                width:
-                    double.infinity,
-                padding:
-                    const EdgeInsets
-                        .all(
-                  18,
-                ),
-                decoration:
-                    BoxDecoration(
-                  color:
-                      Colors.grey.shade50,
-                  borderRadius:
-                      BorderRadius
-                          .circular(
-                    12,
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                Chip(
+                  label: Text(
+                    _statusLabel(status),
+                  ),
+                  backgroundColor:
+                      statusColor.withValues(
+                    alpha: 0.12,
+                  ),
+                  labelStyle: TextStyle(
+                    color: statusColor,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                child:
-                    const Row(
-                  children: [
-                    Icon(
-                      Icons
-                          .check_circle_outline,
-                      color:
-                          Colors.grey,
+                if (approvedByAdmin)
+                  const Chip(
+                    avatar: Icon(
+                      Icons.verified,
+                      size: 18,
+                      color: Colors.green,
                     ),
-                    SizedBox(
-                      width: 10,
+                    label: Text(
+                      'ADMIN APPROVED',
                     ),
-                    Expanded(
-                      child: Text(
-                        'No courier is waiting for approval.',
-                        style:
-                            TextStyle(
-                          color:
-                              Colors.grey,
-                        ),
-                      ),
+                  ),
+                if (active &&
+                    status == 'approved' &&
+                    approvedByAdmin)
+                  const Chip(
+                    avatar: Icon(
+                      Icons.circle,
+                      size: 12,
+                      color: Colors.green,
                     ),
-                  ],
-                ),
-              )
-            else
-              ...pending.map(
-                (doc) {
-                  final data =
-                      doc.data();
-
-                  final name =
-                      _stringValue(
-                                data[
-                                    'name'],
-                              )
-                              .isNotEmpty
-                          ? _stringValue(
-                              data[
-                                  'name'],
-                            )
-                          : 'Unnamed Courier';
-
-                  final email =
-                      _stringValue(
-                    data['email'],
-                  );
-
-                  final phone =
-                      _stringValue(
-                    data['phone'],
-                  );
-
-                  final documentsSubmitted =
-                      data[
-                              'documentsSubmitted'] ==
-                          true;
-
-                  return Container(
-                    margin:
-                        const EdgeInsets
-                            .only(
-                      bottom: 12,
-                    ),
-                    padding:
-                        const EdgeInsets
-                            .all(
-                      12,
-                    ),
-                    decoration:
-                        BoxDecoration(
-                      border: Border.all(
-                        color: Colors
-                            .orange
-                            .shade200,
-                      ),
-                      borderRadius:
-                          BorderRadius
-                              .circular(
-                        12,
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          children: [
-                            CircleAvatar(
-                              child:
-                                  const Icon(
-                                Icons
-                                    .local_shipping_outlined,
-                              ),
-                            ),
-                            const SizedBox(
-                              width: 12,
-                            ),
-                            Expanded(
-                              child:
-                                  Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment
-                                        .start,
-                                children: [
-                                  Text(
-                                    name,
-                                    style:
-                                        const TextStyle(
-                                      fontSize:
-                                          16,
-                                      fontWeight:
-                                          FontWeight.bold,
-                                    ),
-                                  ),
-                                  if (email
-                                      .isNotEmpty)
-                                    Text(
-                                      email,
-                                      style:
-                                          const TextStyle(
-                                        color:
-                                            Colors.black54,
-                                      ),
-                                    ),
-                                  if (phone
-                                      .isNotEmpty)
-                                    Text(
-                                      phone,
-                                      style:
-                                          const TextStyle(
-                                        color:
-                                            Colors.black54,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                            Container(
-                              padding:
-                                  const EdgeInsets
-                                      .symmetric(
-                                horizontal:
-                                    8,
-                                vertical:
-                                    4,
-                              ),
-                              decoration:
-                                  BoxDecoration(
-                                color:
-                                    Colors.blue
-                                        .shade50,
-                                borderRadius:
-                                    BorderRadius
-                                        .circular(
-                                  12,
-                                ),
-                              ),
-                              child:
-                                  const Text(
-                                'PENDING',
-                                style:
-                                    TextStyle(
-                                  fontSize:
-                                      10,
-                                  fontWeight:
-                                      FontWeight
-                                          .bold,
-                                  color:
-                                      Colors.blue,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(
-                          height: 12,
-                        ),
-
-                        Row(
-                          children: [
-                            Expanded(
-                              child:
-                                  OutlinedButton
-                                      .icon(
-                                onPressed:
-                                    () {
-                                  _showDocumentsDialog(
-                                    doc.id,
-                                    data,
-                                  );
-                                },
-                                icon:
-                                    const Icon(
-                                  Icons
-                                      .description_outlined,
-                                ),
-                                label:
-                                    const Text(
-                                  'View Documents',
-                                ),
-                              ),
-                            ),
-                            const SizedBox(
-                              width: 8,
-                            ),
-                            Expanded(
-                              child:
-                                  FilledButton
-                                      .icon(
-                                onPressed:
-                                    documentsSubmitted
-                                        ? () {
-                                            _approveCourier(
-                                              doc.id,
-                                              data,
-                                            );
-                                          }
-                                        : null,
-                                icon:
-                                    const Icon(
-                                  Icons
-                                      .check_circle_outline,
-                                ),
-                                label:
-                                    const Text(
-                                  'Approve',
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(
-                          height: 8,
-                        ),
-
-                        SizedBox(
-                          width:
-                              double.infinity,
-                          child:
-                              OutlinedButton
-                                  .icon(
-                            style:
-                                OutlinedButton
-                                    .styleFrom(
-                              foregroundColor:
-                                  Colors.red,
-                            ),
-                            onPressed:
-                                () {
-                              _rejectCourier(
-                                doc.id,
-                                data,
-                              );
-                            },
-                            icon:
-                                const Icon(
-                              Icons
-                                  .cancel_outlined,
-                            ),
-                            label:
-                                const Text(
-                              'Reject',
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
+                    label: Text('ACTIVE'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Courier ID: $courierId',
+              style: const TextStyle(
+                fontSize: 12,
+                color: Colors.grey,
               ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Documents: '
+              '${documentsSubmitted ? 'Submitted' : 'Pending'}',
+              style: TextStyle(
+                fontSize: 12,
+                color: documentsSubmitted
+                    ? Colors.green
+                    : Colors.orange,
+              ),
+            ),
+            if (_stringValue(
+              data['registrationType'],
+            ).isNotEmpty)
+              Text(
+                'Registration Type: '
+                '${_stringValue(data['registrationType'])}',
+                style: const TextStyle(
+                  fontSize: 12,
+                ),
+              ),
+            if (_stringValue(
+              data['registrationNo'],
+            ).isNotEmpty)
+              Text(
+                'Registration No: '
+                '${_stringValue(data['registrationNo'])}',
+                style: const TextStyle(
+                  fontSize: 12,
+                ),
+              ),
+            if (data['createdAt'] != null)
+              Text(
+                'Added: ${_dateText(data['createdAt'])}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey,
+                ),
+              ),
+            if (_stringValue(
+              data['rejectionReason'],
+            ).isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius:
+                      BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'Rejection Reason: '
+                  '${_stringValue(data['rejectionReason'])}',
+                  style: TextStyle(
+                    color: Colors.red.shade800,
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
-
-  // ============================================================
-  // DISPOSE
-  // ============================================================
 
   @override
   void dispose() {
@@ -2456,78 +1910,49 @@ class _CourierManagementPageState
     super.dispose();
   }
 
-  // ============================================================
-  // BUILD
-  // ============================================================
-
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
           'Courier Management',
-          style:
-              TextStyle(
-            fontWeight:
-                FontWeight.bold,
-          ),
         ),
         actions: [
           IconButton(
-            onPressed:
-                _showAddCourierDialog,
-            tooltip:
-                'Add Courier',
+            tooltip: 'Add Courier',
+            onPressed: _showAddCourierDialog,
             icon: const Icon(
-              Icons
-                  .person_add_alt_1,
+              Icons.person_add,
             ),
           ),
         ],
       ),
-
-      floatingActionButton:
-          FloatingActionButton.extended(
-        onPressed:
-            _showAddCourierDialog,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showAddCourierDialog,
         icon: const Icon(
           Icons.add,
         ),
-        label:
-            const Text(
+        label: const Text(
           'Add Courier',
         ),
       ),
-
       body: StreamBuilder<
-          QuerySnapshot<
-              Map<String,
-                  dynamic>>>(
+          QuerySnapshot<Map<String, dynamic>>>(
         stream: _firestore
-            .collection(
-              'couriers',
-            )
+            .collection('couriers')
             .orderBy(
               'createdAt',
               descending: true,
             )
             .snapshots(),
-        builder:
-            (context, snapshot) {
+        builder: (context, snapshot) {
           if (snapshot.hasError) {
             return Center(
               child: Padding(
-                padding:
-                    const EdgeInsets.all(
-                  24,
-                ),
+                padding: const EdgeInsets.all(20),
                 child: Text(
-                  'Unable to load couriers.\n\n'
-                  '${snapshot.error}',
-                  textAlign:
-                      TextAlign.center,
+                  'Courier data load error:\n${snapshot.error}',
+                  textAlign: TextAlign.center,
                 ),
               ),
             );
@@ -2536,670 +1961,52 @@ class _CourierManagementPageState
           if (snapshot.connectionState ==
               ConnectionState.waiting) {
             return const Center(
-              child:
-                  CircularProgressIndicator(),
+              child: CircularProgressIndicator(),
             );
           }
 
           final docs =
-              snapshot.data?.docs ??
-                  [];
+              snapshot.data?.docs ?? [];
 
-          return ListView(
-            padding:
-                const EdgeInsets.fromLTRB(
-              16,
-              16,
-              16,
-              100,
+          return RefreshIndicator(
+            onRefresh: () async {
+              await _firestore
+                  .collection('couriers')
+                  .limit(1)
+                  .get();
+            },
+            child: ListView(
+              padding: const EdgeInsets.only(
+                top: 4,
+                bottom: 90,
+              ),
+              children: [
+                _buildApprovalSection(docs),
+                _buildOrderAssignmentSection(),
+                if (docs.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(40),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.delivery_dining,
+                          size: 60,
+                          color: Colors.grey,
+                        ),
+                        SizedBox(height: 12),
+                        Text(
+                          'Abhi koi courier available nahi hai.',
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  ...docs.map(
+                    (doc) => _buildCourierCard(doc),
+                  ),
+              ],
             ),
-            children: [
-              // ==================================================
-              // APPROVAL
-              // ==================================================
-
-              _buildApprovalSection(
-                docs,
-              ),
-
-              // ==================================================
-              // ORDER ASSIGNMENT
-              // ==================================================
-
-              _buildOrderAssignmentSection(),
-
-              // ==================================================
-              // ALL COURIERS
-              // ==================================================
-
-              const Padding(
-                padding:
-                    EdgeInsets.only(
-                  bottom: 12,
-                ),
-                child: Text(
-                  'All Couriers',
-                  style:
-                      TextStyle(
-                    fontSize: 20,
-                    fontWeight:
-                        FontWeight.bold,
-                  ),
-                ),
-              ),
-
-              if (docs.isEmpty)
-                const Padding(
-                  padding:
-                      EdgeInsets.all(
-                    30,
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons
-                            .local_shipping_outlined,
-                        size: 70,
-                        color:
-                            Colors.grey,
-                      ),
-                      SizedBox(
-                        height: 16,
-                      ),
-                      Text(
-                        'No couriers added yet',
-                        style:
-                            TextStyle(
-                          fontSize: 18,
-                          fontWeight:
-                              FontWeight.bold,
-                        ),
-                      ),
-                      SizedBox(
-                        height: 8,
-                      ),
-                      Text(
-                        'Tap Add Courier to create '
-                        'the first courier account.',
-                        textAlign:
-                            TextAlign.center,
-                        style:
-                            TextStyle(
-                          color:
-                              Colors.grey,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-              ...docs.map(
-                (doc) {
-                  final data =
-                      doc.data();
-
-                  // IMPORTANT:
-                  // Always use the name stored in
-                  // couriers/{uid}.name.
-                  final name =
-                      _stringValue(
-                                data['name'],
-                              )
-                              .isNotEmpty
-                          ? _stringValue(
-                              data['name'],
-                            )
-                          : 'Unnamed Courier';
-
-                  final email =
-                      _stringValue(
-                    data['email'],
-                  );
-
-                  final phone =
-                      _stringValue(
-                    data['phone'],
-                  );
-
-                  final active =
-                      data['active'] ==
-                          true;
-
-                  final approved =
-                      _normalizeStatus(
-                            data['status'],
-                          ) ==
-                          'approved';
-
-                  final approvedByAdmin =
-                      data[
-                              'approvedByAdmin'] ==
-                          true;
-
-                  final status =
-                      _normalizeStatus(
-                    data['status'],
-                  );
-
-                  final createdAt =
-                      data['createdAt'];
-
-                  final documentsSubmitted =
-                      data[
-                              'documentsSubmitted'] ==
-                          true;
-
-                  final rejectionReason =
-                      _stringValue(
-                    data[
-                        'rejectionReason'],
-                  );
-
-                  return Card(
-                    margin:
-                        const EdgeInsets.only(
-                      bottom: 14,
-                    ),
-                    elevation: 2,
-                    shape:
-                        RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius
-                              .circular(
-                        16,
-                      ),
-                    ),
-                    child:
-                        Padding(
-                      padding:
-                          const EdgeInsets
-                              .all(
-                        16,
-                      ),
-                      child:
-                          Column(
-                        children: [
-                          Row(
-                            children: [
-                              CircleAvatar(
-                                radius:
-                                    27,
-                                child:
-                                    Icon(
-                                  Icons
-                                      .local_shipping_outlined,
-                                  color: approved &&
-                                          active
-                                      ? Colors
-                                          .green
-                                      : _statusColor(
-                                          status,
-                                        ),
-                                ),
-                              ),
-                              const SizedBox(
-                                width: 14,
-                              ),
-                              Expanded(
-                                child:
-                                    Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment
-                                          .start,
-                                  children: [
-                                    Text(
-                                      name,
-                                      style:
-                                          const TextStyle(
-                                        fontSize:
-                                            17,
-                                        fontWeight:
-                                            FontWeight.bold,
-                                      ),
-                                    ),
-                                    const SizedBox(
-                                      height:
-                                          4,
-                                    ),
-                                    if (email
-                                        .isNotEmpty)
-                                      Text(
-                                        email,
-                                        style:
-                                            const TextStyle(
-                                          color:
-                                              Colors.black54,
-                                        ),
-                                      ),
-                                    if (phone
-                                        .isNotEmpty)
-                                      Text(
-                                        phone,
-                                        style:
-                                            const TextStyle(
-                                          color:
-                                              Colors.black54,
-                                        ),
-                                      ),
-                                    const SizedBox(
-                                      height:
-                                          3,
-                                    ),
-                                    Text(
-                                      'Courier ID: ${doc.id}',
-                                      style:
-                                          const TextStyle(
-                                        fontSize:
-                                            11,
-                                        color:
-                                            Colors.grey,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-
-                              PopupMenuButton<
-                                  String>(
-                                onSelected:
-                                    (value) {
-                                  if (value ==
-                                      'documents') {
-                                    _showDocumentsDialog(
-                                      doc.id,
-                                      data,
-                                    );
-                                  }
-
-                                  if (value ==
-                                      'approve') {
-                                    _approveCourier(
-                                      doc.id,
-                                      data,
-                                    );
-                                  }
-
-                                  if (value ==
-                                      'reject') {
-                                    _rejectCourier(
-                                      doc.id,
-                                      data,
-                                    );
-                                  }
-
-                                  if (value ==
-                                      'edit') {
-                                    _showEditCourierDialog(
-                                      doc.id,
-                                      data,
-                                    );
-                                  }
-
-                                  if (value ==
-                                      'toggle') {
-                                    _toggleCourier(
-                                      doc.id,
-                                      active,
-                                    );
-                                  }
-
-                                  if (value ==
-                                      'delete') {
-                                    _deleteCourier(
-                                      doc.id,
-                                    );
-                                  }
-                                },
-                                itemBuilder:
-                                    (context) {
-                                  final items =
-                                      <PopupMenuEntry<
-                                          String>>[
-                                    const PopupMenuItem(
-                                      value:
-                                          'documents',
-                                      child:
-                                          Row(
-                                        children: [
-                                          Icon(
-                                            Icons
-                                                .description_outlined,
-                                          ),
-                                          SizedBox(
-                                            width:
-                                                10,
-                                          ),
-                                          Text(
-                                            'View Documents',
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ];
-
-                                  if (status ==
-                                      'pending_approval') {
-                                    items.add(
-                                      const PopupMenuItem(
-                                        value:
-                                            'approve',
-                                        child:
-                                            Row(
-                                          children: [
-                                            Icon(
-                                              Icons
-                                                  .check_circle_outline,
-                                              color:
-                                                  Colors.green,
-                                            ),
-                                            SizedBox(
-                                              width:
-                                                  10,
-                                            ),
-                                            Text(
-                                              'Approve',
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-
-                                    items.add(
-                                      const PopupMenuItem(
-                                        value:
-                                            'reject',
-                                        child:
-                                            Row(
-                                          children: [
-                                            Icon(
-                                              Icons
-                                                  .cancel_outlined,
-                                              color:
-                                                  Colors.red,
-                                            ),
-                                            SizedBox(
-                                              width:
-                                                  10,
-                                            ),
-                                            Text(
-                                              'Reject',
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                  }
-
-                                  items.add(
-                                    const PopupMenuItem(
-                                      value:
-                                          'edit',
-                                      child:
-                                          Row(
-                                        children: [
-                                          Icon(
-                                            Icons
-                                                .edit_outlined,
-                                          ),
-                                          SizedBox(
-                                            width:
-                                                10,
-                                          ),
-                                          Text(
-                                            'Edit',
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-
-                                  items.add(
-                                    PopupMenuItem(
-                                      value:
-                                          'toggle',
-                                      child:
-                                          Row(
-                                        children: [
-                                          Icon(
-                                            active
-                                                ? Icons
-                                                    .block_outlined
-                                                : Icons
-                                                    .check_circle_outline,
-                                          ),
-                                          const SizedBox(
-                                            width:
-                                                10,
-                                          ),
-                                          Text(
-                                            active
-                                                ? 'Deactivate'
-                                                : 'Activate',
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-
-                                  items.add(
-                                    const PopupMenuItem(
-                                      value:
-                                          'delete',
-                                      child:
-                                          Row(
-                                        children: [
-                                          Icon(
-                                            Icons
-                                                .delete_outline,
-                                            color:
-                                                Colors.red,
-                                          ),
-                                          SizedBox(
-                                            width:
-                                                10,
-                                          ),
-                                          Text(
-                                            'Delete',
-                                            style:
-                                                TextStyle(
-                                              color:
-                                                  Colors.red,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-
-                                  return items;
-                                },
-                              ),
-                            ],
-                          ),
-
-                          const Divider(
-                            height: 24,
-                          ),
-
-                          Row(
-                            children: [
-                              Container(
-                                padding:
-                                    const EdgeInsets
-                                        .symmetric(
-                                  horizontal:
-                                      10,
-                                  vertical: 5,
-                                ),
-                                decoration:
-                                    BoxDecoration(
-                                  color:
-                                      _statusColor(
-                                    status,
-                                  ).withValues(
-                                    alpha: 0.10,
-                                  ),
-                                  borderRadius:
-                                      BorderRadius
-                                          .circular(
-                                    20,
-                                  ),
-                                ),
-                                child:
-                                    Text(
-                                  _statusLabel(
-                                    status,
-                                  ),
-                                  style:
-                                      TextStyle(
-                                    fontSize:
-                                        10,
-                                    fontWeight:
-                                        FontWeight
-                                            .bold,
-                                    color:
-                                        _statusColor(
-                                      status,
-                                    ),
-                                  ),
-                                ),
-                              ),
-
-                              const SizedBox(
-                                width: 8,
-                              ),
-
-                              if (approvedByAdmin)
-                                Container(
-                                  padding:
-                                      const EdgeInsets
-                                          .symmetric(
-                                    horizontal:
-                                        8,
-                                    vertical:
-                                        5,
-                                  ),
-                                  decoration:
-                                      BoxDecoration(
-                                    color:
-                                        Colors
-                                            .green
-                                            .shade50,
-                                    borderRadius:
-                                        BorderRadius
-                                            .circular(
-                                      20,
-                                    ),
-                                  ),
-                                  child:
-                                      const Text(
-                                    'ADMIN APPROVED',
-                                    style:
-                                        TextStyle(
-                                      fontSize:
-                                          9,
-                                      fontWeight:
-                                          FontWeight
-                                              .bold,
-                                      color:
-                                          Colors
-                                              .green,
-                                    ),
-                                  ),
-                                ),
-
-                              const Spacer(),
-
-                              if (documentsSubmitted)
-                                const Icon(
-                                  Icons
-                                      .description,
-                                  size: 16,
-                                  color:
-                                      Colors.green,
-                                ),
-
-                              const SizedBox(
-                                width: 6,
-                              ),
-
-                              if (active &&
-                                  approved)
-                                const Text(
-                                  'ACTIVE',
-                                  style:
-                                      TextStyle(
-                                    fontSize:
-                                        11,
-                                    fontWeight:
-                                        FontWeight
-                                            .bold,
-                                    color:
-                                        Colors
-                                            .green,
-                                  ),
-                                )
-                              else if (createdAt !=
-                                  null)
-                                Text(
-                                  'Added: ${_dateText(createdAt)}',
-                                  style:
-                                      const TextStyle(
-                                    fontSize:
-                                        12,
-                                    color:
-                                        Colors.grey,
-                                  ),
-                                ),
-                            ],
-                          ),
-
-                          if (rejectionReason
-                              .isNotEmpty)
-                            Container(
-                              width:
-                                  double.infinity,
-                              margin:
-                                  const EdgeInsets
-                                      .only(
-                                top: 12,
-                              ),
-                              padding:
-                                  const EdgeInsets
-                                      .all(
-                                10,
-                              ),
-                              decoration:
-                                  BoxDecoration(
-                                color:
-                                    Colors.red
-                                        .shade50,
-                                borderRadius:
-                                    BorderRadius
-                                        .circular(
-                                  10,
-                                ),
-                              ),
-                              child:
-                                  Text(
-                                'Rejection reason: $rejectionReason',
-                                style:
-                                    TextStyle(
-                                  fontSize:
-                                      12,
-                                  color:
-                                      Colors.red
-                                          .shade800,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ],
           );
         },
       ),
