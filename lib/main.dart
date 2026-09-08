@@ -8,6 +8,9 @@ import 'login_page.dart';
 import 'admin_login.dart';
 import 'orders_page.dart';
 
+import 'courier_documents_page.dart';
+import 'courier_panel.dart';
+
 import 'models/preesho_models.dart';
 import 'cart/cart_controller.dart';
 import 'cart/cart_page.dart';
@@ -136,8 +139,290 @@ class PreeshoApp extends StatelessWidget {
         colorSchemeSeed: Colors.deepPurple,
         scaffoldBackgroundColor: const Color(0xffF7F7FA),
       ),
-      home: const MainShell(),
+
+      // IMPORTANT:
+      // AppEntry decides whether the logged-in user is
+      // customer or courier.
+      home: const AppEntry(),
     );
+  }
+}
+
+// ============================================================
+// APP ENTRY / USER ROUTING
+// ============================================================
+//
+// IMPORTANT COURIER FIX
+//
+// Earlier code checked users/{uid} first and only checked
+// couriers/{uid} afterwards.
+//
+// If users/{uid} was missing or role was not courier,
+// the app immediately opened MainShell.
+//
+// Now BOTH documents are checked:
+//   users/{uid}
+//   couriers/{uid}
+//
+// If either one identifies the account as courier,
+// courier routing is used.
+// ============================================================
+
+class AppEntry extends StatefulWidget {
+  const AppEntry({super.key});
+
+  @override
+  State<AppEntry> createState() => _AppEntryState();
+}
+
+class _AppEntryState extends State<AppEntry> {
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkUserSession();
+  }
+
+  Future<void> _checkUserSession() async {
+    if (!mounted) return;
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final auth = FirebaseAuth.instance;
+      final firestore = FirebaseFirestore.instance;
+
+      final user = auth.currentUser;
+
+      // --------------------------------------------------------
+      // No logged-in user
+      // --------------------------------------------------------
+
+      if (user == null) {
+        if (!mounted) return;
+
+        setState(() {
+          _loading = false;
+        });
+
+        return;
+      }
+
+      final uid = user.uid;
+
+      // --------------------------------------------------------
+      // Read BOTH user and courier documents.
+      // --------------------------------------------------------
+
+      final results = await Future.wait([
+        firestore
+            .collection('users')
+            .doc(uid)
+            .get(),
+
+        firestore
+            .collection('couriers')
+            .doc(uid)
+            .get(),
+      ]);
+
+      final userSnapshot =
+          results[0] as DocumentSnapshot<Map<String, dynamic>>;
+
+      final courierSnapshot =
+          results[1] as DocumentSnapshot<Map<String, dynamic>>;
+
+      final userData =
+          userSnapshot.data() ?? <String, dynamic>{};
+
+      final courierData =
+          courierSnapshot.data() ?? <String, dynamic>{};
+
+      // --------------------------------------------------------
+      // Get roles from BOTH documents.
+      // --------------------------------------------------------
+
+      final userRole =
+          userData['role']?.toString().trim().toLowerCase() ?? '';
+
+      final courierRole =
+          courierData['role']?.toString().trim().toLowerCase() ?? '';
+
+      // --------------------------------------------------------
+      // COURIER DETECTION
+      //
+      // Courier is recognised if:
+      //
+      // 1. users.role == courier
+      // OR
+      // 2. couriers.role == courier
+      // OR
+      // 3. courier document exists
+      //
+      // This prevents courier accounts from accidentally
+      // opening the normal customer Home page.
+      // --------------------------------------------------------
+
+      final isCourier =
+          userRole == 'courier' ||
+          courierRole == 'courier' ||
+          courierSnapshot.exists;
+
+      if (isCourier) {
+        // ------------------------------------------------------
+        // Determine courier status.
+        //
+        // Prefer courier document.
+        // If missing/empty, use users document.
+        // ------------------------------------------------------
+
+        String firstNonEmpty(
+          dynamic first,
+          dynamic second,
+        ) {
+          final firstValue =
+              first?.toString().trim() ?? '';
+
+          if (firstValue.isNotEmpty) {
+            return firstValue.toLowerCase();
+          }
+
+          return second
+                  ?.toString()
+                  .trim()
+                  .toLowerCase() ??
+              '';
+        }
+
+        final status = firstNonEmpty(
+          courierData['status'],
+          userData['status'],
+        );
+
+        final active =
+            courierData['active'] == true ||
+                userData['active'] == true;
+
+        final approvedByAdmin =
+            courierData['approvedByAdmin'] == true ||
+                userData['approvedByAdmin'] == true;
+
+        final approved =
+            status == 'approved' ||
+            status == 'active';
+
+        // ------------------------------------------------------
+        // FULLY APPROVED COURIER
+        // ------------------------------------------------------
+
+        if (approved &&
+            active &&
+            approvedByAdmin) {
+          if (!mounted) return;
+
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (_) => const CourierPanel(),
+            ),
+            (route) => false,
+          );
+
+          return;
+        }
+
+        // ------------------------------------------------------
+        // PENDING / REJECTED / DOCUMENTS REQUIRED
+        //
+        // Every courier who is not fully approved goes to
+        // Courier Documents page.
+        // ------------------------------------------------------
+
+        if (!mounted) return;
+
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => CourierDocumentsPage(
+              courierUid: uid,
+            ),
+          ),
+          (route) => false,
+        );
+
+        return;
+      }
+
+      // --------------------------------------------------------
+      // NORMAL CUSTOMER
+      // --------------------------------------------------------
+
+      if (!mounted) return;
+
+      setState(() {
+        _loading = false;
+      });
+    } catch (e) {
+      debugPrint(
+        'AppEntry session check error: $e',
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _loading = false;
+        _error =
+            'Unable to check your account.\n\n$e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_error != null) {
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  size: 55,
+                  color: Colors.red,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 20),
+                FilledButton(
+                  onPressed: _checkUserSession,
+                  child: const Text(
+                    'Retry',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return const MainShell();
   }
 }
 
@@ -157,6 +442,7 @@ class _MainShellState extends State<MainShell> {
 
   void refresh() {
     if (!mounted) return;
+
     setState(() {});
   }
 
@@ -354,7 +640,6 @@ class HomePage extends StatelessWidget {
           ),
         ),
         actions: [
-          // MY ORDERS
           IconButton(
             tooltip: 'My Orders',
             onPressed: () => openOrders(context),
@@ -363,8 +648,6 @@ class HomePage extends StatelessWidget {
               size: 25,
             ),
           ),
-
-          // NOTIFICATION
           IconButton(
             tooltip: 'Notifications',
             onPressed: () {
@@ -386,12 +669,9 @@ class HomePage extends StatelessWidget {
               size: 27,
             ),
           ),
-
-          // CART
           CartIconButton(
             onCartChanged: onCartChanged,
           ),
-
           const SizedBox(width: 6),
         ],
       ),
@@ -413,10 +693,6 @@ class HomePage extends StatelessWidget {
                 30,
               ),
               children: [
-                // ==================================================
-                // SEARCH BAR
-                // ==================================================
-
                 InkWell(
                   borderRadius:
                       BorderRadius.circular(18),
@@ -472,10 +748,6 @@ class HomePage extends StatelessWidget {
                 ),
 
                 const SizedBox(height: 18),
-
-                // ==================================================
-                // PREMIUM BANNER
-                // ==================================================
 
                 Container(
                   height: 175,
@@ -555,10 +827,6 @@ class HomePage extends StatelessWidget {
 
                 const SizedBox(height: 24),
 
-                // ==================================================
-                // CATEGORIES
-                // ==================================================
-
                 Row(
                   mainAxisAlignment:
                       MainAxisAlignment.spaceBetween,
@@ -612,10 +880,6 @@ class HomePage extends StatelessWidget {
                 ),
 
                 const SizedBox(height: 24),
-
-                // ==================================================
-                // PRODUCTS
-                // ==================================================
 
                 Row(
                   mainAxisAlignment:
@@ -936,10 +1200,6 @@ class ProductTile extends StatelessWidget {
           crossAxisAlignment:
               CrossAxisAlignment.start,
           children: [
-            // ==================================================
-            // IMAGE
-            // ==================================================
-
             Stack(
               children: [
                 AspectRatio(
@@ -1038,10 +1298,6 @@ class ProductTile extends StatelessWidget {
                   ),
               ],
             ),
-
-            // ==================================================
-            // PRODUCT INFO
-            // ==================================================
 
             Padding(
               padding:
@@ -1168,10 +1424,6 @@ class ProductTile extends StatelessWidget {
                   const SizedBox(
                     height: 9,
                   ),
-
-                  // ==================================================
-                  // CART
-                  // ==================================================
 
                   SizedBox(
                     width:
