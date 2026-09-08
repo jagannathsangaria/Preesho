@@ -29,6 +29,1170 @@ const List<String> fullOrderStatuses = [
   'Delivered',
 ];
 
+class CartPage extends StatefulWidget {
+  final VoidCallback onCartChanged;
+
+  const CartPage({
+    super.key,
+    required this.onCartChanged,
+  });
+
+  @override
+  State<CartPage> createState() => _CartPageState();
+}
+
+class _CartPageState extends State<CartPage> {
+  bool _loading = false;
+
+  String _money(double value) {
+    return '₹${value.toStringAsFixed(0)}';
+  }
+
+  double _discountPercent(CartItem item) {
+    if (item.originalPrice <= item.numericPrice ||
+        item.originalPrice <= 0) {
+      return 0;
+    }
+
+    return ((item.originalPrice - item.numericPrice) /
+            item.originalPrice) *
+        100;
+  }
+
+  Future<void> _increase(CartItem item) async {
+    setState(() => _loading = true);
+
+    await CartController.increaseQuantity(item.id);
+
+    if (!mounted) return;
+
+    setState(() => _loading = false);
+    widget.onCartChanged();
+  }
+
+  Future<void> _decrease(CartItem item) async {
+    setState(() => _loading = true);
+
+    await CartController.decreaseQuantity(item.id);
+
+    if (!mounted) return;
+
+    setState(() => _loading = false);
+    widget.onCartChanged();
+  }
+
+  Future<void> _remove(CartItem item) async {
+    await CartController.removeProduct(item.id);
+
+    if (!mounted) return;
+
+    widget.onCartChanged();
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('${item.name} removed from cart'),
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'OK',
+            onPressed: () {},
+          ),
+        ),
+      );
+
+    setState(() {});
+  }
+
+  Future<void> _clearCart() async {
+    if (CartController.items.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text(
+            'Clear Cart?',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          content: const Text(
+            'All products will be removed from your cart.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('Clear'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    await CartController.clear();
+
+    if (!mounted) return;
+
+    widget.onCartChanged();
+    setState(() {});
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Cart cleared'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _checkout() async {
+    if (CartController.items.isEmpty) return;
+
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const LoginPage(),
+        ),
+      );
+
+      if (!mounted) return;
+
+      if (result == null &&
+          FirebaseAuth.instance.currentUser == null) {
+        return;
+      }
+    }
+
+    if (!mounted) return;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const CheckoutPage(),
+      ),
+    );
+
+    if (!mounted) return;
+
+    setState(() {});
+    widget.onCartChanged();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = CartController.items;
+
+    final total = CartController.total;
+    final originalTotal = CartController.originalTotal;
+    final savings = CartController.productSavings;
+
+    final hasDiscount = originalTotal > total;
+
+    return Scaffold(
+      backgroundColor: const Color(0xffF6F7FB),
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xff171717),
+        centerTitle: false,
+        title: const Text(
+          'My Cart',
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        actions: [
+          if (items.isNotEmpty)
+            IconButton(
+              tooltip: 'Clear cart',
+              onPressed: _clearCart,
+              icon: const Icon(
+                Icons.delete_sweep_outlined,
+              ),
+            ),
+          const SizedBox(width: 6),
+        ],
+      ),
+      body: items.isEmpty
+          ? _EmptyCart(
+              onContinueShopping: () {
+                Navigator.pop(context);
+              },
+            )
+          : RefreshIndicator(
+              onRefresh: () async {
+                await CartController.initialize();
+
+                if (!mounted) return;
+
+                setState(() {});
+                widget.onCartChanged();
+              },
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(
+                  12,
+                  12,
+                  12,
+                  180,
+                ),
+                children: [
+                  _CartHeader(
+                    itemCount: CartController.itemCount,
+                    savings: savings,
+                  ),
+                  const SizedBox(height: 12),
+
+                  ...items.map(
+                    (item) => Padding(
+                      padding: const EdgeInsets.only(
+                        bottom: 12,
+                      ),
+                      child: _CartProductCard(
+                        item: item,
+                        discountPercent:
+                            _discountPercent(item),
+                        onIncrease: _loading
+                            ? null
+                            : () => _increase(item),
+                        onDecrease: _loading
+                            ? null
+                            : () => _decrease(item),
+                        onRemove: () => _remove(item),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 4),
+
+                  const _DeliveryInfoCard(),
+
+                  const SizedBox(height: 12),
+
+                  _PriceDetailsCard(
+                    originalTotal: originalTotal,
+                    total: total,
+                    savings: savings,
+                    hasDiscount: hasDiscount,
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  const _CodInfoCard(),
+                ],
+              ),
+            ),
+      bottomNavigationBar: items.isEmpty
+          ? null
+          : _CheckoutBottomBar(
+              total: total,
+              itemCount: CartController.itemCount,
+              onCheckout: _checkout,
+            ),
+    );
+  }
+}
+
+class _CartHeader extends StatelessWidget {
+  final int itemCount;
+  final double savings;
+
+  const _CartHeader({
+    required this.itemCount,
+    required this.savings,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xff4F46E5),
+            Color(0xff7C3AED),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.deepPurple.withValues(
+              alpha: 0.18,
+            ),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(
+                alpha: 0.18,
+              ),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: const Icon(
+              Icons.shopping_bag_outlined,
+              color: Colors.white,
+              size: 27,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$itemCount ${itemCount == 1 ? 'Item' : 'Items'} in your cart',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  savings > 0
+                      ? 'You are saving ₹${savings.toStringAsFixed(0)}'
+                      : 'Review your items before checkout',
+                  style: TextStyle(
+                    color: Colors.white.withValues(
+                      alpha: 0.88,
+                    ),
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Icon(
+            Icons.arrow_forward_ios_rounded,
+            color: Colors.white70,
+            size: 16,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CartProductCard extends StatelessWidget {
+  final CartItem item;
+  final double discountPercent;
+  final VoidCallback? onIncrease;
+  final VoidCallback? onDecrease;
+  final VoidCallback onRemove;
+
+  const _CartProductCard({
+    required this.item,
+    required this.discountPercent,
+    required this.onIncrease,
+    required this.onDecrease,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasDiscount =
+        item.originalPrice > item.numericPrice;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: const Color(0xffECECF2),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(
+              alpha: 0.045,
+            ),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            Row(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                _ProductImage(
+                  imageUrl: item.imageUrl,
+                  size: 94,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.name,
+                        maxLines: 2,
+                        overflow:
+                            TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        item.category,
+                        maxLines: 1,
+                        overflow:
+                            TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Text(
+                            '₹${item.numericPrice.toStringAsFixed(0)}',
+                            style: const TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          if (hasDiscount) ...[
+                            const SizedBox(width: 7),
+                            Text(
+                              '₹${item.originalPrice.toStringAsFixed(0)}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade500,
+                                decoration:
+                                    TextDecoration
+                                        .lineThrough,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding:
+                                  const EdgeInsets
+                                      .symmetric(
+                                horizontal: 6,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.green
+                                    .withValues(
+                                  alpha: 0.10,
+                                ),
+                                borderRadius:
+                                    BorderRadius
+                                        .circular(6),
+                              ),
+                              child: Text(
+                                '${discountPercent.round()}% OFF',
+                                style: const TextStyle(
+                                  color: Colors.green,
+                                  fontSize: 10,
+                                  fontWeight:
+                                      FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: onRemove,
+                  tooltip: 'Remove',
+                  icon: Icon(
+                    Icons.close_rounded,
+                    color: Colors.grey.shade500,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Divider(
+              height: 1,
+              color: Colors.grey.shade200,
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                if (item.availableStock > 0)
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.inventory_2_outlined,
+                        size: 15,
+                        color: Colors.grey.shade600,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        '${item.availableStock} available',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                const Spacer(),
+                Container(
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: const Color(0xffF5F5FA),
+                    borderRadius:
+                        BorderRadius.circular(12),
+                    border: Border.all(
+                      color: const Color(0xffE5E5EC),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize:
+                        MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        onPressed: onDecrease,
+                        padding: EdgeInsets.zero,
+                        constraints:
+                            const BoxConstraints(
+                          minWidth: 36,
+                          minHeight: 36,
+                        ),
+                        icon: const Icon(
+                          Icons.remove_rounded,
+                          size: 18,
+                        ),
+                      ),
+                      Container(
+                        width: 34,
+                        alignment: Alignment.center,
+                        child: Text(
+                          '${item.quantity}',
+                          style: const TextStyle(
+                            fontWeight:
+                                FontWeight.w800,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: onIncrease,
+                        padding: EdgeInsets.zero,
+                        constraints:
+                            const BoxConstraints(
+                          minWidth: 36,
+                          minHeight: 36,
+                        ),
+                        icon: const Icon(
+                          Icons.add_rounded,
+                          size: 18,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProductImage extends StatelessWidget {
+  final String imageUrl;
+  final double size;
+
+  const _ProductImage({
+    required this.imageUrl,
+    required this.size,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasImage = imageUrl.trim().isNotEmpty;
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: const Color(0xffF4F5F8),
+        borderRadius: BorderRadius.circular(17),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: hasImage
+          ? Image.network(
+              imageUrl,
+              fit: BoxFit.cover,
+              errorBuilder:
+                  (context, error, stackTrace) {
+                return const _ImagePlaceholder();
+              },
+              loadingBuilder:
+                  (context, child, progress) {
+                if (progress == null) {
+                  return child;
+                }
+
+                return const Center(
+                  child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                    ),
+                  ),
+                );
+              },
+            )
+          : const _ImagePlaceholder(),
+    );
+  }
+}
+
+class _ImagePlaceholder extends StatelessWidget {
+  const _ImagePlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Icon(
+        Icons.image_outlined,
+        color: Colors.grey,
+        size: 32,
+      ),
+    );
+  }
+}
+
+class _DeliveryInfoCard extends StatelessWidget {
+  const _DeliveryInfoCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: const Color(0xffE8E8EF),
+        ),
+      ),
+      child: const Column(
+        children: [
+          _InfoRow(
+            icon: Icons.local_shipping_outlined,
+            title: 'Fast & Safe Delivery',
+            subtitle:
+                'Your order will be delivered to your selected address.',
+          ),
+          SizedBox(height: 13),
+          _InfoRow(
+            icon: Icons.verified_user_outlined,
+            title: 'Secure Shopping',
+            subtitle:
+                'Your order information is securely processed.',
+          ),
+          SizedBox(height: 13),
+          _InfoRow(
+            icon: Icons.assignment_return_outlined,
+            title: 'Easy Order Support',
+            subtitle:
+                'Track your order from the Orders section.',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  const _InfoRow({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: const Color(0xffF1F0FF),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            icon,
+            color: Colors.deepPurple,
+            size: 21,
+          ),
+        ),
+        const SizedBox(width: 11),
+        Expanded(
+          child: Column(
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 11,
+                  height: 1.35,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PriceDetailsCard extends StatelessWidget {
+  final double originalTotal;
+  final double total;
+  final double savings;
+  final bool hasDiscount;
+
+  const _PriceDetailsCard({
+    required this.originalTotal,
+    required this.total,
+    required this.savings,
+    required this.hasDiscount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: const Color(0xffE8E8EF),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Price Details',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 14),
+          _PriceRow(
+            title: 'MRP / Product Price',
+            value: '₹${originalTotal.toStringAsFixed(0)}',
+            muted: hasDiscount,
+          ),
+          const SizedBox(height: 10),
+          _PriceRow(
+            title: 'Discounted Price',
+            value: '₹${total.toStringAsFixed(0)}',
+            bold: true,
+          ),
+          const SizedBox(height: 10),
+          _PriceRow(
+            title: 'Delivery',
+            value: 'FREE',
+            valueColor: Colors.green,
+            bold: true,
+          ),
+          if (savings > 0) ...[
+            const SizedBox(height: 13),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(11),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(
+                  alpha: 0.08,
+                ),
+                borderRadius:
+                    BorderRadius.circular(10),
+              ),
+              child: Text(
+                'You save ₹${savings.toStringAsFixed(0)} on this order',
+                style: const TextStyle(
+                  color: Colors.green,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          Divider(
+            color: Colors.grey.shade200,
+          ),
+          const SizedBox(height: 8),
+          _PriceRow(
+            title: 'Total Amount',
+            value: '₹${total.toStringAsFixed(0)}',
+            bold: true,
+            large: true,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PriceRow extends StatelessWidget {
+  final String title;
+  final String value;
+  final bool bold;
+  final bool large;
+  final bool muted;
+  final Color? valueColor;
+
+  const _PriceRow({
+    required this.title,
+    required this.value,
+    this.bold = false,
+    this.large = false,
+    this.muted = false,
+    this.valueColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            style: TextStyle(
+              color: muted
+                  ? Colors.grey.shade500
+                  : Colors.grey.shade700,
+              fontSize: large ? 14 : 13,
+              fontWeight: bold
+                  ? FontWeight.w800
+                  : FontWeight.w500,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            color: valueColor ??
+                (large
+                    ? const Color(0xff111827)
+                    : Colors.grey.shade800),
+            fontSize: large ? 18 : 13,
+            fontWeight: bold
+                ? FontWeight.w900
+                : FontWeight.w600,
+            decoration: muted
+                ? TextDecoration.lineThrough
+                : null,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CodInfoCard extends StatelessWidget {
+  const _CodInfoCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xffFFFBEB),
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(
+          color: const Color(0xffFDE68A),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.payments_outlined,
+              color: Color(0xffB45309),
+            ),
+          ),
+          const SizedBox(width: 11),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Cash on Delivery Available',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                SizedBox(height: 3),
+                Text(
+                  'COD option will be available during checkout.',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Color(0xff78716C),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CheckoutBottomBar extends StatelessWidget {
+  final double total;
+  final int itemCount;
+  final VoidCallback onCheckout;
+
+  const _CheckoutBottomBar({
+    required this.total,
+    required this.itemCount,
+    required this.onCheckout,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(
+          14,
+          12,
+          14,
+          12,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(
+                alpha: 0.10,
+              ),
+              blurRadius: 18,
+              offset: const Offset(0, -5),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisSize:
+                    MainAxisSize.min,
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$itemCount ${itemCount == 1 ? 'item' : 'items'}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '₹${total.toStringAsFixed(0)}',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: onCheckout,
+                style: FilledButton.styleFrom(
+                  backgroundColor:
+                      const Color(0xff4F46E5),
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(
+                    horizontal: 20,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius.circular(16),
+                  ),
+                ),
+                icon: const Icon(
+                  Icons.lock_outline_rounded,
+                  size: 19,
+                ),
+                label: const Text(
+                  'Proceed to Checkout',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyCart extends StatelessWidget {
+  final VoidCallback onContinueShopping;
+
+  const _EmptyCart({
+    required this.onContinueShopping,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisAlignment:
+              MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 110,
+              height: 110,
+              decoration: BoxDecoration(
+                color: const Color(0xffEEECFF),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.shopping_cart_outlined,
+                size: 55,
+                color: Colors.deepPurple,
+              ),
+            ),
+            const SizedBox(height: 22),
+            const Text(
+              'Your cart is empty',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 23,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Add products you love and they will appear here.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: 13,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 25),
+            SizedBox(
+              height: 50,
+              child: FilledButton.icon(
+                onPressed: onContinueShopping,
+                style: FilledButton.styleFrom(
+                  backgroundColor:
+                      const Color(0xff4F46E5),
+                  shape: RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius.circular(15),
+                  ),
+                  padding:
+                      const EdgeInsets.symmetric(
+                    horizontal: 22,
+                  ),
+                ),
+                icon: const Icon(
+                  Icons.shopping_bag_outlined,
+                ),
+                label: const Text(
+                  'Continue Shopping',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/* =========================================================
+   ACTIVE ORDER TRACKING
+   ========================================================= */
+
 class ActiveOrderTracking extends StatelessWidget {
   const ActiveOrderTracking({super.key});
 
@@ -56,9 +1220,7 @@ class ActiveOrderTracking extends StatelessWidget {
     return text;
   }
 
-  DateTime timestampToDate(
-    dynamic value,
-  ) {
+  DateTime timestampToDate(dynamic value) {
     if (value is Timestamp) {
       return value.toDate();
     }
@@ -67,9 +1229,7 @@ class ActiveOrderTracking extends StatelessWidget {
       return value;
     }
 
-    return DateTime.fromMillisecondsSinceEpoch(
-      0,
-    );
+    return DateTime.fromMillisecondsSinceEpoch(0);
   }
 
   DateTime orderDate(
@@ -90,9 +1250,7 @@ class ActiveOrderTracking extends StatelessWidget {
     );
   }
 
-  int statusIndex(
-    String status,
-  ) {
+  int statusIndex(String status) {
     final index =
         fullOrderStatuses.indexWhere(
       (value) =>
@@ -103,9 +1261,7 @@ class ActiveOrderTracking extends StatelessWidget {
     return index < 0 ? 0 : index;
   }
 
-  Color statusColor(
-    String status,
-  ) {
+  Color statusColor(String status) {
     switch (status) {
       case 'Placed':
         return Colors.blue;
@@ -128,9 +1284,7 @@ class ActiveOrderTracking extends StatelessWidget {
     }
   }
 
-  IconData statusIcon(
-    String status,
-  ) {
+  IconData statusIcon(String status) {
     switch (status) {
       case 'Placed':
         return Icons.receipt_long;
@@ -153,9 +1307,7 @@ class ActiveOrderTracking extends StatelessWidget {
     }
   }
 
-  String shortOrderId(
-    String id,
-  ) {
+  String shortOrderId(String id) {
     if (id.length <= 10) {
       return id;
     }
@@ -163,9 +1315,7 @@ class ActiveOrderTracking extends StatelessWidget {
     return id.substring(0, 10);
   }
 
-  double number(
-    dynamic value,
-  ) {
+  double number(dynamic value) {
     if (value is num) {
       return value.toDouble();
     }
@@ -196,16 +1346,13 @@ class ActiveOrderTracking extends StatelessWidget {
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          behavior:
-              SnackBarBehavior.floating,
+          behavior: SnackBarBehavior.floating,
         ),
       );
   }
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     final user =
         FirebaseAuth.instance.currentUser;
 
@@ -215,8 +1362,7 @@ class ActiveOrderTracking extends StatelessWidget {
 
     return StreamBuilder<
         QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore
-          .instance
+      stream: FirebaseFirestore.instance
           .collection('orders')
           .where(
             'userId',
@@ -235,17 +1381,10 @@ class ActiveOrderTracking extends StatelessWidget {
                 ConnectionState.waiting &&
             !snapshot.hasData) {
           return const Padding(
-            padding:
-                EdgeInsets.fromLTRB(
-              12,
-              12,
-              12,
-              4,
-            ),
+            padding: EdgeInsets.all(12),
             child: Card(
               child: Padding(
-                padding:
-                    EdgeInsets.all(18),
+                padding: EdgeInsets.all(18),
                 child: Row(
                   children: [
                     SizedBox(
@@ -279,9 +1418,7 @@ class ActiveOrderTracking extends StatelessWidget {
             )
             .where(
               (entry) => isActive(
-                normalizeStatus(
-                  entry.value,
-                ),
+                normalizeStatus(entry.value),
               ),
             )
             .toList();
@@ -290,9 +1427,7 @@ class ActiveOrderTracking extends StatelessWidget {
           (a, b) => orderDate(
             b.value,
           ).compareTo(
-            orderDate(
-              a.value,
-            ),
+            orderDate(a.value),
           ),
         );
 
@@ -301,8 +1436,7 @@ class ActiveOrderTracking extends StatelessWidget {
         }
 
         return Padding(
-          padding:
-              const EdgeInsets.fromLTRB(
+          padding: const EdgeInsets.fromLTRB(
             12,
             12,
             12,
@@ -313,8 +1447,7 @@ class ActiveOrderTracking extends StatelessWidget {
                 CrossAxisAlignment.start,
             children: [
               const Padding(
-                padding:
-                    EdgeInsets.only(
+                padding: EdgeInsets.only(
                   left: 4,
                   bottom: 8,
                 ),
@@ -323,8 +1456,7 @@ class ActiveOrderTracking extends StatelessWidget {
                     Icon(
                       Icons
                           .local_shipping_outlined,
-                      color:
-                          Colors.deepPurple,
+                      color: Colors.deepPurple,
                     ),
                     SizedBox(width: 8),
                     Text(
@@ -339,8 +1471,7 @@ class ActiveOrderTracking extends StatelessWidget {
                 ),
               ),
               ...activeOrders.map(
-                (entry) =>
-                    _buildOrderCard(
+                (entry) => _buildOrderCard(
                   context,
                   entry.key,
                   entry.value,
@@ -396,40 +1527,42 @@ class ActiveOrderTracking extends StatelessWidget {
                 ?.toString() ??
             '';
 
-    return Card(
-      margin:
-          const EdgeInsets.only(
+    final color =
+        statusColor(currentStatus);
+
+    return Container(
+      margin: const EdgeInsets.only(
         bottom: 12,
       ),
-      elevation: 2,
-      clipBehavior:
-          Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: color.withValues(alpha: 0.18),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(
+              alpha: 0.05,
+            ),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
         children: [
           Container(
-            width: double.infinity,
-            padding:
-                const EdgeInsets.all(14),
-            color:
-                statusColor(
-              currentStatus,
-            ).withValues(
-              alpha: 0.10,
-            ),
+            padding: const EdgeInsets.all(14),
+            color: color.withValues(alpha: 0.08),
             child: Row(
               children: [
                 CircleAvatar(
-                  radius: 21,
-                  backgroundColor:
-                      statusColor(
-                    currentStatus,
-                  ),
+                  radius: 22,
+                  backgroundColor: color,
                   child: Icon(
-                    statusIcon(
-                      currentStatus,
-                    ),
+                    statusIcon(currentStatus),
                     color: Colors.white,
                     size: 22,
                   ),
@@ -443,7 +1576,7 @@ class ActiveOrderTracking extends StatelessWidget {
                       const Text(
                         'Current Status',
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: 11,
                           color: Colors.grey,
                         ),
                       ),
@@ -451,102 +1584,66 @@ class ActiveOrderTracking extends StatelessWidget {
                       Text(
                         currentStatus,
                         style: TextStyle(
-                          fontSize: 18,
+                          fontSize: 17,
                           fontWeight:
-                              FontWeight.bold,
-                          color:
-                              statusColor(
-                            currentStatus,
-                          ),
+                              FontWeight.w900,
+                          color: color,
                         ),
                       ),
                     ],
                   ),
                 ),
-                Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.end,
-                  children: [
-                    const Text(
-                      'Order',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey,
-                      ),
-                    ),
-                    Text(
-                      '#${shortOrderId(orderId)}',
-                      style:
-                          const TextStyle(
-                        fontWeight:
-                            FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
+                Text(
+                  '#${shortOrderId(orderId)}',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ],
             ),
           ),
-
           Padding(
-            padding:
-                const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(14),
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
               children: [
                 Row(
-                  mainAxisAlignment:
-                      MainAxisAlignment.spaceBetween,
                   children: [
                     const Text(
                       'Order Progress',
                       style: TextStyle(
                         fontWeight:
-                            FontWeight.bold,
-                        fontSize: 16,
+                            FontWeight.w800,
                       ),
                     ),
+                    const Spacer(),
                     Text(
                       '₹${total.toStringAsFixed(0)}',
-                      style:
-                          const TextStyle(
+                      style: const TextStyle(
                         fontWeight:
-                            FontWeight.bold,
-                        fontSize: 16,
+                            FontWeight.w900,
                       ),
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 14),
-
                 _TrackingTimeline(
-                  currentIndex:
-                      currentIndex,
+                  currentIndex: currentIndex,
                 ),
-
                 if (courierName.isNotEmpty ||
                     courierMobile.isNotEmpty ||
                     courierPartner.isNotEmpty ||
                     trackingNumber.isNotEmpty) ...[
                   const SizedBox(height: 14),
-
                   Container(
                     width: double.infinity,
                     padding:
                         const EdgeInsets.all(12),
-                    decoration:
-                        BoxDecoration(
+                    decoration: BoxDecoration(
+                      color: Colors.teal
+                          .withValues(alpha: 0.07),
                       borderRadius:
-                          BorderRadius.circular(
-                        12,
-                      ),
-                      color:
-                          Colors.teal.withValues(
-                        alpha: 0.08,
-                      ),
+                          BorderRadius.circular(14),
                     ),
                     child: Column(
                       crossAxisAlignment:
@@ -557,37 +1654,29 @@ class ActiveOrderTracking extends StatelessWidget {
                             Icon(
                               Icons
                                   .delivery_dining,
-                              color:
-                                  Colors.teal,
+                              color: Colors.teal,
                             ),
-                            SizedBox(width: 10),
+                            SizedBox(width: 9),
                             Text(
                               'Courier Details',
-                              style:
-                                  TextStyle(
+                              style: TextStyle(
                                 fontWeight:
-                                    FontWeight.bold,
+                                    FontWeight.w800,
                               ),
                             ),
                           ],
                         ),
-
                         if (courierPartner
                             .isNotEmpty) ...[
-                          const SizedBox(
-                            height: 8,
-                          ),
+                          const SizedBox(height: 7),
                           Text(
                             'Partner: $courierPartner',
                           ),
                         ],
-
-                        if (courierName
-                            .isNotEmpty)
+                        if (courierName.isNotEmpty)
                           Text(
                             'Name: $courierName',
                           ),
-
                         if (courierMobile
                             .isNotEmpty)
                           Row(
@@ -607,14 +1696,12 @@ class ActiveOrderTracking extends StatelessWidget {
                                 },
                                 icon:
                                     const Icon(
-                                  Icons
-                                      .copy_outlined,
-                                  size: 19,
+                                  Icons.copy_outlined,
+                                  size: 18,
                                 ),
                               ),
                             ],
                           ),
-
                         if (trackingNumber
                             .isNotEmpty)
                           Row(
@@ -634,9 +1721,8 @@ class ActiveOrderTracking extends StatelessWidget {
                                 },
                                 icon:
                                     const Icon(
-                                  Icons
-                                      .copy_outlined,
-                                  size: 19,
+                                  Icons.copy_outlined,
+                                  size: 18,
                                 ),
                               ),
                             ],
@@ -645,15 +1731,11 @@ class ActiveOrderTracking extends StatelessWidget {
                     ),
                   ),
                 ],
-
-                const SizedBox(height: 14),
-
+                const SizedBox(height: 13),
                 SizedBox(
-                  width:
-                      double.infinity,
+                  width: double.infinity,
                   height: 44,
-                  child:
-                      OutlinedButton.icon(
+                  child: OutlinedButton.icon(
                     onPressed: () {
                       Navigator.push(
                         context,
@@ -689,9 +1771,7 @@ class _TrackingTimeline
   });
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     return Column(
       children: List.generate(
         fullOrderStatuses.length,
@@ -702,13 +1782,9 @@ class _TrackingTimeline
           final completed =
               index <= currentIndex;
 
-          final isCurrent =
-              index == currentIndex;
-
           final last =
               index ==
-                  fullOrderStatuses.length -
-                      1;
+                  fullOrderStatuses.length - 1;
 
           return IntrinsicHeight(
             child: Row(
@@ -716,28 +1792,26 @@ class _TrackingTimeline
                   CrossAxisAlignment.start,
               children: [
                 SizedBox(
-                  width: 30,
+                  width: 28,
                   child: Column(
                     children: [
                       Container(
-                        width: 24,
-                        height: 24,
+                        width: 22,
+                        height: 22,
                         decoration:
                             BoxDecoration(
                           shape:
                               BoxShape.circle,
                           color: completed
-                              ? Colors
-                                  .deepPurple
-                              : Colors.grey
-                                  .shade300,
+                              ? Colors.deepPurple
+                              : Colors.grey.shade300,
                         ),
                         child: Icon(
                           completed
                               ? Icons.check
                               : Icons
                                   .circle_outlined,
-                          size: 15,
+                          size: 14,
                           color: completed
                               ? Colors.white
                               : Colors.grey
@@ -746,8 +1820,7 @@ class _TrackingTimeline
                       ),
                       if (!last)
                         Expanded(
-                          child:
-                              Container(
+                          child: Container(
                             width: 2,
                             margin:
                                 const EdgeInsets
@@ -756,8 +1829,7 @@ class _TrackingTimeline
                             ),
                             color: index <
                                     currentIndex
-                                ? Colors
-                                    .deepPurple
+                                ? Colors.deepPurple
                                 : Colors
                                     .grey
                                     .shade300,
@@ -766,75 +1838,27 @@ class _TrackingTimeline
                     ],
                   ),
                 ),
-
-                const SizedBox(width: 8),
-
+                const SizedBox(width: 9),
                 Expanded(
                   child: Padding(
                     padding:
                         const EdgeInsets.only(
-                      bottom: 14,
+                      top: 1,
+                      bottom: 12,
                     ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            status,
-                            style: TextStyle(
-                              fontWeight:
-                                  isCurrent
-                                      ? FontWeight
-                                          .bold
-                                      : FontWeight
-                                          .normal,
-                              color: isCurrent
-                                  ? Colors
-                                      .deepPurple
-                                  : completed
-                                      ? Colors
-                                          .black87
-                                      : Colors
-                                          .grey
-                                          .shade600,
-                            ),
-                          ),
-                        ),
-                        if (isCurrent)
-                          Container(
-                            padding:
-                                const EdgeInsets
-                                    .symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration:
-                                BoxDecoration(
-                              color: Colors
-                                  .deepPurple
-                                  .withValues(
-                                alpha: 0.10,
-                              ),
-                              borderRadius:
-                                  BorderRadius
-                                      .circular(
-                                20,
-                              ),
-                            ),
-                            child:
-                                const Text(
-                              'NOW',
-                              style:
-                                  TextStyle(
-                                fontSize: 10,
-                                fontWeight:
-                                    FontWeight
-                                        .bold,
-                                color: Colors
-                                    .deepPurple,
-                              ),
-                            ),
-                          ),
-                      ],
+                    child: Text(
+                      status,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight:
+                            completed
+                                ? FontWeight.w800
+                                : FontWeight.w500,
+                        color: completed
+                            ? Colors.black87
+                            : Colors.grey
+                                .shade500,
+                      ),
                     ),
                   ),
                 ),
@@ -842,583 +1866,6 @@ class _TrackingTimeline
             ),
           );
         },
-      ),
-    );
-  }
-}
-
-class CartPage
-    extends StatefulWidget {
-  final VoidCallback onCartChanged;
-
-  const CartPage({
-    super.key,
-    required this.onCartChanged,
-  });
-
-  @override
-  State<CartPage> createState() =>
-      _CartPageState();
-}
-
-class _CartPageState
-    extends State<CartPage> {
-  bool checkoutLoading = false;
-
-  void refreshPage() {
-    if (!mounted) return;
-
-    setState(() {});
-
-    widget.onCartChanged();
-  }
-
-  Future<void> decrease(
-    String productId,
-  ) async {
-    await CartController
-        .decreaseQuantity(
-      productId,
-    );
-
-    refreshPage();
-  }
-
-  Future<void> increase(
-    String productId,
-  ) async {
-    await CartController
-        .increaseQuantity(
-      productId,
-    );
-
-    refreshPage();
-  }
-
-  Future<void> remove(
-    String productId,
-  ) async {
-    await CartController
-        .removeProduct(
-      productId,
-    );
-
-    refreshPage();
-  }
-
-  Future<void> proceedToCheckout()
-      async {
-    if (checkoutLoading) return;
-
-    if (CartController.items.isEmpty) {
-      ScaffoldMessenger.of(context)
-        .showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Your cart is empty.',
-        ),
-      ),
-    );
-
-      return;
-    }
-
-    final currentUser =
-        FirebaseAuth.instance.currentUser;
-
-    if (currentUser == null) {
-      final loginResult =
-          await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) =>
-              const LoginPage(),
-        ),
-      );
-
-      if (!mounted) return;
-
-      if (loginResult != true ||
-          FirebaseAuth.instance
-                  .currentUser ==
-              null) {
-        return;
-      }
-    }
-
-    setState(() {
-      checkoutLoading = true;
-    });
-
-    try {
-      final result =
-          await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) =>
-              const CheckoutPage(),
-        ),
-      );
-
-      if (!mounted) return;
-
-      if (result == true) {
-        setState(() {});
-        widget.onCartChanged();
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          checkoutLoading = false;
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(
-    BuildContext context,
-  ) {
-    final items =
-        CartController.items;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'My Cart',
-        ),
-        actions: [
-          if (items.isNotEmpty)
-            Padding(
-              padding:
-                  const EdgeInsets.only(
-                right: 12,
-              ),
-              child: Center(
-                child: Text(
-                  '${CartController.itemCount} item${CartController.itemCount == 1 ? '' : 's'}',
-                  style:
-                      const TextStyle(
-                    fontWeight:
-                        FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-
-      body: ListView(
-        padding:
-            const EdgeInsets.only(
-          bottom: 20,
-        ),
-        children: [
-          const ActiveOrderTracking(),
-
-          if (items.isEmpty)
-            const Padding(
-              padding:
-                  EdgeInsets.fromLTRB(
-                20,
-                30,
-                20,
-                40,
-              ),
-              child: Column(
-                children: [
-                  Icon(
-                    Icons
-                        .remove_shopping_cart_outlined,
-                    size: 70,
-                    color: Colors.grey,
-                  ),
-                  SizedBox(height: 12),
-                  Text(
-                    'Your cart is empty',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight:
-                          FontWeight.w600,
-                    ),
-                  ),
-                  SizedBox(height: 6),
-                  Text(
-                    'Add products to your cart to continue shopping.',
-                    textAlign:
-                        TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.grey,
-                    ),
-                  ),
-                ],
-              ),
-            )
-          else ...[
-            Padding(
-              padding:
-                  const EdgeInsets.fromLTRB(
-                12,
-                8,
-                12,
-                0,
-              ),
-              child: Column(
-                children:
-                    items.map(
-                  (item) {
-                    final canIncrease =
-                        item.quantity <
-                            item.availableStock;
-
-                    return Card(
-                      margin:
-                          const EdgeInsets
-                              .only(
-                        bottom: 12,
-                      ),
-                      child: Padding(
-                        padding:
-                            const EdgeInsets
-                                .all(
-                          10,
-                        ),
-                        child: Row(
-                          crossAxisAlignment:
-                              CrossAxisAlignment
-                                  .start,
-                          children: [
-                            SizedBox(
-                              width: 78,
-                              height: 78,
-                              child:
-                                  ClipRRect(
-                                borderRadius:
-                                    BorderRadius
-                                        .circular(
-                                  10,
-                                ),
-                                child: item
-                                        .imageUrl
-                                        .isNotEmpty
-                                    ? Image.network(
-                                        item.imageUrl,
-                                        fit: BoxFit.cover,
-                                        errorBuilder:
-                                            (
-                                          context,
-                                          error,
-                                          stack,
-                                        ) {
-                                          return const Icon(
-                                            Icons
-                                                .shopping_bag_outlined,
-                                          );
-                                        },
-                                      )
-                                    : const Icon(
-                                        Icons
-                                            .shopping_bag_outlined,
-                                      ),
-                              ),
-                            ),
-
-                            const SizedBox(
-                              width: 12,
-                            ),
-
-                            Expanded(
-                              child:
-                                  Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment
-                                        .start,
-                                children: [
-                                  Text(
-                                    item.name,
-                                    maxLines: 2,
-                                    overflow:
-                                        TextOverflow
-                                            .ellipsis,
-                                    style:
-                                        const TextStyle(
-                                      fontWeight:
-                                          FontWeight
-                                              .bold,
-                                    ),
-                                  ),
-
-                                  const SizedBox(
-                                    height: 5,
-                                  ),
-
-                                  if (item.originalPrice >
-                                      item.numericPrice)
-                                    Text(
-                                      '₹${item.originalPrice.toStringAsFixed(0)}',
-                                      style:
-                                          TextStyle(
-                                        color: Colors
-                                            .grey
-                                            .shade600,
-                                        decoration:
-                                            TextDecoration
-                                                .lineThrough,
-                                      ),
-                                    ),
-
-                                  Text(
-                                    '₹${item.numericPrice.toStringAsFixed(0)}',
-                                    style:
-                                        const TextStyle(
-                                      fontWeight:
-                                          FontWeight
-                                              .bold,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-
-                                  if (item
-                                          .discountPercent >
-                                      0)
-                                    Text(
-                                      '${item.discountPercent.toStringAsFixed(0)}% OFF',
-                                      style:
-                                          const TextStyle(
-                                        color:
-                                            Colors.green,
-                                        fontWeight:
-                                            FontWeight
-                                                .bold,
-                                      ),
-                                    ),
-
-                                  const SizedBox(
-                                    height: 8,
-                                  ),
-
-                                  Row(
-                                    children: [
-                                      IconButton(
-                                        visualDensity:
-                                            VisualDensity
-                                                .compact,
-                                        onPressed:
-                                            () =>
-                                                decrease(
-                                          item.id,
-                                        ),
-                                        icon:
-                                            const Icon(
-                                          Icons
-                                              .remove_circle_outline,
-                                        ),
-                                      ),
-
-                                      Container(
-                                        constraints:
-                                            const BoxConstraints(
-                                          minWidth:
-                                              32,
-                                        ),
-                                        alignment:
-                                            Alignment
-                                                .center,
-                                        child:
-                                            Text(
-                                          '${item.quantity}',
-                                          style:
-                                              const TextStyle(
-                                            fontWeight:
-                                                FontWeight
-                                                    .bold,
-                                          ),
-                                        ),
-                                      ),
-
-                                      IconButton(
-                                        visualDensity:
-                                            VisualDensity
-                                                .compact,
-                                        onPressed:
-                                            canIncrease
-                                                ? () =>
-                                                    increase(
-                                                      item.id,
-                                                    )
-                                                : null,
-                                        icon:
-                                            const Icon(
-                                          Icons
-                                              .add_circle_outline,
-                                        ),
-                                      ),
-
-                                      if (!canIncrease)
-                                        const Text(
-                                          'Max stock',
-                                          style:
-                                              TextStyle(
-                                            fontSize:
-                                                11,
-                                            color:
-                                                Colors.orange,
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            IconButton(
-                              tooltip:
-                                  'Remove',
-                              onPressed:
-                                  () =>
-                                      remove(
-                                item.id,
-                              ),
-                              icon:
-                                  const Icon(
-                                Icons
-                                    .delete_outline,
-                                color:
-                                    Colors.red,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ).toList(),
-              ),
-            ),
-
-            Container(
-              margin:
-                  const EdgeInsets.only(
-                top: 4,
-              ),
-              padding:
-                  const EdgeInsets.all(
-                16,
-              ),
-              decoration:
-                  BoxDecoration(
-                border: Border(
-                  top: BorderSide(
-                    color: Colors
-                        .grey
-                        .shade300,
-                  ),
-                ),
-              ),
-              child: Column(
-                children: [
-                  if (CartController
-                          .productSavings >
-                      0)
-                    Row(
-                      mainAxisAlignment:
-                          MainAxisAlignment
-                              .spaceBetween,
-                      children: [
-                        const Text(
-                          'Product Savings',
-                        ),
-                        Text(
-                          '- ₹${CartController.productSavings.toStringAsFixed(0)}',
-                          style:
-                              const TextStyle(
-                            color:
-                                Colors.green,
-                            fontWeight:
-                                FontWeight
-                                    .bold,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                  const SizedBox(
-                    height: 6,
-                  ),
-
-                  Row(
-                    mainAxisAlignment:
-                        MainAxisAlignment
-                            .spaceBetween,
-                    children: [
-                      const Text(
-                        'Total',
-                        style:
-                            TextStyle(
-                          fontSize: 20,
-                          fontWeight:
-                              FontWeight
-                                  .bold,
-                        ),
-                      ),
-                      Text(
-                        '₹${CartController.total.toStringAsFixed(0)}',
-                        style:
-                            const TextStyle(
-                          fontSize: 22,
-                          fontWeight:
-                              FontWeight
-                                  .bold,
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(
-                    height: 12,
-                  ),
-
-                  SizedBox(
-                    width:
-                        double.infinity,
-                    height: 52,
-                    child:
-                        FilledButton(
-                      onPressed:
-                          checkoutLoading
-                              ? null
-                              : proceedToCheckout,
-                      child:
-                          checkoutLoading
-                              ? const SizedBox(
-                                  height: 22,
-                                  width: 22,
-                                  child:
-                                      CircularProgressIndicator(
-                                    strokeWidth:
-                                        2,
-                                    color: Colors
-                                        .white,
-                                  ),
-                                )
-                              : const Text(
-                                  'Proceed to Checkout',
-                                  style:
-                                      TextStyle(
-                                    fontSize:
-                                        16,
-                                    fontWeight:
-                                        FontWeight
-                                            .bold,
-                                  ),
-                                ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
       ),
     );
   }
