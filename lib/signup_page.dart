@@ -19,18 +19,18 @@ class _SignupPageState extends State<SignupPage> {
   final passwordController = TextEditingController();
   final confirmPasswordController = TextEditingController();
 
-  bool isLoading = false;
-  bool obscurePassword = true;
-  bool obscureConfirmPassword = true;
-
-  String selectedRole = 'customer';
-
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore =
       FirebaseFirestore.instance;
 
   static const Color primary = Color(0xFF5B35D5);
   static const Color primaryDark = Color(0xFF4323A8);
+
+  bool isLoading = false;
+  bool obscurePassword = true;
+  bool obscureConfirmPassword = true;
+
+  String selectedRole = 'customer';
 
   @override
   void dispose() {
@@ -53,15 +53,15 @@ class _SignupPageState extends State<SignupPage> {
         content: Text(
           message,
           style: const TextStyle(
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w700,
           ),
         ),
         backgroundColor:
-            isError ? Colors.red.shade600 : null,
+            isError ? Colors.red.shade700 : null,
         behavior: SnackBarBehavior.floating,
         margin: const EdgeInsets.all(16),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(15),
         ),
       ),
     );
@@ -91,7 +91,10 @@ class _SignupPageState extends State<SignupPage> {
       return;
     }
 
-    if (email.isEmpty || !email.contains('@')) {
+    if (email.isEmpty ||
+        !RegExp(
+          r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+        ).hasMatch(email)) {
       showMessage(
         'Valid email address enter karein.',
         isError: true,
@@ -99,7 +102,7 @@ class _SignupPageState extends State<SignupPage> {
       return;
     }
 
-    if (mobile.isEmpty || mobile.length != 10) {
+    if (!RegExp(r'^[0-9]{10}$').hasMatch(mobile)) {
       showMessage(
         '10 digit mobile number enter karein.',
         isError: true,
@@ -141,11 +144,9 @@ class _SignupPageState extends State<SignupPage> {
       final user = credential.user;
 
       if (user == null) {
-        showMessage(
-          'Account create nahi ho paya.',
-          isError: true,
+        throw Exception(
+          'Firebase user create nahi hua.',
         );
-        return;
       }
 
       try {
@@ -153,6 +154,10 @@ class _SignupPageState extends State<SignupPage> {
       } catch (_) {}
 
       final now = FieldValue.serverTimestamp();
+
+      // =====================================================
+      // CUSTOMER
+      // =====================================================
 
       if (selectedRole == 'customer') {
         await _firestore
@@ -173,7 +178,13 @@ class _SignupPageState extends State<SignupPage> {
           'createdAt': now,
           'updatedAt': now,
         });
-      } else if (selectedRole == 'vendor') {
+      }
+
+      // =====================================================
+      // VENDOR
+      // =====================================================
+
+      else if (selectedRole == 'vendor') {
         await _firestore
             .collection('users')
             .doc(user.uid)
@@ -212,7 +223,13 @@ class _SignupPageState extends State<SignupPage> {
           'createdAt': now,
           'updatedAt': now,
         });
-      } else if (selectedRole == 'courier') {
+      }
+
+      // =====================================================
+      // COURIER
+      // =====================================================
+
+      else if (selectedRole == 'courier') {
         await _firestore
             .collection('users')
             .doc(user.uid)
@@ -258,22 +275,31 @@ class _SignupPageState extends State<SignupPage> {
         });
       }
 
-      if (!mounted) return;
+      // =====================================================
+      // SIGN OUT AFTER REGISTRATION
+      // =====================================================
 
       await _auth.signOut();
 
       if (!mounted) return;
 
-      showMessage(
-        selectedRole == 'customer'
-            ? 'Account successfully create ho gaya.'
-            : selectedRole == 'vendor'
-                ? 'Vendor registration submit ho gayi. Admin approval ke baad login karein.'
-                : 'Courier registration ho gayi. Login karke documents upload karein.',
-      );
+      String successMessage;
+
+      if (selectedRole == 'customer') {
+        successMessage =
+            'Account successfully create ho gaya.';
+      } else if (selectedRole == 'vendor') {
+        successMessage =
+            'Vendor registration submit ho gayi. Admin approval ke baad login karein.';
+      } else {
+        successMessage =
+            'Courier registration ho gayi. Login karke documents upload karein.';
+      }
+
+      showMessage(successMessage);
 
       await Future.delayed(
-        const Duration(milliseconds: 700),
+        const Duration(milliseconds: 800),
       );
 
       if (!mounted) return;
@@ -285,7 +311,8 @@ class _SignupPageState extends State<SignupPage> {
         ),
       );
     } on FirebaseAuthException catch (e) {
-      String message = 'Registration failed.';
+      String message =
+          'Registration failed.';
 
       switch (e.code) {
         case 'email-already-in-use':
@@ -305,7 +332,7 @@ class _SignupPageState extends State<SignupPage> {
 
         case 'operation-not-allowed':
           message =
-              'Email registration Firebase mein enabled nahi hai.';
+              'Email/Password registration Firebase mein enabled nahi hai.';
           break;
 
         case 'network-request-failed':
@@ -317,6 +344,12 @@ class _SignupPageState extends State<SignupPage> {
           message =
               'Bahut attempts ho gaye. Thodi der baad try karein.';
           break;
+
+        default:
+          if (e.message != null &&
+              e.message!.trim().isNotEmpty) {
+            message = e.message!;
+          }
       }
 
       showMessage(
@@ -335,6 +368,8 @@ class _SignupPageState extends State<SignupPage> {
         isError: true,
       );
 
+      // If Auth account was created but Firestore
+      // registration failed, attempt cleanup.
       try {
         if (credential?.user != null) {
           await credential!.user!.delete();
@@ -382,14 +417,12 @@ class _SignupPageState extends State<SignupPage> {
           color: Colors.grey.shade200,
         ),
       ),
-      focusedBorder:
-          OutlineInputBorder(
+      focusedBorder: OutlineInputBorder(
         borderRadius:
             BorderRadius.circular(16),
-        borderSide:
-            const BorderSide(
+        borderSide: const BorderSide(
           color: primary,
-          width: 1.7,
+          width: 1.6,
         ),
       ),
     );
@@ -417,11 +450,11 @@ class _SignupPageState extends State<SignupPage> {
               },
         child: AnimatedContainer(
           duration:
-              const Duration(milliseconds: 200),
+              const Duration(milliseconds: 180),
           padding:
               const EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: 14,
+            horizontal: 8,
+            vertical: 13,
           ),
           decoration: BoxDecoration(
             color: selected
@@ -433,16 +466,15 @@ class _SignupPageState extends State<SignupPage> {
               color: selected
                   ? primary
                   : Colors.grey.shade200,
-              width: selected ? 1.7 : 1,
+              width: selected ? 1.6 : 1,
             ),
           ),
           child: Column(
             children: [
               Container(
-                height: 43,
-                width: 43,
-                decoration:
-                    BoxDecoration(
+                height: 44,
+                width: 44,
+                decoration: BoxDecoration(
                   color: selected
                       ? primary
                       : Colors.white,
@@ -465,9 +497,9 @@ class _SignupPageState extends State<SignupPage> {
                   color: selected
                       ? primary
                       : Colors.black87,
+                  fontSize: 13,
                   fontWeight:
                       FontWeight.w900,
-                  fontSize: 13,
                 ),
               ),
               const SizedBox(height: 3),
@@ -476,7 +508,8 @@ class _SignupPageState extends State<SignupPage> {
                 textAlign:
                     TextAlign.center,
                 style: TextStyle(
-                  color: Colors.grey.shade600,
+                  color:
+                      Colors.grey.shade600,
                   fontSize: 9,
                   fontWeight:
                       FontWeight.w600,
@@ -489,69 +522,32 @@ class _SignupPageState extends State<SignupPage> {
     );
   }
 
-  Widget primaryButton() {
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: ElevatedButton(
-        onPressed:
-            isLoading ? null : signup,
-        style: ElevatedButton.styleFrom(
-          backgroundColor:
-              primary,
-          foregroundColor:
-              Colors.white,
-          elevation: 3,
-          shadowColor:
-              primary.withOpacity(.25),
-          shape:
-              RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.circular(17),
-          ),
+  Widget textField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    TextInputType? keyboardType,
+    bool obscureText = false,
+    Widget? suffixIcon,
+    int maxLength = 0,
+  }) {
+    return Padding(
+      padding:
+          const EdgeInsets.only(bottom: 13),
+      child: TextField(
+        controller: controller,
+        keyboardType: keyboardType,
+        obscureText: obscureText,
+        maxLength:
+            maxLength > 0 ? maxLength : null,
+        decoration: inputDecoration(
+          label: label,
+          icon: icon,
+          suffixIcon: suffixIcon,
+        ).copyWith(
+          counterText:
+              maxLength > 0 ? '' : null,
         ),
-        child: isLoading
-            ? const Row(
-                mainAxisAlignment:
-                    MainAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    height: 21,
-                    width: 21,
-                    child:
-                        CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2.5,
-                    ),
-                  ),
-                  SizedBox(width: 12),
-                  Text(
-                    'Creating Account...',
-                    style: TextStyle(
-                      fontWeight:
-                          FontWeight.w900,
-                    ),
-                  ),
-                ],
-              )
-            : const Row(
-                mainAxisAlignment:
-                    MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.person_add_alt_1_rounded,
-                  ),
-                  SizedBox(width: 9),
-                  Text(
-                    'Create Account',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight:
-                          FontWeight.w900,
-                    ),
-                  ),
-                ],
-              ),
       ),
     );
   }
@@ -571,10 +567,9 @@ class _SignupPageState extends State<SignupPage> {
       child: Row(
         children: [
           Container(
-            height: 42,
-            width: 42,
-            decoration:
-                BoxDecoration(
+            height: 43,
+            width: 43,
+            decoration: BoxDecoration(
               color:
                   Colors.green.shade100,
               borderRadius:
@@ -596,9 +591,9 @@ class _SignupPageState extends State<SignupPage> {
                 const Text(
                   'Your information is secure',
                   style: TextStyle(
+                    fontSize: 13,
                     fontWeight:
                         FontWeight.w900,
-                    fontSize: 13,
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -607,7 +602,7 @@ class _SignupPageState extends State<SignupPage> {
                   style: TextStyle(
                     color:
                         Colors.green.shade800,
-                    fontSize: 11,
+                    fontSize: 10.5,
                     fontWeight:
                         FontWeight.w600,
                   ),
@@ -620,27 +615,93 @@ class _SignupPageState extends State<SignupPage> {
     );
   }
 
+  Widget createAccountButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 56,
+      child: ElevatedButton(
+        onPressed:
+            isLoading ? null : signup,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primary,
+          foregroundColor: Colors.white,
+          elevation: 3,
+          shadowColor:
+              primary.withOpacity(.25),
+          shape:
+              RoundedRectangleBorder(
+            borderRadius:
+                BorderRadius.circular(17),
+          ),
+        ),
+        child: isLoading
+            ? const Row(
+                mainAxisAlignment:
+                    MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 21,
+                    height: 21,
+                    child:
+                        CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2.5,
+                    ),
+                  ),
+                  SizedBox(width: 11),
+                  Text(
+                    'Creating Account...',
+                    style: TextStyle(
+                      fontWeight:
+                          FontWeight.w900,
+                    ),
+                  ),
+                ],
+              )
+            : const Row(
+                mainAxisAlignment:
+                    MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons
+                        .person_add_alt_1_rounded,
+                  ),
+                  SizedBox(width: 9),
+                  Text(
+                    'Create Account',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight:
+                          FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor:
           const Color(0xFFF7F7FA),
-
       appBar: AppBar(
         backgroundColor:
             Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(
-          onPressed: () {
-            Navigator.pop(context);
-          },
+          onPressed: isLoading
+              ? null
+              : () {
+                  Navigator.pop(context);
+                },
           icon: const Icon(
             Icons.arrow_back_rounded,
           ),
         ),
       ),
-
       body: SafeArea(
         child: SingleChildScrollView(
           physics:
@@ -648,15 +709,19 @@ class _SignupPageState extends State<SignupPage> {
           padding:
               const EdgeInsets.fromLTRB(
             18,
-            5,
+            3,
             18,
             35,
           ),
           child: Column(
             children: [
+              // =================================================
+              // LOGO / HEADER
+              // =================================================
+
               Container(
-                height: 78,
-                width: 78,
+                height: 76,
+                width: 76,
                 decoration:
                     BoxDecoration(
                   gradient:
@@ -667,84 +732,72 @@ class _SignupPageState extends State<SignupPage> {
                     ],
                     begin:
                         Alignment.topLeft,
-                    end: Alignment
-                        .bottomRight,
+                    end:
+                        Alignment.bottomRight,
                   ),
                   borderRadius:
-                      BorderRadius.circular(
-                    24,
-                  ),
+                      BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
                       color: primary
-                          .withOpacity(.25),
-                      blurRadius: 24,
+                          .withOpacity(.22),
+                      blurRadius: 20,
                       offset:
-                          const Offset(
-                        0,
-                        11,
-                      ),
+                          const Offset(0, 8),
                     ),
                   ],
                 ),
                 child: const Icon(
-                  Icons
-                      .shopping_bag_rounded,
+                  Icons.shopping_bag_rounded,
                   color: Colors.white,
-                  size: 40,
+                  size: 38,
                 ),
               ),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
 
               const Text(
                 'Create your Preesho account',
-                textAlign:
-                    TextAlign.center,
+                textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 25,
-                  fontWeight:
-                      FontWeight.w900,
-                  letterSpacing: -.5,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -.4,
                 ),
               ),
 
-              const SizedBox(height: 7),
+              const SizedBox(height: 5),
 
               Text(
-                'Join Preesho aur easy shopping experience enjoy karein.',
-                textAlign:
-                    TextAlign.center,
+                'Join Preesho and enjoy a smarter shopping experience.',
+                textAlign: TextAlign.center,
                 style: TextStyle(
-                  color:
-                      Colors.grey.shade600,
-                  fontSize: 13,
-                  height: 1.4,
+                  color: Colors.grey.shade600,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
 
-              const SizedBox(height: 28),
+              const SizedBox(height: 23),
+
+              // =================================================
+              // MAIN CARD
+              // =================================================
 
               Container(
                 padding:
-                    const EdgeInsets.all(18),
-                decoration:
-                    BoxDecoration(
+                    const EdgeInsets.all(17),
+                decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius:
-                      BorderRadius.circular(
-                    25,
-                  ),
+                      BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black
-                          .withOpacity(.055),
+                          .withOpacity(.045),
                       blurRadius: 25,
                       offset:
-                          const Offset(
-                        0,
-                        10,
-                      ),
+                          const Offset(0, 10),
                     ),
                   ],
                 ),
@@ -753,15 +806,26 @@ class _SignupPageState extends State<SignupPage> {
                       CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Choose Account Type',
+                      'Choose account type',
                       style: TextStyle(
-                        fontSize: 17,
+                        fontSize: 16,
                         fontWeight:
                             FontWeight.w900,
                       ),
                     ),
 
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 5),
+
+                    Text(
+                      'Aap Preesho ko kis purpose ke liye use karna chahte hain?',
+                      style: TextStyle(
+                        color:
+                            Colors.grey.shade600,
+                        fontSize: 11,
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
 
                     Row(
                       children: [
@@ -769,340 +833,274 @@ class _SignupPageState extends State<SignupPage> {
                           role: 'customer',
                           title: 'Customer',
                           subtitle:
-                              'Shop products',
-                          icon: Icons
-                              .shopping_bag_outlined,
+                              'Shop & Order',
+                          icon:
+                              Icons.shopping_bag_outlined,
                         ),
                         const SizedBox(width: 8),
                         roleCard(
                           role: 'vendor',
                           title: 'Vendor',
                           subtitle:
-                              'Sell products',
-                          icon: Icons
-                              .storefront_outlined,
+                              'Sell Products',
+                          icon:
+                              Icons.storefront_outlined,
                         ),
                         const SizedBox(width: 8),
                         roleCard(
                           role: 'courier',
                           title: 'Courier',
                           subtitle:
-                              'Deliver orders',
-                          icon: Icons
-                              .delivery_dining_outlined,
+                              'Deliver Orders',
+                          icon:
+                              Icons.local_shipping_outlined,
                         ),
                       ],
                     ),
 
-                    const SizedBox(height: 22),
+                    const SizedBox(height: 21),
 
-                    TextField(
+                    const Text(
+                      'Personal Details',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight:
+                            FontWeight.w900,
+                      ),
+                    ),
+
+                    const SizedBox(height: 13),
+
+                    textField(
                       controller:
                           nameController,
-                      textCapitalization:
-                          TextCapitalization.words,
-                      textInputAction:
-                          TextInputAction.next,
-                      decoration:
-                          inputDecoration(
-                        label: 'Full Name',
-                        icon: Icons
-                            .person_outline_rounded,
-                      ),
+                      label: 'Full Name',
+                      icon:
+                          Icons.person_outline,
+                      keyboardType:
+                          TextInputType.name,
                     ),
 
-                    const SizedBox(height: 13),
-
-                    TextField(
+                    textField(
                       controller:
                           emailController,
+                      label: 'Email Address',
+                      icon:
+                          Icons.email_outlined,
                       keyboardType:
                           TextInputType.emailAddress,
-                      textInputAction:
-                          TextInputAction.next,
-                      decoration:
-                          inputDecoration(
-                        label: 'Email Address',
-                        icon: Icons
-                            .email_outlined,
-                      ),
                     ),
 
-                    const SizedBox(height: 13),
-
-                    TextField(
+                    textField(
                       controller:
                           mobileController,
+                      label:
+                          'Mobile Number',
+                      icon:
+                          Icons.phone_outlined,
                       keyboardType:
                           TextInputType.phone,
                       maxLength: 10,
-                      textInputAction:
-                          TextInputAction.next,
-                      decoration:
-                          inputDecoration(
-                        label:
-                            'Mobile Number',
-                        icon: Icons
-                            .phone_android_rounded,
-                      ).copyWith(
-                        prefixText:
-                            '+91 ',
-                        counterText: '',
+                    ),
+
+                    const SizedBox(height: 4),
+
+                    const Text(
+                      'Security',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight:
+                            FontWeight.w900,
                       ),
                     ),
 
                     const SizedBox(height: 13),
 
-                    TextField(
+                    textField(
                       controller:
                           passwordController,
+                      label: 'Password',
+                      icon:
+                          Icons.lock_outline,
                       obscureText:
                           obscurePassword,
-                      textInputAction:
-                          TextInputAction.next,
-                      decoration:
-                          inputDecoration(
-                        label: 'Password',
-                        icon: Icons
-                            .lock_outline_rounded,
-                        suffixIcon:
-                            IconButton(
-                          onPressed: () {
-                            setState(() {
-                              obscurePassword =
-                                  !obscurePassword;
-                            });
-                          },
-                          icon: Icon(
-                            obscurePassword
-                                ? Icons
-                                    .visibility_off_outlined
-                                : Icons
-                                    .visibility_outlined,
-                          ),
+                      suffixIcon:
+                          IconButton(
+                        onPressed: () {
+                          setState(() {
+                            obscurePassword =
+                                !obscurePassword;
+                          });
+                        },
+                        icon: Icon(
+                          obscurePassword
+                              ? Icons
+                                  .visibility_outlined
+                              : Icons
+                                  .visibility_off_outlined,
                         ),
                       ),
                     ),
 
-                    const SizedBox(height: 13),
-
-                    TextField(
+                    textField(
                       controller:
                           confirmPasswordController,
+                      label:
+                          'Confirm Password',
+                      icon:
+                          Icons
+                              .lock_reset_outlined,
                       obscureText:
                           obscureConfirmPassword,
-                      textInputAction:
-                          TextInputAction.done,
-                      onSubmitted: (_) {
-                        if (!isLoading) {
-                          signup();
-                        }
-                      },
-                      decoration:
-                          inputDecoration(
-                        label:
-                            'Confirm Password',
-                        icon: Icons
-                            .lock_reset_outlined,
-                        suffixIcon:
-                            IconButton(
-                          onPressed: () {
-                            setState(() {
-                              obscureConfirmPassword =
-                                  !obscureConfirmPassword;
-                            });
-                          },
-                          icon: Icon(
-                            obscureConfirmPassword
-                                ? Icons
-                                    .visibility_off_outlined
-                                : Icons
-                                    .visibility_outlined,
-                          ),
+                      suffixIcon:
+                          IconButton(
+                        onPressed: () {
+                          setState(() {
+                            obscureConfirmPassword =
+                                !obscureConfirmPassword;
+                          });
+                        },
+                        icon: Icon(
+                          obscureConfirmPassword
+                              ? Icons
+                                  .visibility_outlined
+                              : Icons
+                                  .visibility_off_outlined,
                         ),
                       ),
                     ),
 
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 4),
 
-                    if (selectedRole ==
-                        'courier')
-                      Container(
-                        width:
-                            double.infinity,
-                        padding:
-                            const EdgeInsets.all(
-                          13,
+                    // =================================================
+                    // ROLE INFO
+                    // =================================================
+
+                    Container(
+                      width: double.infinity,
+                      padding:
+                          const EdgeInsets.all(13),
+                      decoration:
+                          BoxDecoration(
+                        color: const Color(
+                          0xFFF7F5FF,
                         ),
-                        margin:
-                            const EdgeInsets.only(
-                          bottom: 14,
+                        borderRadius:
+                            BorderRadius.circular(
+                          15,
                         ),
-                        decoration:
-                            BoxDecoration(
-                          color: Colors.blue
-                              .shade50,
-                          borderRadius:
-                              BorderRadius.circular(
-                            15,
-                          ),
-                          border: Border.all(
-                            color: Colors.blue
-                                .shade100,
-                          ),
-                        ),
-                        child: Row(
-                          crossAxisAlignment:
-                              CrossAxisAlignment
-                                  .start,
-                          children: [
-                            Icon(
-                              Icons
-                                  .info_outline_rounded,
-                              color: Colors.blue
-                                  .shade700,
-                            ),
-                            const SizedBox(
-                              width: 10,
-                            ),
-                            Expanded(
-                              child: Text(
-                                'Courier registration ke baad login karke required documents upload karne honge.',
-                                style: TextStyle(
-                                  color: Colors
-                                      .blue
-                                      .shade900,
-                                  fontSize: 12,
-                                  height: 1.4,
-                                  fontWeight:
-                                      FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
+                        border: Border.all(
+                          color:
+                              primary.withOpacity(.10),
                         ),
                       ),
-
-                    if (selectedRole ==
-                        'vendor')
-                      Container(
-                        width:
-                            double.infinity,
-                        padding:
-                            const EdgeInsets.all(
-                          13,
-                        ),
-                        margin:
-                            const EdgeInsets.only(
-                          bottom: 14,
-                        ),
-                        decoration:
-                            BoxDecoration(
-                          color: Colors.orange
-                              .shade50,
-                          borderRadius:
-                              BorderRadius.circular(
-                            15,
-                          ),
-                          border: Border.all(
-                            color: Colors.orange
-                                .shade100,
-                          ),
-                        ),
-                        child: Row(
-                          crossAxisAlignment:
-                              CrossAxisAlignment
-                                  .start,
-                          children: [
-                            Icon(
-                              Icons
-                                  .info_outline_rounded,
-                              color: Colors.orange
-                                  .shade800,
-                            ),
-                            const SizedBox(
-                              width: 10,
-                            ),
-                            Expanded(
-                              child: Text(
-                                'Vendor account admin verification ke baad active hoga.',
-                                style: TextStyle(
-                                  color: Colors
-                                      .orange
-                                      .shade900,
-                                  fontSize: 12,
-                                  height: 1.4,
-                                  fontWeight:
-                                      FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                    primaryButton(),
-
-                    const SizedBox(height: 16),
-
-                    Center(
-                      child: Wrap(
-                        alignment:
-                            WrapAlignment.center,
+                      child: Row(
+                        crossAxisAlignment:
+                            CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Already have an account? ',
-                            style: TextStyle(
-                              color: Colors
-                                  .grey
-                                  .shade600,
-                              fontSize: 13,
-                            ),
+                          Icon(
+                            selectedRole ==
+                                    'customer'
+                                ? Icons
+                                    .shopping_bag_outlined
+                                : selectedRole ==
+                                        'vendor'
+                                    ? Icons
+                                        .storefront_outlined
+                                    : Icons
+                                        .local_shipping_outlined,
+                            color: primary,
                           ),
-                          GestureDetector(
-                            onTap: isLoading
-                                ? null
-                                : () {
-                                    Navigator.pushReplacement(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            const LoginPage(),
-                                      ),
-                                    );
-                                  },
-                            child: const Text(
-                              'Login',
-                              style: TextStyle(
-                                color: primary,
-                                fontSize: 13,
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              selectedRole ==
+                                      'customer'
+                                  ? 'Customer account instantly active ho jayega.'
+                                  : selectedRole ==
+                                          'vendor'
+                                      ? 'Vendor account Admin approval ke baad active hoga.'
+                                      : 'Courier account mein login ke baad required documents upload karne honge.',
+                              style:
+                                  TextStyle(
+                                color: Colors
+                                    .grey.shade700,
+                                fontSize: 11,
+                                height: 1.4,
                                 fontWeight:
-                                    FontWeight.w900,
+                                    FontWeight.w600,
                               ),
                             ),
                           ),
                         ],
                       ),
                     ),
+
+                    const SizedBox(height: 16),
+
+                    createAccountButton(),
+
+                    const SizedBox(height: 15),
+
+                    securityCard(),
                   ],
                 ),
               ),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 19),
 
-              securityCard(),
+              // =================================================
+              // LOGIN
+              // =================================================
 
-              const SizedBox(height: 15),
+              Row(
+                mainAxisAlignment:
+                    MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Already have an account?',
+                    style: TextStyle(
+                      color:
+                          Colors.grey.shade700,
+                      fontSize: 12,
+                      fontWeight:
+                          FontWeight.w600,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: isLoading
+                        ? null
+                        : () {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    const LoginPage(),
+                              ),
+                            );
+                          },
+                    child: const Text(
+                      'Login',
+                      style: TextStyle(
+                        color: primary,
+                        fontWeight:
+                            FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 3),
 
               Text(
-                'By creating an account, you agree to Preesho terms & privacy policy.',
-                textAlign:
-                    TextAlign.center,
+                'By creating an account, you agree to use Preesho responsibly.',
+                textAlign: TextAlign.center,
                 style: TextStyle(
-                  color:
-                      Colors.grey.shade500,
-                  fontSize: 10,
-                  height: 1.4,
+                  color: Colors.grey.shade500,
+                  fontSize: 9,
+                  fontWeight:
+                      FontWeight.w500,
                 ),
               ),
             ],
