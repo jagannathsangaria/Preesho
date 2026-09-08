@@ -4,13 +4,8 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ============================================================
-    // ADMIN
+    // COMMON FUNCTIONS
     // ============================================================
-
-    function isAdmin() {
-      return request.auth != null
-        && request.auth.uid == "RkjeRGOd1xdCNFjVR7bB7GXtmAG2";
-    }
 
     function isSignedIn() {
       return request.auth != null;
@@ -19,6 +14,11 @@ service cloud.firestore {
     function isOwner(userId) {
       return isSignedIn()
         && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn()
+        && request.auth.uid == "RkjeRGOd1xdCNFjVR7bB7GXtmAG2";
     }
 
 
@@ -106,20 +106,38 @@ service cloud.firestore {
 
     match /products/{productId} {
 
+      // Public product catalogue
       allow read: if true;
 
-      allow create: if isAdmin();
+      // Admin full control
+      allow create, update, delete: if isAdmin();
 
+      // Approved vendor can create own product
       allow create: if isVendor()
         && request.resource.data.vendorUid == request.auth.uid;
 
-      allow update, delete: if isAdmin();
-
+      // Approved vendor can update own product
       allow update: if isVendor()
         && resource.data.vendorUid == request.auth.uid
         && request.resource.data.vendorUid == request.auth.uid;
 
-      // Stock can only decrease
+      // Vendor cannot transfer product ownership
+      allow update: if isVendor()
+        && resource.data.vendorUid == request.auth.uid
+        && request.resource.data.vendorUid != request.auth.uid
+        ? false
+        : false;
+
+      // ------------------------------------------------------------
+      // STOCK
+      // ------------------------------------------------------------
+      // Any signed-in user may only perform a stock decrease.
+      // No price/title/vendor/payment changes are permitted through
+      // this rule.
+      //
+      // IMPORTANT:
+      // This is retained for compatibility with existing stock flow.
+      // Backend/Admin should be preferred for stock mutations.
       allow update: if isSignedIn()
         && request.resource.data.diff(resource.data)
           .affectedKeys()
@@ -135,27 +153,55 @@ service cloud.firestore {
 
     match /users/{userId} {
 
+      // Admin or owner can read own profile
       allow read: if isAdmin()
         || isOwner(userId);
 
-      // Customer registration
+
+      // ------------------------------------------------------------
+      // CUSTOMER REGISTRATION
+      // ------------------------------------------------------------
+
       allow create: if isOwner(userId)
         && (
           !request.resource.data.keys().hasAny(['role'])
           || request.resource.data.role == "customer"
         );
 
-      // Vendor/Courier registration
+
+      // ------------------------------------------------------------
+      // VENDOR / COURIER REGISTRATION
+      // ------------------------------------------------------------
+
       allow create: if isOwner(userId)
         && request.resource.data.role in ["vendor", "courier"]
         && request.resource.data.status == "pending_documents"
-        && request.resource.data.active == false;
+        && request.resource.data.active == false
+        && request.resource.data.approvedByAdmin == false;
 
-      // Admin can update anything
+
+      // ------------------------------------------------------------
+      // ADMIN UPDATE
+      // ------------------------------------------------------------
+
       allow update: if isAdmin();
 
-      // Owner can update normal fields.
-      // Owner cannot change role, active or Admin approval.
+
+      // ------------------------------------------------------------
+      // OWNER UPDATE
+      // ------------------------------------------------------------
+      // User can update normal profile fields.
+      //
+      // SECURITY:
+      // role
+      // active
+      // approval
+      // vendorStatus
+      // registrationStatus
+      //
+      // cannot be changed by client.
+      // ------------------------------------------------------------
+
       allow update: if isOwner(userId)
         && !request.resource.data.diff(resource.data)
           .affectedKeys()
@@ -163,7 +209,8 @@ service cloud.firestore {
             'role',
             'active',
             'vendorStatus',
-            'approvedByAdmin'
+            'approvedByAdmin',
+            'registrationStatus'
           ])
         && (
           request.resource.data.status == resource.data.status
@@ -172,8 +219,15 @@ service cloud.firestore {
             resource.data.status == "pending_documents"
             && request.resource.data.status == "pending_approval"
           )
+          ||
+          (
+            resource.data.status == "rejected"
+            && request.resource.data.status == "pending_approval"
+          )
         );
 
+
+      // Client cannot delete users
       allow delete: if false;
 
 
@@ -182,6 +236,7 @@ service cloud.firestore {
       // ==========================================================
 
       match /addresses/{addressId} {
+
         allow read, create, update, delete: if isAdmin()
           || isOwner(userId);
       }
@@ -194,28 +249,37 @@ service cloud.firestore {
 
     match /vendors/{vendorId} {
 
-      // Admin full access
+      // Admin full control
       allow read, write: if isAdmin();
+
 
       // Approved vendor can read own profile
       allow read: if isVendor()
         && request.auth.uid == vendorId;
 
-      // Pending/inactive vendor can read own profile
-      // This is required for VendorDocumentsPage.
+
+      // Pending/rejected vendor can read own profile
       allow read: if isOwner(vendorId)
         && resource.data.role == "vendor"
         && resource.data.active == false
         && resource.data.status != "approved";
 
-      // Vendor registration
+
+      // ------------------------------------------------------------
+      // VENDOR REGISTRATION
+      // ------------------------------------------------------------
+
       allow create: if isOwner(vendorId)
         && request.resource.data.role == "vendor"
         && request.resource.data.status == "pending_documents"
         && request.resource.data.active == false
         && request.resource.data.approvedByAdmin == false;
 
-      // Vendor document/profile updates before approval
+
+      // ------------------------------------------------------------
+      // VENDOR DOCUMENT UPDATES
+      // ------------------------------------------------------------
+
       allow update: if isOwner(vendorId)
         && resource.data.role == "vendor"
         && resource.data.active == false
@@ -249,6 +313,7 @@ service cloud.firestore {
           )
         );
 
+
       allow delete: if false;
     }
 
@@ -259,28 +324,37 @@ service cloud.firestore {
 
     match /couriers/{courierId} {
 
-      // Admin full access
+      // Admin full control
       allow read, write: if isAdmin();
+
 
       // Approved courier can read own profile
       allow read: if isCourier()
         && request.auth.uid == courierId;
 
-      // Pending/inactive courier can read own profile
-      // This is required for CourierDocumentsPage.
+
+      // Pending/rejected courier can read own profile
       allow read: if isOwner(courierId)
         && resource.data.role == "courier"
         && resource.data.active == false
         && resource.data.status != "approved";
 
-      // Courier registration
+
+      // ------------------------------------------------------------
+      // COURIER REGISTRATION
+      // ------------------------------------------------------------
+
       allow create: if isOwner(courierId)
         && request.resource.data.role == "courier"
         && request.resource.data.status == "pending_documents"
         && request.resource.data.active == false
         && request.resource.data.approvedByAdmin == false;
 
-      // Courier document/profile updates before approval
+
+      // ------------------------------------------------------------
+      // COURIER DOCUMENT UPDATES
+      // ------------------------------------------------------------
+
       allow update: if isOwner(courierId)
         && resource.data.role == "courier"
         && resource.data.active == false
@@ -314,6 +388,8 @@ service cloud.firestore {
           )
         );
 
+
+      // Courier cannot delete own profile
       allow delete: if false;
     }
 
@@ -324,30 +400,49 @@ service cloud.firestore {
 
     match /orders/{orderId} {
 
-      // Customer creates own order
+      // ------------------------------------------------------------
+      // CREATE ORDER
+      // ------------------------------------------------------------
+      // Customer can create own order.
+      //
+      // COD is allowed because paymentMethod is NOT blocked on
+      // creation.
+      // ------------------------------------------------------------
+
       allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid;
 
-      // Order read access
+
+      // ------------------------------------------------------------
+      // READ ORDERS
+      // ------------------------------------------------------------
+
       allow read: if isAdmin()
+
         ||
+
         (
           isSignedIn()
           && resource.data.userId == request.auth.uid
         )
+
         ||
+
         (
           isVendor()
           && request.auth.uid in resource.data.vendorUids
         )
+
         ||
+
         (
           isCourier()
           && resource.data.courierId == request.auth.uid
         );
 
+
       // ==========================================================
-      // ADMIN CAN ASSIGN ONLY APPROVED + ACTIVE COURIER
+      // ADMIN ORDER UPDATE
       // ==========================================================
 
       allow update: if isAdmin()
@@ -360,38 +455,139 @@ service cloud.firestore {
             exists(
               /databases/$(database)/documents/couriers/$(request.resource.data.courierId)
             )
-            && get(
+            &&
+            get(
               /databases/$(database)/documents/couriers/$(request.resource.data.courierId)
             ).data.role == "courier"
-            && get(
+            &&
+            get(
               /databases/$(database)/documents/couriers/$(request.resource.data.courierId)
             ).data.status == "approved"
-            && get(
+            &&
+            get(
               /databases/$(database)/documents/couriers/$(request.resource.data.courierId)
             ).data.active == true
-            && get(
+            &&
+            get(
               /databases/$(database)/documents/couriers/$(request.resource.data.courierId)
             ).data.approvedByAdmin == true
 
-            && exists(
+            &&
+
+            exists(
               /databases/$(database)/documents/users/$(request.resource.data.courierId)
             )
-            && get(
+            &&
+            get(
               /databases/$(database)/documents/users/$(request.resource.data.courierId)
             ).data.role == "courier"
-            && get(
+            &&
+            get(
               /databases/$(database)/documents/users/$(request.resource.data.courierId)
             ).data.status == "approved"
-            && get(
+            &&
+            get(
               /databases/$(database)/documents/users/$(request.resource.data.courierId)
             ).data.active == true
-            && get(
+            &&
+            get(
               /databases/$(database)/documents/users/$(request.resource.data.courierId)
             ).data.approvedByAdmin == true
           )
         );
 
-      // Only Admin can delete orders
+
+      // ==========================================================
+      // CUSTOMER ORDER UPDATE
+      // ==========================================================
+      //
+      // Customer cannot change:
+      // - amount
+      // - total
+      // - price
+      // - payment
+      // - COD amount
+      // - courier
+      // - vendor
+      // - order status
+      //
+      // This protects financial/order integrity.
+      //
+      // Customer may update only safe customer-side fields.
+      // ==========================================================
+
+      allow update: if isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            'customerName',
+            'customerPhone',
+            'shippingAddress',
+            'deliveryAddress',
+            'address',
+            'notes',
+            'updatedAt'
+          ]);
+
+
+      // ==========================================================
+      // VENDOR ORDER UPDATE
+      // ==========================================================
+      //
+      // Vendor cannot modify financial/payment/courier fields.
+      //
+      // Vendor status changes should preferably go through the
+      // secured Cloud Functions.
+      // ==========================================================
+
+      allow update: if isVendor()
+        && request.auth.uid in resource.data.vendorUids
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.courierId == resource.data.courierId
+        && request.resource.data.diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            'status',
+            'statusHistory',
+            'updatedAt'
+          ]);
+
+
+      // ==========================================================
+      // COURIER ORDER UPDATE
+      // ==========================================================
+      //
+      // IMPORTANT:
+      // Courier MUST NOT directly update orders in Firestore.
+      //
+      // Courier status is changed through:
+      //
+      // updateCourierOrderStatus()
+      //
+      // Cloud Function uses Admin SDK and therefore bypasses these
+      // Firestore client rules.
+      //
+      // This prevents courier from changing:
+      // - paymentMethod
+      // - paymentStatus
+      // - COD amount
+      // - total
+      // - price
+      // - courierId
+      // - vendor
+      // - customer
+      // - order ownership
+      // ==========================================================
+
+      allow update: if false;
+
+
+      // ==========================================================
+      // DELETE
+      // ==========================================================
+
       allow delete: if isAdmin();
     }
 
@@ -401,13 +597,27 @@ service cloud.firestore {
     // ============================================================
 
     match /Admins/{adminId} {
+
       allow read: if isAdmin();
+
       allow create, update, delete: if false;
     }
 
+
     match /admins/{adminId} {
+
       allow read: if isAdmin();
+
       allow create, update, delete: if false;
     }
+
+
+    // ============================================================
+    // DEFAULT DENY
+    // ============================================================
+    //
+    // Any collection not explicitly listed above is denied.
+    // ============================================================
+
   }
 }
