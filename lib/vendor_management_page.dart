@@ -3,9 +3,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 
 class VendorManagementPage extends StatefulWidget {
-  const VendorManagementPage({
-    super.key,
-  });
+  const VendorManagementPage({super.key});
 
   @override
   State<VendorManagementPage> createState() =>
@@ -24,39 +22,33 @@ class _VendorManagementPageState
 
   bool _loading = false;
 
-  static const List<String> _requiredDocuments = [
+  static const List<String> requiredDocuments = [
     'pan',
     'aadhaar',
     'gst',
     'bank',
     'addressProof',
-  ];
-
-  static const List<String> _allDocuments = [
-    'pan',
-    'aadhaar',
-    'gst',
-    'bank',
-    'addressProof',
-    'other',
   ];
 
   // ============================================================
-  // MESSAGE
+  // COMMON MESSAGE
   // ============================================================
 
   void _showMessage(String message) {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context)
-        .hideCurrentSnackBar();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+      );
   }
 
   // ============================================================
@@ -71,15 +63,11 @@ class _VendorManagementPageState
   }) async {
     if (_loading) return;
 
-    setState(() {
-      _loading = true;
-    });
+    setState(() => _loading = true);
 
     try {
       final callable =
-          _functions.httpsCallable(
-        'authorizeVendor',
-      );
+          _functions.httpsCallable('authorizeVendor');
 
       await callable.call({
         'uid': uid,
@@ -88,29 +76,20 @@ class _VendorManagementPageState
         'phone': phone,
       });
 
-      if (!mounted) return;
-
       _showMessage(
-        'Vendor authorized successfully. Vendor is now pending documents.',
+        'Vendor authorized successfully.',
       );
     } on FirebaseFunctionsException catch (e) {
-      if (mounted) {
-        _showMessage(
-          e.message ??
-              'Unable to authorize vendor.',
-        );
-      }
+      _showMessage(
+        e.message ?? 'Unable to authorize vendor.',
+      );
     } catch (e) {
-      if (mounted) {
-        _showMessage(
-          'Error: $e',
-        );
-      }
+      _showMessage(
+        'Something went wrong. Please try again.',
+      );
     } finally {
       if (mounted) {
-        setState(() {
-          _loading = false;
-        });
+        setState(() => _loading = false);
       }
     }
   }
@@ -126,15 +105,11 @@ class _VendorManagementPageState
   }) async {
     if (_loading) return;
 
-    setState(() {
-      _loading = true;
-    });
+    setState(() => _loading = true);
 
     try {
       final callable =
-          _functions.httpsCallable(
-        'updateVendorStatus',
-      );
+          _functions.httpsCallable('updateVendorStatus');
 
       await callable.call({
         'vendorUid': uid,
@@ -142,29 +117,20 @@ class _VendorManagementPageState
         'reason': reason,
       });
 
-      if (!mounted) return;
-
       _showMessage(
         'Vendor status updated to ${status.toUpperCase()}.',
       );
     } on FirebaseFunctionsException catch (e) {
-      if (mounted) {
-        _showMessage(
-          e.message ??
-              'Unable to update vendor status.',
-        );
-      }
+      _showMessage(
+        e.message ?? 'Unable to update vendor status.',
+      );
     } catch (e) {
-      if (mounted) {
-        _showMessage(
-          'Error: $e',
-        );
-      }
+      _showMessage(
+        'Something went wrong. Please try again.',
+      );
     } finally {
       if (mounted) {
-        setState(() {
-          _loading = false;
-        });
+        setState(() => _loading = false);
       }
     }
   }
@@ -181,13 +147,10 @@ class _VendorManagementPageState
   }) async {
     if (_loading) return;
 
-    setState(() {
-      _loading = true;
-    });
+    setState(() => _loading = true);
 
     try {
-      final callable =
-          _functions.httpsCallable(
+      final callable = _functions.httpsCallable(
         'updateVendorDocumentStatus',
       );
 
@@ -198,29 +161,20 @@ class _VendorManagementPageState
         'reason': reason,
       });
 
-      if (!mounted) return;
-
       _showMessage(
         '${_documentTitle(documentType)} marked ${status.toUpperCase()}.',
       );
     } on FirebaseFunctionsException catch (e) {
-      if (mounted) {
-        _showMessage(
-          e.message ??
-              'Unable to update document status.',
-        );
-      }
+      _showMessage(
+        e.message ?? 'Unable to update document.',
+      );
     } catch (e) {
-      if (mounted) {
-        _showMessage(
-          'Error: $e',
-        );
-      }
+      _showMessage(
+        'Something went wrong. Please try again.',
+      );
     } finally {
       if (mounted) {
-        setState(() {
-          _loading = false;
-        });
+        setState(() => _loading = false);
       }
     }
   }
@@ -233,29 +187,21 @@ class _VendorManagementPageState
     switch (type) {
       case 'pan':
         return 'PAN Card';
-
       case 'aadhaar':
         return 'Aadhaar Card';
-
       case 'gst':
         return 'GST Certificate';
-
       case 'bank':
         return 'Bank / Cancelled Cheque';
-
       case 'addressProof':
         return 'Address Proof';
-
-      case 'other':
-        return 'Other Document';
-
       default:
         return type;
     }
   }
 
   // ============================================================
-  // STATUS COLOR
+  // STATUS HELPERS
   // ============================================================
 
   Color _statusColor(String status) {
@@ -280,182 +226,133 @@ class _VendorManagementPageState
     }
   }
 
-  // ============================================================
-  // STATUS ICON
-  // ============================================================
-
   IconData _statusIcon(String status) {
     switch (status.toLowerCase()) {
       case 'approved':
       case 'verified':
-        return Icons.check_circle;
+        return Icons.check_circle_rounded;
 
       case 'rejected':
-        return Icons.cancel;
+        return Icons.cancel_rounded;
 
       case 'suspended':
-        return Icons.pause_circle;
+        return Icons.pause_circle_rounded;
 
       case 'pending':
       case 'pending_documents':
       case 'pending_approval':
-        return Icons.pending;
+        return Icons.pending_rounded;
 
       default:
-        return Icons.help_outline;
+        return Icons.help_outline_rounded;
     }
   }
-
-  // ============================================================
-  // STATUS CHIP
-  // ============================================================
 
   Widget _statusChip(String status) {
     final color = _statusColor(status);
 
+    final text = status
+        .replaceAll('_', ' ')
+        .toUpperCase();
+
     return Container(
-      padding:
-          const EdgeInsets.symmetric(
+      padding: const EdgeInsets.symmetric(
         horizontal: 10,
         vertical: 6,
       ),
       decoration: BoxDecoration(
-        color: color.withValues(
-          alpha: 0.12,
-        ),
-        borderRadius:
-            BorderRadius.circular(20),
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: color.withValues(
-            alpha: 0.35,
-          ),
+          color: color.withOpacity(0.25),
         ),
       ),
-      child: Text(
-        status
-            .replaceAll('_', ' ')
-            .toUpperCase(),
-        style: TextStyle(
-          color: color,
-          fontWeight:
-              FontWeight.bold,
-          fontSize: 11,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            _statusIcon(status),
+            size: 14,
+            color: color,
+          ),
+          const SizedBox(width: 5),
+          Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }
 
   // ============================================================
-  // DOCUMENT DATA
+  // DOCUMENT MAP
   // ============================================================
 
-  Map<String, dynamic> _getDocument(
+  Map<String, dynamic> _documentData(
     Map<String, dynamic> documents,
-    String documentType,
+    String type,
   ) {
-    final raw =
-        documents[documentType];
+    final value = documents[type];
 
-    if (raw is Map) {
-      return Map<String, dynamic>.from(
-        raw,
-      );
+    if (value is Map) {
+      return Map<String, dynamic>.from(value);
     }
 
-    return <String, dynamic>{};
+    return {};
   }
 
-  // ============================================================
-  // DOCUMENT VERIFIED
-  // ============================================================
-
-  bool _isDocumentVerified(
-    Map<String, dynamic> documents,
-    String documentType,
+  String _documentUrl(
+    Map<String, dynamic> document,
   ) {
-    final document =
-        _getDocument(
-      documents,
-      documentType,
-    );
-
-    final status =
-        (document['status'] ??
-                'pending')
-            .toString()
-            .trim()
-            .toLowerCase();
-
-    return status == 'verified';
+    return (
+      document['url'] ??
+      document['downloadUrl'] ??
+      document['fileUrl'] ??
+      document['imageUrl'] ??
+      ''
+    ).toString();
   }
 
-  // ============================================================
-  // VERIFIED DOCUMENT COUNT
-  // ============================================================
-
-  int _verifiedDocumentCount(
-    Map<String, dynamic> documents,
+  String _documentStatus(
+    Map<String, dynamic> document,
   ) {
-    return _requiredDocuments
-        .where(
-          (type) => _isDocumentVerified(
-            documents,
-            type,
-          ),
-        )
-        .length;
+    return (
+      document['status'] ??
+      'pending'
+    ).toString().trim().toLowerCase();
   }
 
-  // ============================================================
-  // ALL REQUIRED DOCUMENTS VERIFIED
-  // ============================================================
-
-  bool _allRequiredDocumentsVerified(
+  int _verifiedDocuments(
     Map<String, dynamic> documents,
   ) {
-    return _requiredDocuments.every(
-      (type) => _isDocumentVerified(
-        documents,
-        type,
-      ),
-    );
-  }
+    int count = 0;
 
-  // ============================================================
-  // MISSING / PENDING DOCUMENTS
-  // ============================================================
+    for (final type in requiredDocuments) {
+      final document =
+          _documentData(documents, type);
 
-  List<String> _pendingDocuments(
-    Map<String, dynamic> documents,
-  ) {
-    return _requiredDocuments.where(
-      (type) {
-        final document =
-            _getDocument(
-          documents,
-          type,
-        );
+      if (_documentStatus(document) ==
+          'verified') {
+        count++;
+      }
+    }
 
-        final status =
-            (document['status'] ??
-                    'pending')
-                .toString()
-                .trim()
-                .toLowerCase();
-
-        return status != 'verified';
-      },
-    ).toList();
+    return count;
   }
 
   // ============================================================
   // VIEW DOCUMENT
   // ============================================================
 
-  Future<void> _viewDocument(
-    String title,
-    String url,
-  ) async {
+  Future<void> _viewDocument({
+    required String title,
+    required String url,
+  }) async {
     if (url.trim().isEmpty) {
       _showMessage(
         'Document file is not available.',
@@ -465,49 +362,56 @@ class _VendorManagementPageState
 
     if (!mounted) return;
 
-    await showDialog<void>(
+    await showDialog(
       context: context,
       builder: (context) {
         return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
           child: Column(
-            mainAxisSize:
-                MainAxisSize.min,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              AppBar(
-                automaticallyImplyLeading:
-                    false,
-                title: Text(title),
-                actions: [
-                  IconButton(
-                    onPressed: () {
-                      Navigator.pop(
-                        context,
-                      );
-                    },
-                    icon:
-                        const Icon(
-                      Icons.close,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  18,
+                  16,
+                  10,
+                  10,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                    IconButton(
+                      onPressed: () =>
+                          Navigator.pop(context),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-
+              const Divider(height: 1),
               Flexible(
-                child:
-                    InteractiveViewer(
-                  child:
-                      Image.network(
+                child: InteractiveViewer(
+                  child: Image.network(
                     url,
-                    fit:
-                        BoxFit.contain,
-                    loadingBuilder:
-                        (
+                    fit: BoxFit.contain,
+                    loadingBuilder: (
                       context,
                       child,
-                      loadingProgress,
+                      progress,
                     ) {
-                      if (loadingProgress ==
-                          null) {
+                      if (progress == null) {
                         return child;
                       }
 
@@ -519,8 +423,7 @@ class _VendorManagementPageState
                         ),
                       );
                     },
-                    errorBuilder:
-                        (
+                    errorBuilder: (
                       context,
                       error,
                       stackTrace,
@@ -529,7 +432,7 @@ class _VendorManagementPageState
                         height: 300,
                         child: Center(
                           child: Text(
-                            'Unable to load document image.',
+                            'Unable to load document.',
                           ),
                         ),
                       );
@@ -545,58 +448,52 @@ class _VendorManagementPageState
   }
 
   // ============================================================
-  // VENDOR STATUS REASON DIALOG
+  // VENDOR ACTION DIALOG
   // ============================================================
 
-  Future<void> _showReasonDialog({
+  Future<void> _vendorAction({
     required String uid,
     required String status,
   }) async {
     final controller =
         TextEditingController();
 
+    final title = status == 'rejected'
+        ? 'Reject Vendor'
+        : status == 'suspended'
+            ? 'Suspend Vendor'
+            : 'Update Vendor';
+
     final reason =
         await showDialog<String>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text(
-            status == 'rejected'
-                ? 'Reject Vendor'
-                : status == 'suspended'
-                    ? 'Suspend Vendor'
-                    : 'Reason',
-          ),
+          title: Text(title),
           content: TextField(
             controller: controller,
             maxLines: 4,
-            decoration:
-                const InputDecoration(
+            decoration: const InputDecoration(
+              labelText: 'Reason / Remark',
               hintText:
-                  'Enter reason / remark',
-              border:
-                  OutlineInputBorder(),
+                  'Enter reason or remark',
+              border: OutlineInputBorder(),
             ),
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(
-                  context,
-                );
-              },
-              child:
-                  const Text('Cancel'),
+              onPressed: () =>
+                  Navigator.pop(context),
+              child: const Text('Cancel'),
             ),
-            ElevatedButton(
+            FilledButton(
               onPressed: () {
                 Navigator.pop(
                   context,
                   controller.text.trim(),
                 );
               },
-              child:
-                  const Text('Submit'),
+              child: const Text('Submit'),
             ),
           ],
         );
@@ -615,18 +512,14 @@ class _VendorManagementPageState
   }
 
   // ============================================================
-  // DOCUMENT ACTION DIALOG
+  // DOCUMENT ACTION
   // ============================================================
 
-  Future<void>
-      _showDocumentActionDialog({
+  Future<void> _documentAction({
     required String uid,
-    required String documentType,
+    required String type,
     required String currentStatus,
   }) async {
-    final controller =
-        TextEditingController();
-
     String selectedStatus =
         currentStatus == 'verified'
             ? 'verified'
@@ -634,9 +527,11 @@ class _VendorManagementPageState
                 ? 'rejected'
                 : 'pending';
 
+    final controller =
+        TextEditingController();
+
     final result =
-        await showDialog<
-            Map<String, String>>(
+        await showDialog<Map<String, String>>(
       context: context,
       builder: (context) {
         return StatefulBuilder(
@@ -646,103 +541,70 @@ class _VendorManagementPageState
           ) {
             return AlertDialog(
               title: Text(
-                _documentTitle(
-                  documentType,
-                ),
+                _documentTitle(type),
               ),
               content: Column(
-                mainAxisSize:
-                    MainAxisSize.min,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  DropdownButtonFormField<
-                      String>(
-                    initialValue:
-                        selectedStatus,
+                  DropdownButtonFormField<String>(
+                    value: selectedStatus,
                     decoration:
                         const InputDecoration(
-                      labelText:
-                          'Document Status',
-                      border:
-                          OutlineInputBorder(),
+                      labelText: 'Status',
+                      border: OutlineInputBorder(),
                     ),
                     items: const [
                       DropdownMenuItem(
                         value: 'verified',
-                        child:
-                            Text(
-                          'Verified',
-                        ),
+                        child: Text('Verified'),
                       ),
                       DropdownMenuItem(
                         value: 'rejected',
-                        child:
-                            Text(
-                          'Rejected',
-                        ),
+                        child: Text('Rejected'),
                       ),
                       DropdownMenuItem(
                         value: 'pending',
-                        child:
-                            Text(
-                          'Pending',
-                        ),
+                        child: Text('Pending'),
                       ),
                     ],
                     onChanged: (value) {
-                      if (value == null) {
-                        return;
-                      }
+                      if (value == null) return;
 
                       setDialogState(() {
-                        selectedStatus =
-                            value;
+                        selectedStatus = value;
                       });
                     },
                   ),
-
-                  const SizedBox(
-                    height: 12,
-                  ),
-
+                  const SizedBox(height: 14),
                   TextField(
-                    controller:
-                        controller,
+                    controller: controller,
                     maxLines: 3,
                     decoration:
                         const InputDecoration(
-                      labelText:
-                          'Reason / Remark',
-                      border:
-                          OutlineInputBorder(),
+                      labelText: 'Remark',
+                      border: OutlineInputBorder(),
                     ),
                   ),
                 ],
               ),
               actions: [
                 TextButton(
-                  onPressed: () {
-                    Navigator.pop(
-                      context,
-                    );
-                  },
-                  child:
-                      const Text('Cancel'),
+                  onPressed: () =>
+                      Navigator.pop(context),
+                  child: const Text('Cancel'),
                 ),
-                ElevatedButton(
+                FilledButton(
                   onPressed: () {
                     Navigator.pop(
                       context,
                       {
-                        'status':
-                            selectedStatus,
+                        'status': selectedStatus,
                         'reason':
-                            controller.text
-                                .trim(),
+                            controller.text.trim(),
                       },
                     );
                   },
-                  child:
-                      const Text('Save'),
+                  child: const Text('Save'),
                 ),
               ],
             );
@@ -757,448 +619,98 @@ class _VendorManagementPageState
 
     await _updateDocumentStatus(
       uid: uid,
-      documentType: documentType,
-      status:
-          result['status'] ??
-              'pending',
-      reason:
-          result['reason'] ?? '',
+      documentType: type,
+      status: result['status'] ?? 'pending',
+      reason: result['reason'] ?? '',
     );
   }
 
   // ============================================================
-  // DOCUMENT ROW
+  // DOCUMENT CARD
   // ============================================================
 
-  Widget _documentRow({
+  Widget _documentCard({
     required String uid,
-    required String documentType,
-    required Map<String, dynamic>
-        document,
+    required String type,
+    required Map<String, dynamic> document,
   }) {
     final status =
-        (document['status'] ??
-                'pending')
-            .toString()
-            .trim()
-            .toLowerCase();
+        _documentStatus(document);
 
-    final fileUrl =
-        (document['url'] ?? '')
-            .toString()
-            .trim();
+    final url = _documentUrl(document);
 
-    final reason =
-        (document[
-                    'verificationReason'] ??
-                document[
-                    'rejectionReason'] ??
-                '')
-            .toString()
-            .trim();
+    final color = _statusColor(status);
 
-    final isRequired =
-        _requiredDocuments.contains(
-      documentType,
-    );
-
-    final color =
-        _statusColor(status);
-
-    return Card(
-      margin:
-          const EdgeInsets.only(
-        bottom: 8,
-      ),
-      elevation: 0,
-      shape:
-          RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.circular(
-          10,
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F9FC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.grey.shade200,
         ),
-        side: BorderSide(
-          color: color.withValues(
-            alpha: 0.25,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.10),
+              borderRadius:
+                  BorderRadius.circular(13),
+            ),
+            child: Icon(
+              Icons.description_outlined,
+              color: color,
+            ),
           ),
-        ),
-      ),
-      child: Padding(
-        padding:
-            const EdgeInsets.all(10),
-        child: Row(
-          crossAxisAlignment:
-              CrossAxisAlignment
-                  .start,
-          children: [
-            Container(
-              padding:
-                  const EdgeInsets.all(
-                8,
-              ),
-              decoration:
-                  BoxDecoration(
-                color:
-                    color.withValues(
-                  alpha: 0.10,
-                ),
-                borderRadius:
-                    BorderRadius.circular(
-                  8,
-                ),
-              ),
-              child: Icon(
-                _statusIcon(status),
-                color: color,
-                size: 22,
-              ),
-            ),
-
-            const SizedBox(
-              width: 10,
-            ),
-
-            Expanded(
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment
-                        .start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _documentTitle(
-                            documentType,
-                          ),
-                          style:
-                              const TextStyle(
-                            fontWeight:
-                                FontWeight
-                                    .bold,
-                          ),
-                        ),
-                      ),
-
-                      if (isRequired)
-                        _smallLabel(
-                          'REQUIRED',
-                          Colors.red,
-                        )
-                      else
-                        _smallLabel(
-                          'OPTIONAL',
-                          Colors.grey,
-                        ),
-                    ],
-                  ),
-
-                  const SizedBox(
-                    height: 6,
-                  ),
-
-                  _statusChip(status),
-
-                  const SizedBox(
-                    height: 6,
-                  ),
-
-                  if (fileUrl.isNotEmpty)
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons
-                              .attach_file,
-                          size: 14,
-                          color:
-                              Colors.grey,
-                        ),
-                        const SizedBox(
-                          width: 3,
-                        ),
-                        const Expanded(
-                          child: Text(
-                            'Document uploaded',
-                            style:
-                                TextStyle(
-                              fontSize:
-                                  12,
-                              color:
-                                  Colors.grey,
-                            ),
-                          ),
-                        ),
-                      ],
-                    )
-                  else
-                    const Text(
-                      'Document not uploaded',
-                      style:
-                          TextStyle(
-                        fontSize: 12,
-                        color:
-                            Colors.red,
-                      ),
-                    ),
-
-                  if (reason.isNotEmpty) ...[
-                    const SizedBox(
-                      height: 5,
-                    ),
-                    Text(
-                      'Remark: $reason',
-                      style:
-                          const TextStyle(
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-
-            Column(
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
-                if (fileUrl.isNotEmpty)
-                  IconButton(
-                    tooltip:
-                        'View Document',
-                    icon:
-                        const Icon(
-                      Icons
-                          .visibility_outlined,
-                    ),
-                    onPressed: _loading
-                        ? null
-                        : () =>
-                            _viewDocument(
-                          _documentTitle(
-                            documentType,
-                          ),
-                          fileUrl,
-                        ),
+                Text(
+                  _documentTitle(type),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
                   ),
-
-                IconButton(
-                  tooltip:
-                      'Verify / Reject',
-                  icon:
-                      const Icon(
-                    Icons.edit_note,
-                  ),
-                  onPressed: _loading
-                      ? null
-                      : () =>
-                          _showDocumentActionDialog(
-                        uid: uid,
-                        documentType:
-                            documentType,
-                        currentStatus:
-                            status,
-                      ),
                 ),
+                const SizedBox(height: 6),
+                _statusChip(status),
               ],
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ============================================================
-  // SMALL LABEL
-  // ============================================================
-
-  Widget _smallLabel(
-    String text,
-    Color color,
-  ) {
-    return Container(
-      padding:
-          const EdgeInsets.symmetric(
-        horizontal: 7,
-        vertical: 3,
-      ),
-      decoration:
-          BoxDecoration(
-        color: color.withValues(
-          alpha: 0.08,
-        ),
-        borderRadius:
-            BorderRadius.circular(6),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          color: color,
-          fontSize: 9,
-          fontWeight:
-              FontWeight.bold,
-        ),
-      ),
-    );
-  }
-
-  // ============================================================
-  // APPROVAL REQUIREMENT BOX
-  // ============================================================
-
-  Widget _approvalRequirementBox(
-    Map<String, dynamic> documents,
-  ) {
-    final verifiedCount =
-        _verifiedDocumentCount(
-      documents,
-    );
-
-    final allVerified =
-        _allRequiredDocumentsVerified(
-      documents,
-    );
-
-    final pending =
-        _pendingDocuments(
-      documents,
-    );
-
-    if (allVerified) {
-      return Container(
-        width: double.infinity,
-        padding:
-            const EdgeInsets.all(12),
-        margin:
-            const EdgeInsets.only(
-          bottom: 16,
-        ),
-        decoration:
-            BoxDecoration(
-          color: Colors.green
-              .withValues(
-            alpha: 0.08,
           ),
-          borderRadius:
-              BorderRadius.circular(
-            10,
-          ),
-          border: Border.all(
-            color: Colors.green
-                .withValues(
-              alpha: 0.25,
-            ),
-          ),
-        ),
-        child: const Row(
-          crossAxisAlignment:
-              CrossAxisAlignment
-                  .start,
-          children: [
-            Icon(
-              Icons.verified,
-              color: Colors.green,
-            ),
-            SizedBox(
-              width: 10,
-            ),
-            Expanded(
-              child: Text(
-                'All 5 required documents are verified. Vendor is eligible for final approval.',
-                style:
-                    TextStyle(
-                  color:
-                      Colors.green,
-                  fontWeight:
-                      FontWeight.bold,
-                ),
+          if (url.isNotEmpty)
+            IconButton(
+              tooltip: 'View',
+              onPressed: () {
+                _viewDocument(
+                  title: _documentTitle(type),
+                  url: url,
+                );
+              },
+              icon: const Icon(
+                Icons.visibility_outlined,
               ),
             ),
-          ],
-        ),
-      );
-    }
-
-    return Container(
-      width: double.infinity,
-      padding:
-          const EdgeInsets.all(12),
-      margin:
-          const EdgeInsets.only(
-        bottom: 16,
-      ),
-      decoration:
-          BoxDecoration(
-        color: Colors.orange
-            .withValues(
-          alpha: 0.08,
-        ),
-        borderRadius:
-            BorderRadius.circular(
-          10,
-        ),
-        border: Border.all(
-          color: Colors.orange
-              .withValues(
-            alpha: 0.30,
-          ),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment
-                .start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons
-                    .lock_outline,
-                color:
-                    Colors.orange,
-              ),
-              const SizedBox(
-                width: 8,
-              ),
-              Expanded(
-                child: Text(
-                  '$verifiedCount/5 Required Documents Verified',
-                  style:
-                      const TextStyle(
-                    fontWeight:
-                        FontWeight.bold,
-                    color:
-                        Colors.orange,
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(
-            height: 8,
-          ),
-
-          const Text(
-            'Final vendor approval is locked until all 5 required documents are verified.',
-            style:
-                TextStyle(
-              fontSize: 12,
+          IconButton(
+            tooltip: 'Update',
+            onPressed: _loading
+                ? null
+                : () {
+                    _documentAction(
+                      uid: uid,
+                      type: type,
+                      currentStatus: status,
+                    );
+                  },
+            icon: const Icon(
+              Icons.edit_outlined,
             ),
           ),
-
-          if (pending.isNotEmpty) ...[
-            const SizedBox(
-              height: 8,
-            ),
-            Text(
-              'Remaining: ${pending.map(_documentTitle).join(', ')}',
-              style:
-                  const TextStyle(
-                fontSize: 12,
-                color: Colors.red,
-                fontWeight:
-                    FontWeight.w600,
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -1209,681 +721,445 @@ class _VendorManagementPageState
   // ============================================================
 
   Widget _vendorCard(
-    DocumentSnapshot<
-            Map<String, dynamic>>
-        doc,
+    String uid,
+    Map<String, dynamic> vendor,
   ) {
-    final data =
-        doc.data() ?? {};
-
-    final uid = doc.id;
-
-    final name =
-        (data['name'] ??
-                data['businessName'] ??
-                'Unknown Vendor')
-            .toString()
-            .trim();
-
-    final businessName =
-        (data['businessName'] ?? '')
-            .toString()
-            .trim();
+    final name = (
+      vendor['name'] ??
+      vendor['businessName'] ??
+      vendor['shopName'] ??
+      'Vendor'
+    ).toString();
 
     final email =
-        (data['email'] ?? '')
-            .toString()
-            .trim();
+        (vendor['email'] ?? '').toString();
 
-    final phone =
-        (data['phone'] ?? '')
-            .toString()
-            .trim();
+    final phone = (
+      vendor['phone'] ??
+      vendor['mobile'] ??
+      ''
+    ).toString();
 
-    final status =
-        (data['status'] ??
-                'pending_documents')
-            .toString()
-            .trim()
-            .toLowerCase();
+    final status = (
+      vendor['status'] ??
+      'pending'
+    ).toString();
 
-    final active =
-        data['active'] == true;
-
-    final approvedByAdmin =
-        data['approvedByAdmin'] ==
-            true;
-
-    final rawDocuments =
-        data['documents'];
-
-    final Map<String, dynamic>
-        documents =
-        rawDocuments is Map
+    final documents =
+        vendor['documents'] is Map
             ? Map<String, dynamic>.from(
-                rawDocuments,
+                vendor['documents'],
               )
             : <String, dynamic>{};
 
-    final verifiedCount =
-        _verifiedDocumentCount(
-      documents,
-    );
+    final verified =
+        _verifiedDocuments(documents);
 
-    final allDocumentsVerified =
-        _allRequiredDocumentsVerified(
-      documents,
-    );
+    final approved =
+        vendor['approvedByAdmin'] == true;
 
-    return Card(
-      margin:
-          const EdgeInsets.only(
-        bottom: 14,
+    return Container(
+      margin: const EdgeInsets.only(
+        bottom: 16,
       ),
-      elevation: 2,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: Colors.grey.shade200,
+        ),
+        boxShadow: [
+          BoxShadow(
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+            color: Colors.black.withOpacity(0.05),
+          ),
+        ],
+      ),
       child: ExpansionTile(
-        leading: CircleAvatar(
-          child: Text(
-            name.isNotEmpty
-                ? name[0]
-                    .toUpperCase()
-                : 'V',
-          ),
+        tilePadding:
+            const EdgeInsets.fromLTRB(
+          18,
+          10,
+          14,
+          10,
         ),
-
-        title: Text(
-          businessName.isNotEmpty
-              ? businessName
-              : name,
-          style:
-              const TextStyle(
-            fontWeight:
-                FontWeight.bold,
-          ),
-        ),
-
-        subtitle: Padding(
-          padding:
-              const EdgeInsets.only(
-            top: 5,
-          ),
-          child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment
-                    .start,
-            children: [
-              if (businessName
-                      .isNotEmpty &&
-                  name.isNotEmpty)
-                Text(
-                  'Owner: $name',
-                ),
-
-              if (email.isNotEmpty)
-                Text(email),
-
-              if (phone.isNotEmpty)
-                Text(phone),
-
-              const SizedBox(
-                height: 5,
-              ),
-
-              Row(
-                children: [
-                  _statusChip(status),
-
-                  const SizedBox(
-                    width: 8,
-                  ),
-
-                  Text(
-                    active
-                        ? 'Active'
-                        : 'Inactive',
-                    style:
-                        TextStyle(
-                      color: active
-                          ? Colors.green
-                          : Colors.red,
-                      fontWeight:
-                          FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(
-                height: 6,
-              ),
-
-              Text(
-                'Documents: $verifiedCount/5 verified',
-                style:
-                    TextStyle(
-                  fontSize: 12,
-                  color:
-                      allDocumentsVerified
-                          ? Colors.green
-                          : Colors.orange,
-                  fontWeight:
-                      FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-
         childrenPadding:
             const EdgeInsets.fromLTRB(
-          16,
+          18,
           0,
-          16,
-          16,
+          18,
+          18,
         ),
-
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+        ),
+        collapsedShape:
+            RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+        ),
+        leading: Container(
+          width: 50,
+          height: 50,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [
+                Color(0xFF111827),
+                Color(0xFF374151),
+              ],
+            ),
+            borderRadius:
+                BorderRadius.circular(16),
+          ),
+          child: const Icon(
+            Icons.storefront_rounded,
+            color: Colors.white,
+          ),
+        ),
+        title: Text(
+          name,
+          style: const TextStyle(
+            fontWeight: FontWeight.w900,
+            fontSize: 16,
+          ),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(
+            top: 6,
+          ),
+          child: Text(
+            email.isEmpty
+                ? phone
+                : email,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        trailing: _statusChip(status),
         children: [
-          const Divider(),
+          // ------------------------------------
+          // BASIC INFORMATION
+          // ------------------------------------
 
-          Align(
-            alignment:
-                Alignment.centerLeft,
-            child: Text(
-              'Vendor ID',
-              style:
-                  TextStyle(
-                fontWeight:
-                    FontWeight.bold,
-                color:
-                    Colors.grey.shade700,
-              ),
+          _sectionTitle(
+            'Vendor Information',
+            Icons.person_outline_rounded,
+          ),
+
+          _infoRow(
+            'Vendor ID',
+            uid,
+          ),
+
+          if (email.isNotEmpty)
+            _infoRow(
+              'Email',
+              email,
+            ),
+
+          if (phone.isNotEmpty)
+            _infoRow(
+              'Mobile',
+              phone,
+            ),
+
+          const SizedBox(height: 12),
+
+          // ------------------------------------
+          // DOCUMENT SUMMARY
+          // ------------------------------------
+
+          _sectionTitle(
+            'Documents',
+            Icons.folder_outlined,
+          ),
+
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8F9FC),
+              borderRadius:
+                  BorderRadius.circular(16),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '$verified / ${requiredDocuments.length} required documents verified',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                CircularProgressIndicator(
+                  value:
+                      requiredDocuments.isEmpty
+                          ? 0
+                          : verified /
+                              requiredDocuments.length,
+                  strokeWidth: 5,
+                ),
+              ],
             ),
           ),
 
-          const SizedBox(
-            height: 4,
+          const SizedBox(height: 12),
+
+          // ------------------------------------
+          // DOCUMENT LIST
+          // ------------------------------------
+
+          ...requiredDocuments.map(
+            (type) {
+              return _documentCard(
+                uid: uid,
+                type: type,
+                document:
+                    _documentData(
+                  documents,
+                  type,
+                ),
+              );
+            },
           ),
 
-          SelectableText(uid),
+          // ------------------------------------
+          // ADMIN APPROVAL
+          // ------------------------------------
 
-          const SizedBox(
-            height: 16,
+          _sectionTitle(
+            'Admin Approval',
+            Icons.admin_panel_settings_outlined,
           ),
-
-          _approvalRequirementBox(
-            documents,
-          ),
-
-          // ==================================================
-          // APPROVE / REJECT
-          // ==================================================
 
           Row(
             children: [
-              Expanded(
-                child:
-                    FilledButton.icon(
-                  icon: Icon(
-                    allDocumentsVerified
-                        ? Icons
-                            .check_circle
-                        : Icons
-                            .lock_outline,
-                  ),
-                  label: Text(
-                    allDocumentsVerified
-                        ? 'Approve Vendor'
-                        : 'Approve Locked',
-                  ),
-                  onPressed:
-                      _loading ||
-                              !allDocumentsVerified ||
-                              status ==
-                                  'approved'
-                          ? null
-                          : () async {
-                              final confirmed =
-                                  await _confirmAction(
-                                title:
-                                    'Approve Vendor?',
-                                message:
-                                    'All 5 required documents are verified. Approve this vendor and activate the account?',
-                              );
-
-                              if (!confirmed) {
-                                return;
-                              }
-
-                              await _updateVendorStatus(
-                                uid: uid,
-                                status:
-                                    'approved',
-                              );
-                            },
-                ),
+              Icon(
+                approved
+                    ? Icons.check_circle_rounded
+                    : Icons.pending_rounded,
+                color: approved
+                    ? Colors.green
+                    : Colors.orange,
               ),
-
-              const SizedBox(
-                width: 8,
-              ),
-
-              Expanded(
-                child:
-                    OutlinedButton.icon(
-                  icon:
-                      const Icon(
-                    Icons.close,
-                  ),
-                  label:
-                      const Text(
-                    'Reject',
-                  ),
-                  onPressed: _loading
-                      ? null
-                      : () {
-                          _showReasonDialog(
-                            uid: uid,
-                            status:
-                                'rejected',
-                          );
-                        },
+              const SizedBox(width: 10),
+              Text(
+                approved
+                    ? 'Approved by Admin'
+                    : 'Not approved by Admin',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ],
           ),
 
-          const SizedBox(
-            height: 8,
-          ),
+          const SizedBox(height: 16),
 
-          // ==================================================
-          // SUSPEND / PENDING
-          // ==================================================
+          // ------------------------------------
+          // ACTION BUTTONS
+          // ------------------------------------
 
-          Row(
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
             children: [
-              Expanded(
-                child:
-                    OutlinedButton.icon(
-                  icon:
-                      const Icon(
-                    Icons
-                        .pause_circle_outline,
-                  ),
-                  label:
-                      const Text(
-                    'Suspend',
-                  ),
-                  onPressed: _loading
-                      ? null
-                      : () {
-                          _showReasonDialog(
-                            uid: uid,
-                            status:
-                                'suspended',
-                          );
-                        },
-                ),
-              ),
-
-              const SizedBox(
-                width: 8,
-              ),
-
-              Expanded(
-                child:
-                    OutlinedButton.icon(
-                  icon:
-                      const Icon(
-                    Icons
-                        .pending_outlined,
-                  ),
-                  label:
-                      const Text(
-                    'Pending',
-                  ),
+              if (status != 'approved')
+                FilledButton.icon(
                   onPressed: _loading
                       ? null
                       : () {
                           _updateVendorStatus(
                             uid: uid,
-                            status:
-                                'pending',
+                            status: 'approved',
                           );
                         },
+                  icon: const Icon(
+                    Icons.check_rounded,
+                  ),
+                  label: const Text(
+                    'Approve',
+                  ),
                 ),
-              ),
+
+              if (status != 'rejected')
+                OutlinedButton.icon(
+                  onPressed: _loading
+                      ? null
+                      : () {
+                          _vendorAction(
+                            uid: uid,
+                            status: 'rejected',
+                          );
+                        },
+                  icon: const Icon(
+                    Icons.close_rounded,
+                  ),
+                  label: const Text(
+                    'Reject',
+                  ),
+                ),
+
+              if (status != 'suspended')
+                OutlinedButton.icon(
+                  onPressed: _loading
+                      ? null
+                      : () {
+                          _vendorAction(
+                            uid: uid,
+                            status: 'suspended',
+                          );
+                        },
+                  icon: const Icon(
+                    Icons.pause_rounded,
+                  ),
+                  label: const Text(
+                    'Suspend',
+                  ),
+                ),
+
+              if (status == 'suspended' ||
+                  status == 'rejected')
+                OutlinedButton.icon(
+                  onPressed: _loading
+                      ? null
+                      : () {
+                          _updateVendorStatus(
+                            uid: uid,
+                            status: 'pending_approval',
+                          );
+                        },
+                  icon: const Icon(
+                    Icons.refresh_rounded,
+                  ),
+                  label: const Text(
+                    'Move to Review',
+                  ),
+                ),
             ],
           ),
-
-          const SizedBox(
-            height: 20,
-          ),
-
-          const Align(
-            alignment:
-                Alignment.centerLeft,
-            child: Text(
-              'Vendor Documents',
-              style:
-                  TextStyle(
-                fontSize: 17,
-                fontWeight:
-                    FontWeight.bold,
-              ),
-            ),
-          ),
-
-          const SizedBox(
-            height: 6,
-          ),
-
-          const Align(
-            alignment:
-                Alignment.centerLeft,
-            child: Text(
-              'View each document and verify or reject it. All 5 required documents must be verified before approval.',
-              style:
-                  TextStyle(
-                fontSize: 12,
-                color:
-                    Colors.grey,
-              ),
-            ),
-          ),
-
-          const SizedBox(
-            height: 10,
-          ),
-
-          ..._allDocuments.map(
-            (type) {
-              final document =
-                  _getDocument(
-                documents,
-                type,
-              );
-
-              return _documentRow(
-                uid: uid,
-                documentType:
-                    type,
-                document:
-                    document,
-              );
-            },
-          ),
-
-          const SizedBox(
-            height: 10,
-          ),
-
-          if (status ==
-                  'approved' &&
-              active &&
-              approvedByAdmin)
-            Container(
-              width:
-                  double.infinity,
-              padding:
-                  const EdgeInsets.all(
-                12,
-              ),
-              decoration:
-                  BoxDecoration(
-                color: Colors.green
-                    .withValues(
-                  alpha: 0.08,
-                ),
-                borderRadius:
-                    BorderRadius.circular(
-                  10,
-                ),
-              ),
-              child:
-                  const Row(
-                children: [
-                  Icon(
-                    Icons.verified,
-                    color:
-                        Colors.green,
-                  ),
-                  SizedBox(
-                    width: 8,
-                  ),
-                  Expanded(
-                    child: Text(
-                      'Vendor is approved, active and can login to the Vendor Panel.',
-                      style:
-                          TextStyle(
-                        color:
-                            Colors.green,
-                        fontWeight:
-                            FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
         ],
       ),
     );
   }
 
   // ============================================================
-  // CONFIRM ACTION
+  // SECTION TITLE
   // ============================================================
 
-  Future<bool> _confirmAction({
-    required String title,
-    required String message,
-  }) async {
-    final result =
-        await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(title),
-          content: Text(message),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(
-                  context,
-                  false,
-                );
-              },
-              child:
-                  const Text('Cancel'),
+  Widget _sectionTitle(
+    String title,
+    IconData icon,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(
+        bottom: 10,
+        top: 4,
+      ),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 19,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
             ),
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(
-                  context,
-                  true,
-                );
-              },
-              child:
-                  const Text('Approve'),
-            ),
-          ],
-        );
-      },
+          ),
+        ],
+      ),
     );
-
-    return result == true;
   }
 
   // ============================================================
-  // AUTHORIZE VENDOR DIALOG
+  // INFO ROW
   // ============================================================
 
-  Future<void>
-      _showAuthorizeDialog() async {
-    final uidController =
-        TextEditingController();
-
-    final nameController =
-        TextEditingController();
-
-    final emailController =
-        TextEditingController();
-
-    final phoneController =
-        TextEditingController();
-
-    final result =
-        await showDialog<
-            Map<String, String>>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title:
-              const Text(
-            'Authorize Vendor',
-          ),
-          content:
-              SingleChildScrollView(
-            child: Column(
-              mainAxisSize:
-                  MainAxisSize.min,
-              children: [
-                TextField(
-                  controller:
-                      uidController,
-                  decoration:
-                      const InputDecoration(
-                    labelText:
-                        'Firebase User UID',
-                    hintText:
-                        'Enter existing user UID',
-                    border:
-                        OutlineInputBorder(),
-                  ),
-                ),
-
-                const SizedBox(
-                  height: 12,
-                ),
-
-                TextField(
-                  controller:
-                      nameController,
-                  decoration:
-                      const InputDecoration(
-                    labelText:
-                        'Vendor Name',
-                    border:
-                        OutlineInputBorder(),
-                  ),
-                ),
-
-                const SizedBox(
-                  height: 12,
-                ),
-
-                TextField(
-                  controller:
-                      emailController,
-                  keyboardType:
-                      TextInputType
-                          .emailAddress,
-                  decoration:
-                      const InputDecoration(
-                    labelText:
-                        'Email',
-                    border:
-                        OutlineInputBorder(),
-                  ),
-                ),
-
-                const SizedBox(
-                  height: 12,
-                ),
-
-                TextField(
-                  controller:
-                      phoneController,
-                  keyboardType:
-                      TextInputType.phone,
-                  decoration:
-                      const InputDecoration(
-                    labelText:
-                        'Mobile',
-                    border:
-                        OutlineInputBorder(),
-                  ),
-                ),
-              ],
+  Widget _infoRow(
+    String title,
+    String value,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(
+        bottom: 8,
+      ),
+      child: Row(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 90,
+            child: Text(
+              title,
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: 12,
+              ),
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(
-                  context,
-                );
-              },
-              child:
-                  const Text('Cancel'),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
 
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(
-                  context,
-                  {
-                    'uid':
-                        uidController.text
-                            .trim(),
-                    'name':
-                        nameController.text
-                            .trim(),
-                    'email':
-                        emailController.text
-                            .trim(),
-                    'phone':
-                        phoneController.text
-                            .trim(),
-                  },
-                );
-              },
-              child:
-                  const Text(
-                'Authorize',
+  // ============================================================
+  // STAT CARD
+  // ============================================================
+
+  Widget _statCard({
+    required String title,
+    required String value,
+    required IconData icon,
+  }) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius:
+              BorderRadius.circular(20),
+          border: Border.all(
+            color: Colors.grey.shade200,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 22),
+            const SizedBox(height: 12),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.grey.shade600,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
-        );
-      },
-    );
-
-    uidController.dispose();
-    nameController.dispose();
-    emailController.dispose();
-    phoneController.dispose();
-
-    if (result == null) return;
-
-    final uid =
-        result['uid'] ?? '';
-
-    if (uid.isEmpty) {
-      _showMessage(
-        'Firebase User UID is required.',
-      );
-      return;
-    }
-
-    await _authorizeVendor(
-      uid: uid,
-      name:
-          result['name'] ?? '',
-      email:
-          result['email'] ?? '',
-      phone:
-          result['phone'] ?? '',
+        ),
+      ),
     );
   }
 
@@ -1892,154 +1168,278 @@ class _VendorManagementPageState
   // ============================================================
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
+  Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor:
+          const Color(0xFFF7F8FC),
       appBar: AppBar(
-        title:
-            const Text(
+        title: const Text(
           'Vendor Management',
+          style: TextStyle(
+            fontWeight: FontWeight.w900,
+          ),
         ),
-        actions: [
-          IconButton(
-            tooltip:
-                'Authorize Vendor',
-            icon:
-                const Icon(
-              Icons
-                  .person_add_alt_1,
-            ),
-            onPressed: _loading
-                ? null
-                : _showAuthorizeDialog,
-          ),
-        ],
+        centerTitle: false,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        surfaceTintColor:
+            Colors.transparent,
       ),
-
-      body: Stack(
-        children: [
-          StreamBuilder<
-              QuerySnapshot<
-                  Map<String, dynamic>>>(
-            stream: _firestore
-                .collection(
-                  'vendors',
-                )
-                .orderBy(
-                  'createdAt',
-                  descending: true,
-                )
-                .snapshots(),
-
-            builder:
-                (context, snapshot) {
-              if (snapshot.hasError) {
-                return Center(
-                  child:
-                      Padding(
-                    padding:
-                        const EdgeInsets
-                            .all(
-                      20,
-                    ),
-                    child: Text(
-                      'Unable to load vendors.\n\n${snapshot.error}',
-                      textAlign:
-                          TextAlign.center,
-                    ),
-                  ),
-                );
-              }
-
-              if (snapshot
-                      .connectionState ==
-                  ConnectionState
-                      .waiting) {
-                return const Center(
-                  child:
-                      CircularProgressIndicator(),
-                );
-              }
-
-              final docs =
-                  snapshot.data?.docs ??
-                      [];
-
-              if (docs.isEmpty) {
-                return ListView(
-                  physics:
-                      const AlwaysScrollableScrollPhysics(),
-                  children: const [
-                    SizedBox(
-                      height: 180,
-                    ),
-                    Icon(
-                      Icons
-                          .storefront_outlined,
-                      size: 70,
-                    ),
-                    SizedBox(
-                      height: 16,
-                    ),
-                    Center(
-                      child: Text(
-                        'No vendors found.',
-                        style:
-                            TextStyle(
-                          fontSize:
-                              18,
-                          fontWeight:
-                              FontWeight
-                                  .bold,
-                        ),
-                      ),
-                    ),
-                    SizedBox(
-                      height: 8,
-                    ),
-                    Center(
-                      child: Text(
-                        'Tap + to authorize a vendor.',
-                      ),
-                    ),
-                  ],
-                );
-              }
-
-              return ListView.builder(
-                padding:
-                    const EdgeInsets
-                        .all(
-                  12,
-                ),
-                itemCount:
-                    docs.length,
-                itemBuilder:
-                    (context, index) {
-                  return _vendorCard(
-                    docs[index],
-                  );
-                },
-              );
-            },
-          ),
-
-          if (_loading)
-            Positioned.fill(
-              child: Container(
-                color: Colors.black
-                    .withValues(
-                  alpha: 0.08,
-                ),
-                child:
-                    const Center(
-                  child:
-                      CircularProgressIndicator(),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: _firestore
+            .collection('vendors')
+            .snapshots(),
+        builder: (
+          context,
+          snapshot,
+        ) {
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Unable to load vendors.\n\n${snapshot.error}',
+                  textAlign: TextAlign.center,
                 ),
               ),
+            );
+          }
+
+          if (snapshot.connectionState ==
+              ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          }
+
+          final docs =
+              snapshot.data?.docs ?? [];
+
+          int pending = 0;
+          int approved = 0;
+          int rejected = 0;
+
+          for (final doc in docs) {
+            final data =
+                doc.data() as Map<String, dynamic>;
+
+            final status = (
+              data['status'] ?? ''
+            ).toString().toLowerCase();
+
+            if (status == 'approved') {
+              approved++;
+            } else if (status == 'rejected') {
+              rejected++;
+            } else {
+              pending++;
+            }
+          }
+
+          return RefreshIndicator(
+            onRefresh: () async {
+              await Future.delayed(
+                const Duration(milliseconds: 500),
+              );
+            },
+            child: ListView(
+              physics:
+                  const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(
+                16,
+                8,
+                16,
+                30,
+              ),
+              children: [
+                // --------------------------------------------
+                // HEADER
+                // --------------------------------------------
+
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0xFF111827),
+                        Color(0xFF374151),
+                      ],
+                    ),
+                    borderRadius:
+                        BorderRadius.circular(24),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 52,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          color: Colors.white
+                              .withOpacity(0.12),
+                          borderRadius:
+                              BorderRadius.circular(17),
+                        ),
+                        child: const Icon(
+                          Icons.storefront_rounded,
+                          color: Colors.white,
+                          size: 28,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Vendor Control Center',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 19,
+                                fontWeight:
+                                    FontWeight.w900,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Review vendors and verify documents',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // --------------------------------------------
+                // STATISTICS
+                // --------------------------------------------
+
+                Row(
+                  children: [
+                    _statCard(
+                      title: 'Total Vendors',
+                      value: docs.length.toString(),
+                      icon:
+                          Icons.groups_rounded,
+                    ),
+                    const SizedBox(width: 10),
+                    _statCard(
+                      title: 'Pending',
+                      value: pending.toString(),
+                      icon:
+                          Icons.pending_actions_rounded,
+                    ),
+                    const SizedBox(width: 10),
+                    _statCard(
+                      title: 'Approved',
+                      value: approved.toString(),
+                      icon:
+                          Icons.verified_rounded,
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 10),
+
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius:
+                        BorderRadius.circular(18),
+                    border: Border.all(
+                      color: Colors.grey.shade200,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.info_outline_rounded,
+                        size: 19,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          '$rejected vendor(s) rejected. '
+                          'Open a vendor to review documents and update status.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // --------------------------------------------
+                // VENDOR LIST
+                // --------------------------------------------
+
+                if (docs.isEmpty)
+                  Container(
+                    padding:
+                        const EdgeInsets.all(35),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius:
+                          BorderRadius.circular(22),
+                    ),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.storefront_outlined,
+                          size: 50,
+                          color: Colors.grey.shade400,
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'No vendors found',
+                          style: TextStyle(
+                            fontWeight:
+                                FontWeight.w800,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          'Vendor registrations will appear here.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  ...docs.map(
+                    (doc) {
+                      final data =
+                          doc.data()
+                              as Map<String, dynamic>;
+
+                      return _vendorCard(
+                        doc.id,
+                        data,
+                      );
+                    },
+                  ),
+              ],
             ),
-        ],
+          );
+        },
       ),
     );
   }
