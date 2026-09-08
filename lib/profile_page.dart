@@ -214,7 +214,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => const AdminLoginPage(),
+                      builder: (_) => const AdminLogin(),
                     ),
                   );
                 },
