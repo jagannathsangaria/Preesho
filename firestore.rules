@@ -106,17 +106,13 @@ service cloud.firestore {
 
     match /products/{productId} {
 
-      // Public product catalogue
       allow read: if true;
 
-      // Admin full control
       allow create, update, delete: if isAdmin();
 
-      // Approved vendor can create own product
       allow create: if isVendor()
         && request.resource.data.vendorUid == request.auth.uid;
 
-      // Approved vendor can update own product
       allow update: if isVendor()
         && resource.data.vendorUid == request.auth.uid
         && request.resource.data.vendorUid == request.auth.uid;
@@ -128,16 +124,7 @@ service cloud.firestore {
         ? false
         : false;
 
-      // ------------------------------------------------------------
-      // STOCK
-      // ------------------------------------------------------------
-      // Any signed-in user may only perform a stock decrease.
-      // No price/title/vendor/payment changes are permitted through
-      // this rule.
-      //
-      // IMPORTANT:
-      // This is retained for compatibility with existing stock flow.
-      // Backend/Admin should be preferred for stock mutations.
+      // Stock decrease only
       allow update: if isSignedIn()
         && request.resource.data.diff(resource.data)
           .affectedKeys()
@@ -153,7 +140,6 @@ service cloud.firestore {
 
     match /users/{userId} {
 
-      // Admin or owner can read own profile
       allow read: if isAdmin()
         || isOwner(userId);
 
@@ -190,17 +176,6 @@ service cloud.firestore {
       // ------------------------------------------------------------
       // OWNER UPDATE
       // ------------------------------------------------------------
-      // User can update normal profile fields.
-      //
-      // SECURITY:
-      // role
-      // active
-      // approval
-      // vendorStatus
-      // registrationStatus
-      //
-      // cannot be changed by client.
-      // ------------------------------------------------------------
 
       allow update: if isOwner(userId)
         && !request.resource.data.diff(resource.data)
@@ -227,7 +202,6 @@ service cloud.firestore {
         );
 
 
-      // Client cannot delete users
       allow delete: if false;
 
 
@@ -249,16 +223,13 @@ service cloud.firestore {
 
     match /vendors/{vendorId} {
 
-      // Admin full control
       allow read, write: if isAdmin();
 
 
-      // Approved vendor can read own profile
       allow read: if isVendor()
         && request.auth.uid == vendorId;
 
 
-      // Pending/rejected vendor can read own profile
       allow read: if isOwner(vendorId)
         && resource.data.role == "vendor"
         && resource.data.active == false
@@ -324,7 +295,6 @@ service cloud.firestore {
 
     match /couriers/{courierId} {
 
-      // Admin full control
       allow read, write: if isAdmin();
 
 
@@ -389,7 +359,6 @@ service cloud.firestore {
         );
 
 
-      // Courier cannot delete own profile
       allow delete: if false;
     }
 
@@ -402,11 +371,6 @@ service cloud.firestore {
 
       // ------------------------------------------------------------
       // CREATE ORDER
-      // ------------------------------------------------------------
-      // Customer can create own order.
-      //
-      // COD is allowed because paymentMethod is NOT blocked on
-      // creation.
       // ------------------------------------------------------------
 
       allow create: if isSignedIn()
@@ -500,21 +464,6 @@ service cloud.firestore {
       // ==========================================================
       // CUSTOMER ORDER UPDATE
       // ==========================================================
-      //
-      // Customer cannot change:
-      // - amount
-      // - total
-      // - price
-      // - payment
-      // - COD amount
-      // - courier
-      // - vendor
-      // - order status
-      //
-      // This protects financial/order integrity.
-      //
-      // Customer may update only safe customer-side fields.
-      // ==========================================================
 
       allow update: if isSignedIn()
         && resource.data.userId == request.auth.uid
@@ -535,12 +484,6 @@ service cloud.firestore {
       // ==========================================================
       // VENDOR ORDER UPDATE
       // ==========================================================
-      //
-      // Vendor cannot modify financial/payment/courier fields.
-      //
-      // Vendor status changes should preferably go through the
-      // secured Cloud Functions.
-      // ==========================================================
 
       allow update: if isVendor()
         && request.auth.uid in resource.data.vendorUids
@@ -557,28 +500,6 @@ service cloud.firestore {
 
       // ==========================================================
       // COURIER ORDER UPDATE
-      // ==========================================================
-      //
-      // IMPORTANT:
-      // Courier MUST NOT directly update orders in Firestore.
-      //
-      // Courier status is changed through:
-      //
-      // updateCourierOrderStatus()
-      //
-      // Cloud Function uses Admin SDK and therefore bypasses these
-      // Firestore client rules.
-      //
-      // This prevents courier from changing:
-      // - paymentMethod
-      // - paymentStatus
-      // - COD amount
-      // - total
-      // - price
-      // - courierId
-      // - vendor
-      // - customer
-      // - order ownership
       // ==========================================================
 
       allow update: if false;
@@ -614,9 +535,6 @@ service cloud.firestore {
 
     // ============================================================
     // DEFAULT DENY
-    // ============================================================
-    //
-    // Any collection not explicitly listed above is denied.
     // ============================================================
 
   }
