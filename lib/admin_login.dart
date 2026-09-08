@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'admin_panel.dart';
+import 'courier_documents_page.dart';
 import 'courier_panel.dart';
 import 'courier_registration_page.dart';
 import 'forgot_password_page.dart';
@@ -309,73 +310,7 @@ class _AdminLoginState extends State<AdminLogin> {
     Map<String, dynamic> userData,
   ) async {
     // ----------------------------------------------------------
-    // USER STATUS
-    // ----------------------------------------------------------
-
-    final userStatus =
-        userData['status']
-            ?.toString()
-            .trim()
-            .toLowerCase();
-
-    final userActive =
-        userData['active'] == true;
-
-    // ----------------------------------------------------------
-    // USER STATUS CHECK
-    // ----------------------------------------------------------
-
-    if (userStatus != 'approved') {
-      await _auth.signOut();
-
-      String message;
-
-      switch (userStatus) {
-        case 'pending_documents':
-          message =
-              'Courier documents are not submitted yet.';
-          break;
-
-        case 'pending_approval':
-          message =
-              'Courier account is waiting for Admin approval.';
-          break;
-
-        case 'rejected':
-          message =
-              'Courier account has been rejected by Admin.';
-          break;
-
-        case 'suspended':
-          message =
-              'Courier account is suspended.';
-          break;
-
-        default:
-          message =
-              'Courier account is not approved.';
-      }
-
-      _showMessage(message);
-      return;
-    }
-
-    // ----------------------------------------------------------
-    // USER ACTIVE CHECK
-    // ----------------------------------------------------------
-
-    if (!userActive) {
-      await _auth.signOut();
-
-      _showMessage(
-        'Courier account is inactive.',
-      );
-
-      return;
-    }
-
-    // ----------------------------------------------------------
-    // COURIER DOCUMENT
+    // GET COURIER PROFILE
     // ----------------------------------------------------------
 
     final courierDoc = await _firestore
@@ -383,21 +318,19 @@ class _AdminLoginState extends State<AdminLogin> {
         .doc(uid)
         .get();
 
-    if (!courierDoc.exists) {
-      await _auth.signOut();
+    Map<String, dynamic> courierData = {};
 
-      _showMessage(
-        'Courier profile not found. Please contact Admin.',
-      );
-
-      return;
+    if (courierDoc.exists) {
+      courierData =
+          courierDoc.data() ?? {};
     }
 
-    final courierData =
-        courierDoc.data() ?? {};
+    // ----------------------------------------------------------
+    // GET STATUS FROM BOTH USERS AND COURIERS
+    // ----------------------------------------------------------
 
-    final courierRole =
-        courierData['role']
+    final userStatus =
+        userData['status']
             ?.toString()
             .trim()
             .toLowerCase();
@@ -408,17 +341,52 @@ class _AdminLoginState extends State<AdminLogin> {
             .trim()
             .toLowerCase();
 
+    final status =
+        courierStatus ?? userStatus;
+
+    // ----------------------------------------------------------
+    // ROLE
+    // ----------------------------------------------------------
+
+    final courierRole =
+        courierData['role']
+            ?.toString()
+            .trim()
+            .toLowerCase();
+
+    // ----------------------------------------------------------
+    // ACTIVE
+    // ----------------------------------------------------------
+
     final courierActive =
         courierData['active'] == true;
 
+    final userActive =
+        userData['active'] == true;
+
+    // ----------------------------------------------------------
+    // ADMIN APPROVAL
+    // ----------------------------------------------------------
+
     final approvedByAdmin =
-        courierData['approvedByAdmin'] == true;
+        courierData['approvedByAdmin'] == true ||
+        userData['approvedByAdmin'] == true;
 
     // ----------------------------------------------------------
-    // ROLE CHECK
+    // DOCUMENTS
     // ----------------------------------------------------------
 
-    if (courierRole != 'courier') {
+    final documentsSubmitted =
+        courierData['documentsSubmitted'] == true ||
+        userData['documentsSubmitted'] == true;
+
+    // ==========================================================
+    // COURIER ROLE CHECK
+    // ==========================================================
+
+    if (courierDoc.exists &&
+        courierRole != null &&
+        courierRole != 'courier') {
       await _auth.signOut();
 
       _showMessage(
@@ -428,48 +396,100 @@ class _AdminLoginState extends State<AdminLogin> {
       return;
     }
 
-    // ----------------------------------------------------------
-    // COURIER APPROVAL CHECK
-    // ----------------------------------------------------------
+    // ==========================================================
+    // IMPORTANT:
+    // DOCUMENTS NOT SUBMITTED
+    // DO NOT SIGN OUT
+    // OPEN DOCUMENT PAGE
+    // ==========================================================
 
-    if (courierStatus != 'approved') {
-      await _auth.signOut();
+    if (status == 'pending_documents' ||
+        !documentsSubmitted) {
+      if (!mounted) return;
 
-      String message;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CourierDocumentsPage(
+            courierUid: uid,
+          ),
+        ),
+      );
 
-      switch (courierStatus) {
-        case 'pending_documents':
-          message =
-              'Please complete Courier documents first.';
-          break;
-
-        case 'pending_approval':
-          message =
-              'Courier documents are under Admin review.';
-          break;
-
-        case 'rejected':
-          message =
-              'Courier documents/account were rejected by Admin.';
-          break;
-
-        case 'suspended':
-          message =
-              'Courier account is suspended.';
-          break;
-
-        default:
-          message =
-              'Courier account is not approved.';
-      }
-
-      _showMessage(message);
       return;
     }
 
-    // ----------------------------------------------------------
-    // APPROVED BY ADMIN CHECK
-    // ----------------------------------------------------------
+    // ==========================================================
+    // DOCUMENTS SUBMITTED
+    // WAITING FOR ADMIN APPROVAL
+    // ==========================================================
+
+    if (status == 'pending_approval') {
+      if (!mounted) return;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CourierDocumentsPage(
+            courierUid: uid,
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    // ==========================================================
+    // REJECTED
+    // OPEN DOCUMENT PAGE FOR CORRECTION / RESUBMISSION
+    // ==========================================================
+
+    if (status == 'rejected') {
+      if (!mounted) return;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CourierDocumentsPage(
+            courierUid: uid,
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    // ==========================================================
+    // SUSPENDED
+    // ==========================================================
+
+    if (status == 'suspended') {
+      await _auth.signOut();
+
+      _showMessage(
+        'Courier account is suspended.',
+      );
+
+      return;
+    }
+
+    // ==========================================================
+    // APPROVED CHECK
+    // ==========================================================
+
+    if (status != 'approved') {
+      await _auth.signOut();
+
+      _showMessage(
+        'Courier account is not approved.',
+      );
+
+      return;
+    }
+
+    // ==========================================================
+    // ADMIN APPROVAL CHECK
+    // ==========================================================
 
     if (!approvedByAdmin) {
       await _auth.signOut();
@@ -481,11 +501,12 @@ class _AdminLoginState extends State<AdminLogin> {
       return;
     }
 
-    // ----------------------------------------------------------
-    // COURIER ACTIVE CHECK
-    // ----------------------------------------------------------
+    // ==========================================================
+    // ACTIVE CHECK
+    // ==========================================================
 
-    if (!courierActive) {
+    if (!courierActive ||
+        !userActive) {
       await _auth.signOut();
 
       _showMessage(
@@ -495,16 +516,17 @@ class _AdminLoginState extends State<AdminLogin> {
       return;
     }
 
-    // ----------------------------------------------------------
+    // ==========================================================
+    // APPROVED COURIER
     // OPEN COURIER PANEL
-    // ----------------------------------------------------------
+    // ==========================================================
 
     if (!mounted) return;
 
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) => CourierPanel(),
+        builder: (_) => const CourierPanel(),
       ),
     );
   }
@@ -629,7 +651,8 @@ class _AdminLoginState extends State<AdminLogin> {
     // BOTH USER + VENDOR MUST BE ACTIVE
     // ----------------------------------------------------------
 
-    if (!userActive || !vendorActive) {
+    if (!userActive ||
+        !vendorActive) {
       await _auth.signOut();
 
       _showMessage(
@@ -745,32 +768,25 @@ class _AdminLoginState extends State<AdminLogin> {
           ),
         ),
       ),
-
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
             padding:
                 const EdgeInsets.all(24),
-
             child: ConstrainedBox(
               constraints:
                   const BoxConstraints(
                 maxWidth: 450,
               ),
-
               child: Card(
                 elevation: 3,
-
                 child: Padding(
                   padding:
                       const EdgeInsets.all(24),
-
                   child: Column(
                     crossAxisAlignment:
                         CrossAxisAlignment.stretch,
-
                     children: [
-
                       // ==================================================
                       // ICON
                       // ==================================================
@@ -778,16 +794,23 @@ class _AdminLoginState extends State<AdminLogin> {
                       CircleAvatar(
                         radius: 38,
                         child: Icon(
-                          _selectedRole == 'courier'
-                              ? Icons.delivery_dining
-                              : _selectedRole == 'vendor'
-                                  ? Icons.storefront_outlined
-                                  : Icons.admin_panel_settings_outlined,
+                          _selectedRole ==
+                                  'courier'
+                              ? Icons
+                                  .delivery_dining
+                              : _selectedRole ==
+                                      'vendor'
+                                  ? Icons
+                                      .storefront_outlined
+                                  : Icons
+                                      .admin_panel_settings_outlined,
                           size: 42,
                         ),
                       ),
 
-                      const SizedBox(height: 18),
+                      const SizedBox(
+                        height: 18,
+                      ),
 
                       Text(
                         _roleTitle,
@@ -801,7 +824,9 @@ class _AdminLoginState extends State<AdminLogin> {
                         ),
                       ),
 
-                      const SizedBox(height: 8),
+                      const SizedBox(
+                        height: 8,
+                      ),
 
                       const Text(
                         'Preesho Staff Access',
@@ -813,15 +838,17 @@ class _AdminLoginState extends State<AdminLogin> {
                         ),
                       ),
 
-                      const SizedBox(height: 28),
+                      const SizedBox(
+                        height: 28,
+                      ),
 
                       // ==================================================
                       // ROLE DROPDOWN
                       // ==================================================
 
                       DropdownButtonFormField<String>(
-                        value: _selectedRole,
-
+                        value:
+                            _selectedRole,
                         decoration:
                             const InputDecoration(
                           labelText:
@@ -834,47 +861,45 @@ class _AdminLoginState extends State<AdminLogin> {
                           border:
                               OutlineInputBorder(),
                         ),
-
                         items: const [
                           DropdownMenuItem(
                             value: 'admin',
-                            child:
-                                Text(
+                            child: Text(
                               'Admin Login',
                             ),
                           ),
                           DropdownMenuItem(
                             value: 'vendor',
-                            child:
-                                Text(
+                            child: Text(
                               'Vendor Login',
                             ),
                           ),
                           DropdownMenuItem(
                             value: 'courier',
-                            child:
-                                Text(
+                            child: Text(
                               'Courier Login',
                             ),
                           ),
                         ],
+                        onChanged:
+                            _loading
+                                ? null
+                                : (value) {
+                                    if (value ==
+                                        null) {
+                                      return;
+                                    }
 
-                        onChanged: _loading
-                            ? null
-                            : (value) {
-                                if (value ==
-                                    null) {
-                                  return;
-                                }
-
-                                setState(() {
-                                  _selectedRole =
-                                      value;
-                                });
-                              },
+                                    setState(() {
+                                      _selectedRole =
+                                          value;
+                                    });
+                                  },
                       ),
 
-                      const SizedBox(height: 16),
+                      const SizedBox(
+                        height: 16,
+                      ),
 
                       // ==================================================
                       // EMAIL
@@ -883,14 +908,11 @@ class _AdminLoginState extends State<AdminLogin> {
                       TextField(
                         controller:
                             _emailController,
-
                         keyboardType:
                             TextInputType
                                 .emailAddress,
-
                         textInputAction:
                             TextInputAction.next,
-
                         decoration:
                             const InputDecoration(
                           labelText:
@@ -907,7 +929,9 @@ class _AdminLoginState extends State<AdminLogin> {
                         ),
                       ),
 
-                      const SizedBox(height: 16),
+                      const SizedBox(
+                        height: 16,
+                      ),
 
                       // ==================================================
                       // PASSWORD
@@ -916,30 +940,23 @@ class _AdminLoginState extends State<AdminLogin> {
                       TextField(
                         controller:
                             _passwordController,
-
                         obscureText:
                             _obscurePassword,
-
                         textInputAction:
                             TextInputAction.done,
-
                         onSubmitted: (_) {
                           _login();
                         },
-
                         decoration:
                             InputDecoration(
                           labelText:
                               'Password',
-
                           hintText:
                               'Enter password',
-
                           prefixIcon:
                               const Icon(
                             Icons.lock_outline,
                           ),
-
                           suffixIcon:
                               IconButton(
                             onPressed: () {
@@ -948,7 +965,6 @@ class _AdminLoginState extends State<AdminLogin> {
                                     !_obscurePassword;
                               });
                             },
-
                             icon: Icon(
                               _obscurePassword
                                   ? Icons
@@ -957,13 +973,14 @@ class _AdminLoginState extends State<AdminLogin> {
                                       .visibility_off_outlined,
                             ),
                           ),
-
                           border:
                               const OutlineInputBorder(),
                         ),
                       ),
 
-                      const SizedBox(height: 10),
+                      const SizedBox(
+                        height: 10,
+                      ),
 
                       // ==================================================
                       // FORGOT PASSWORD
@@ -972,14 +989,12 @@ class _AdminLoginState extends State<AdminLogin> {
                       Align(
                         alignment:
                             Alignment.centerRight,
-
                         child:
                             TextButton(
                           onPressed:
                               _loading
                                   ? null
                                   : _openForgotPassword,
-
                           child:
                               const Text(
                             'Forgot Password?',
@@ -987,7 +1002,9 @@ class _AdminLoginState extends State<AdminLogin> {
                         ),
                       ),
 
-                      const SizedBox(height: 8),
+                      const SizedBox(
+                        height: 8,
+                      ),
 
                       // ==================================================
                       // LOGIN BUTTON
@@ -995,14 +1012,12 @@ class _AdminLoginState extends State<AdminLogin> {
 
                       SizedBox(
                         height: 52,
-
                         child:
                             FilledButton(
                           onPressed:
                               _loading
                                   ? null
                                   : _login,
-
                           child:
                               _loading
                                   ? const SizedBox(
@@ -1036,13 +1051,10 @@ class _AdminLoginState extends State<AdminLogin> {
                         const SizedBox(
                           height: 18,
                         ),
-
                         const Divider(),
-
                         const SizedBox(
                           height: 8,
                         ),
-
                         const Text(
                           'New Vendor?',
                           textAlign:
@@ -1053,23 +1065,19 @@ class _AdminLoginState extends State<AdminLogin> {
                                 Colors.grey,
                           ),
                         ),
-
                         const SizedBox(
                           height: 6,
                         ),
-
                         OutlinedButton.icon(
                           onPressed:
                               _loading
                                   ? null
                                   : _openVendorRegistration,
-
                           icon:
                               const Icon(
                             Icons
                                 .storefront_outlined,
                           ),
-
                           label:
                               const Text(
                             'Register as Vendor',
@@ -1091,13 +1099,10 @@ class _AdminLoginState extends State<AdminLogin> {
                         const SizedBox(
                           height: 18,
                         ),
-
                         const Divider(),
-
                         const SizedBox(
                           height: 8,
                         ),
-
                         const Text(
                           'New Courier?',
                           textAlign:
@@ -1108,23 +1113,19 @@ class _AdminLoginState extends State<AdminLogin> {
                                 Colors.grey,
                           ),
                         ),
-
                         const SizedBox(
                           height: 6,
                         ),
-
                         OutlinedButton.icon(
                           onPressed:
                               _loading
                                   ? null
                                   : _openCourierRegistration,
-
                           icon:
                               const Icon(
                             Icons
                                 .delivery_dining,
                           ),
-
                           label:
                               const Text(
                             'Register as Courier',
@@ -1137,7 +1138,9 @@ class _AdminLoginState extends State<AdminLogin> {
                         ),
                       ],
 
-                      const SizedBox(height: 18),
+                      const SizedBox(
+                        height: 18,
+                      ),
 
                       // ==================================================
                       // SECURITY MESSAGE
