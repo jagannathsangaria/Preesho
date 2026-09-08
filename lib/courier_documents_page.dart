@@ -35,6 +35,7 @@ class _CourierDocumentsPageState
 
   bool _loading = true;
   bool _uploading = false;
+  bool _savingDetails = false;
 
   String? _uid;
 
@@ -53,11 +54,9 @@ class _CourierDocumentsPageState
 
   String _rejectionReason = '';
 
-  final Map<String, Map<String, dynamic>>
-      _documents = {};
+  final Map<String, Map<String, dynamic>> _documents = {};
 
-  final Map<String, String>
-      _documentTitles = {
+  final Map<String, String> _documentTitles = {
     'profilePhoto': 'Profile Photo',
     'aadhaar': 'Aadhaar / ID Proof',
     'drivingLicence': 'Driving Licence',
@@ -65,14 +64,13 @@ class _CourierDocumentsPageState
     'addressProof': 'Address Proof',
   };
 
-  final Map<String, bool>
-      _requiredDocuments = {
-    'profilePhoto': true,
-    'aadhaar': true,
-    'drivingLicence': true,
-    'vehicleRc': true,
-    'addressProof': true,
-  };
+  final List<String> _requiredDocumentKeys = const [
+    'profilePhoto',
+    'aadhaar',
+    'drivingLicence',
+    'vehicleRc',
+    'addressProof',
+  ];
 
   @override
   void initState() {
@@ -99,9 +97,11 @@ class _CourierDocumentsPageState
     }
 
     try {
-      final courierRef = _firestore
-          .collection('couriers')
-          .doc(_uid);
+      final courierRef =
+          _firestore.collection('couriers').doc(_uid);
+
+      final userRef =
+          _firestore.collection('users').doc(_uid);
 
       final courierSnapshot =
           await courierRef.get();
@@ -109,19 +109,15 @@ class _CourierDocumentsPageState
       Map<String, dynamic> data = {};
 
       if (courierSnapshot.exists) {
-        data =
-            courierSnapshot.data() ?? {};
+        data = courierSnapshot.data() ?? {};
       } else {
         // --------------------------------------------------------
-        // Courier document missing.
-        // Users profile se basic data recover.
+        // COURIER DOCUMENT MISSING
+        // Recover profile from users collection.
         // --------------------------------------------------------
 
         final userSnapshot =
-            await _firestore
-                .collection('users')
-                .doc(_uid)
-                .get();
+            await userRef.get();
 
         final userData =
             userSnapshot.data() ?? {};
@@ -129,33 +125,38 @@ class _CourierDocumentsPageState
         final role =
             userData['role']
                     ?.toString()
-                    .toLowerCase() ??
+                    .toLowerCase()
+                    .trim() ??
                 '';
 
         if (role == 'courier') {
           data = {
             'uid': _uid,
+            'role': 'courier',
             'name':
                 userData['name'] ??
-                    _auth.currentUser
-                        ?.displayName ??
+                    _auth.currentUser?.displayName ??
                     '',
             'phone':
                 userData['phone'] ??
-                    _auth.currentUser
-                        ?.phoneNumber ??
+                    _auth.currentUser?.phoneNumber ??
                     '',
             'email':
                 userData['email'] ??
-                    _auth.currentUser
-                        ?.email ??
+                    _auth.currentUser?.email ??
                     '',
-            'role': 'courier',
             'status':
-                'pending_documents',
-            'active': false,
-            'documentsSubmitted': false,
-            'approvedByAdmin': false,
+                userData['status'] ??
+                    'pending_documents',
+            'registrationStatus':
+                userData['registrationStatus'] ??
+                    'pending_documents',
+            'active':
+                userData['active'] == true,
+            'documentsSubmitted':
+                userData['documentsSubmitted'] == true,
+            'approvedByAdmin':
+                userData['approvedByAdmin'] == true,
             'documents': {},
           };
 
@@ -167,15 +168,13 @@ class _CourierDocumentsPageState
               'updatedAt':
                   FieldValue.serverTimestamp(),
             },
-            SetOptions(
-              merge: true,
-            ),
+            SetOptions(merge: true),
           );
         }
       }
 
       // ----------------------------------------------------------
-      // BASIC COURIER INFORMATION
+      // BASIC INFORMATION
       // ----------------------------------------------------------
 
       _courierName =
@@ -197,10 +196,11 @@ class _CourierDocumentsPageState
               '';
 
       _status =
-          data['status']
-                  ?.toString()
-                  .toLowerCase() ??
-              'pending_documents';
+          _normalizeStatus(
+        data['status'] ??
+            data['registrationStatus'] ??
+            'pending_documents',
+      );
 
       _documentsSubmitted =
           data['documentsSubmitted'] == true;
@@ -213,27 +213,30 @@ class _CourierDocumentsPageState
 
       _registrationType =
           data['registrationType']
-                  ?.toString() ??
+                  ?.toString()
+                  .trim() ??
               '';
 
       _registrationNo =
           data['registrationNo']
-                  ?.toString() ??
+                  ?.toString()
+                  .trim() ??
               '';
 
       _rejectionReason =
           data['rejectionReason']
-                  ?.toString() ??
+                  ?.toString()
+                  .trim() ??
               '';
 
       // ----------------------------------------------------------
       // DOCUMENTS
       // ----------------------------------------------------------
 
+      _documents.clear();
+
       final documentsData =
           data['documents'];
-
-      _documents.clear();
 
       if (documentsData is Map) {
         for (final entry
@@ -269,6 +272,39 @@ class _CourierDocumentsPageState
     }
   }
 
+  String _normalizeStatus(dynamic value) {
+    return value
+        ?.toString()
+        .toLowerCase()
+        .trim()
+        .replaceAll(' ', '_') ??
+        '';
+  }
+
+  // ============================================================
+  // CHECK IF EDITING IS ALLOWED
+  // ============================================================
+
+  bool get _isPendingApproval =>
+      _status == 'pending_approval';
+
+  bool get _isApproved =>
+      _status == 'approved' &&
+      _active &&
+      _approvedByAdmin;
+
+  bool get _canEditDocuments {
+    if (_isPendingApproval) {
+      return false;
+    }
+
+    if (_isApproved) {
+      return false;
+    }
+
+    return true;
+  }
+
   // ============================================================
   // STATUS HEADER
   // ============================================================
@@ -286,45 +322,40 @@ class _CourierDocumentsPageState
 
       message =
           'Aapka Courier registration successful hai. '
-          'Ab sabhi required documents upload karein.';
+          'Sabhi required documents upload karke Admin approval ke liye submit karein.';
 
       icon =
           Icons.upload_file;
 
       color =
           Colors.orange;
-    } else if (_status ==
-        'pending_approval') {
+    } else if (_status == 'pending_approval') {
       title =
           'Admin Approval Pending';
 
       message =
-          'Aapke sabhi documents Admin approval ke liye submit ho chuke hain. '
-          'Approval milne tak Courier Panel aur orders available nahi honge.';
+          'Aapke documents Admin approval ke liye submit ho chuke hain. '
+          'Approval milne tak orders receive nahi honge.';
 
       icon =
           Icons.hourglass_top;
 
       color =
           Colors.orange;
-    } else if (_status ==
-        'rejected') {
+    } else if (_status == 'rejected') {
       title =
           'Documents Rejected';
 
       message =
           'Admin ne documents reject kiye hain. '
-          'Rejected documents ko replace karke dobara submit karein.';
+          'Required documents ko replace karke dobara submit karein.';
 
       icon =
           Icons.cancel_outlined;
 
       color =
           Colors.red;
-    } else if (_status ==
-            'approved' &&
-        _active &&
-        _approvedByAdmin) {
+    } else if (_isApproved) {
       title =
           'Courier Approved';
 
@@ -356,8 +387,7 @@ class _CourierDocumentsPageState
         width: double.infinity,
         padding:
             const EdgeInsets.all(18),
-        decoration:
-            BoxDecoration(
+        decoration: BoxDecoration(
           borderRadius:
               BorderRadius.circular(12),
           border: Border.all(
@@ -374,8 +404,7 @@ class _CourierDocumentsPageState
             Container(
               width: 52,
               height: 52,
-              decoration:
-                  BoxDecoration(
+              decoration: BoxDecoration(
                 color:
                     color.withValues(
                   alpha: 0.12,
@@ -389,9 +418,7 @@ class _CourierDocumentsPageState
                 size: 28,
               ),
             ),
-            const SizedBox(
-              width: 14,
-            ),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment:
@@ -399,21 +426,17 @@ class _CourierDocumentsPageState
                 children: [
                   Text(
                     title,
-                    style:
-                        TextStyle(
+                    style: TextStyle(
                       fontSize: 19,
                       fontWeight:
                           FontWeight.bold,
                       color: color,
                     ),
                   ),
-                  const SizedBox(
-                    height: 7,
-                  ),
+                  const SizedBox(height: 7),
                   Text(
                     message,
-                    style:
-                        const TextStyle(
+                    style: const TextStyle(
                       fontSize: 14,
                       height: 1.45,
                     ),
@@ -428,10 +451,15 @@ class _CourierDocumentsPageState
   }
 
   // ============================================================
-  // COURIER PROFILE CARD
+  // PROFILE CARD
   // ============================================================
 
   Widget _buildCourierProfileCard() {
+    final firstLetter =
+        _courierName.isNotEmpty
+            ? _courierName[0].toUpperCase()
+            : 'C';
+
     return Card(
       elevation: 2,
       child: Padding(
@@ -440,23 +468,17 @@ class _CourierDocumentsPageState
         child: Row(
           children: [
             CircleAvatar(
-              radius: 28,
+              radius: 29,
               child: Text(
-                _courierName.isNotEmpty
-                    ? _courierName[0]
-                        .toUpperCase()
-                    : 'C',
-                style:
-                    const TextStyle(
+                firstLetter,
+                style: const TextStyle(
                   fontSize: 24,
                   fontWeight:
                       FontWeight.bold,
                 ),
               ),
             ),
-            const SizedBox(
-              width: 14,
-            ),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment:
@@ -466,15 +488,13 @@ class _CourierDocumentsPageState
                     _courierName.isEmpty
                         ? 'Courier'
                         : _courierName,
-                    style:
-                        const TextStyle(
+                    style: const TextStyle(
                       fontSize: 18,
                       fontWeight:
                           FontWeight.bold,
                     ),
                   ),
-                  if (_courierPhone
-                      .isNotEmpty)
+                  if (_courierPhone.isNotEmpty)
                     Padding(
                       padding:
                           const EdgeInsets.only(
@@ -488,8 +508,7 @@ class _CourierDocumentsPageState
                         ),
                       ),
                     ),
-                  if (_courierEmail
-                      .isNotEmpty)
+                  if (_courierEmail.isNotEmpty)
                     Padding(
                       padding:
                           const EdgeInsets.only(
@@ -513,6 +532,231 @@ class _CourierDocumentsPageState
   }
 
   // ============================================================
+  // REGISTRATION DETAILS
+  // ============================================================
+
+  Widget _buildRegistrationDetails() {
+    final editable =
+        _canEditDocuments &&
+        !_savingDetails;
+
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding:
+            const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Vehicle Registration Details',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight:
+                    FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            DropdownButtonFormField<String>(
+              value: _registrationType.isEmpty
+                  ? null
+                  : _registrationType,
+              decoration:
+                  const InputDecoration(
+                labelText:
+                    'Registration Type',
+                border:
+                    OutlineInputBorder(),
+                prefixIcon:
+                    Icon(
+                  Icons.badge_outlined,
+                ),
+              ),
+              items: const [
+                DropdownMenuItem(
+                  value: 'Private',
+                  child:
+                      Text('Private'),
+                ),
+                DropdownMenuItem(
+                  value: 'Commercial',
+                  child:
+                      Text('Commercial'),
+                ),
+                DropdownMenuItem(
+                  value: 'Other',
+                  child:
+                      Text('Other'),
+                ),
+              ],
+              onChanged:
+                  editable
+                      ? (value) {
+                          setState(() {
+                            _registrationType =
+                                value ?? '';
+                          });
+                        }
+                      : null,
+            ),
+
+            const SizedBox(height: 14),
+
+            TextFormField(
+              initialValue:
+                  _registrationNo,
+              enabled: editable,
+              textCapitalization:
+                  TextCapitalization.characters,
+              decoration:
+                  const InputDecoration(
+                labelText:
+                    'Registration No.',
+                hintText:
+                    'Example: RJ01AB1234',
+                border:
+                    OutlineInputBorder(),
+                prefixIcon:
+                    Icon(
+                  Icons.confirmation_number_outlined,
+                ),
+              ),
+              onChanged: (value) {
+                _registrationNo =
+                    value.trim();
+              },
+            ),
+
+            const SizedBox(height: 12),
+
+            SizedBox(
+              width: double.infinity,
+              child:
+                  OutlinedButton.icon(
+                onPressed:
+                    editable
+                        ? _saveRegistrationDetails
+                        : null,
+                icon:
+                    _savingDetails
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child:
+                                CircularProgressIndicator(
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.save_outlined,
+                          ),
+                label: Text(
+                  _savingDetails
+                      ? 'Saving...'
+                      : 'Save Registration Details',
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // SAVE REGISTRATION DETAILS
+  // ============================================================
+
+  Future<void> _saveRegistrationDetails() async {
+    if (_uid == null) return;
+
+    final type =
+        _registrationType.trim();
+
+    final number =
+        _registrationNo.trim();
+
+    if (type.isEmpty) {
+      _showMessage(
+        'Registration Type select karein.',
+        isError: true,
+      );
+      return;
+    }
+
+    if (number.isEmpty) {
+      _showMessage(
+        'Registration No. enter karein.',
+        isError: true,
+      );
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _savingDetails = true;
+      });
+    }
+
+    try {
+      final courierRef =
+          _firestore.collection('couriers').doc(_uid);
+
+      final userRef =
+          _firestore.collection('users').doc(_uid);
+
+      final updateData = {
+        'registrationType': type,
+        'registrationNo': number,
+        'updatedAt':
+            FieldValue.serverTimestamp(),
+      };
+
+      final batch =
+          _firestore.batch();
+
+      batch.set(
+        courierRef,
+        updateData,
+        SetOptions(merge: true),
+      );
+
+      batch.set(
+        userRef,
+        updateData,
+        SetOptions(merge: true),
+      );
+
+      await batch.commit();
+
+      _registrationType = type;
+      _registrationNo = number;
+
+      _showMessage(
+        'Registration details save ho gayi.',
+      );
+    } on FirebaseException catch (e) {
+      _showMessage(
+        _firebaseErrorMessage(e),
+        isError: true,
+      );
+    } catch (e) {
+      _showMessage(
+        'Details save nahi ho payi.\n$e',
+        isError: true,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _savingDetails = false;
+        });
+      }
+    }
+  }
+
+  // ============================================================
   // PICK & UPLOAD DOCUMENT
   // ============================================================
 
@@ -522,6 +766,14 @@ class _CourierDocumentsPageState
     if (_uid == null) {
       _showMessage(
         'Courier account nahi mila.',
+        isError: true,
+      );
+      return;
+    }
+
+    if (!_canEditDocuments) {
+      _showMessage(
+        'Abhi documents edit nahi kiye ja sakte.',
         isError: true,
       );
       return;
@@ -561,7 +813,7 @@ class _CourierDocumentsPageState
       final fileSize =
           await file.length();
 
-      if (fileSize >=
+      if (fileSize >
           10 * 1024 * 1024) {
         throw Exception(
           'File size 10 MB se kam honi chahiye.',
@@ -579,9 +831,9 @@ class _CourierDocumentsPageState
           'courier_documents/$_uid/$fileName';
 
       final storageRef =
-          _storage
-              .ref()
-              .child(storagePath);
+          _storage.ref().child(
+                storagePath,
+              );
 
       final metadata =
           SettableMetadata(
@@ -601,19 +853,19 @@ class _CourierDocumentsPageState
       );
 
       final downloadUrl =
-          await storageRef
-              .getDownloadURL();
+          await storageRef.getDownloadURL();
 
-      if (downloadUrl.isEmpty) {
+      if (downloadUrl.trim().isEmpty) {
         throw Exception(
           'Download URL nahi mila.',
         );
       }
 
+      final oldDocument =
+          _documents[key];
+
       // ----------------------------------------------------------
-      // IMPORTANT:
-      // Replace/re-upload hone par document status "pending"
-      // rahega, taaki Admin dobara review kare.
+      // NEW DOCUMENT
       // ----------------------------------------------------------
 
       final documentData = {
@@ -629,20 +881,67 @@ class _CourierDocumentsPageState
         'rejectionReason': '',
       };
 
-      await _firestore
-          .collection('couriers')
-          .doc(_uid)
-          .set(
+      final courierRef =
+          _firestore.collection('couriers').doc(_uid);
+
+      final userRef =
+          _firestore.collection('users').doc(_uid);
+
+      final batch =
+          _firestore.batch();
+
+      batch.set(
+        courierRef,
         {
           'documents.$key':
               documentData,
           'updatedAt':
               FieldValue.serverTimestamp(),
         },
-        SetOptions(
-          merge: true,
-        ),
+        SetOptions(merge: true),
       );
+
+      // ----------------------------------------------------------
+      // If courier was previously rejected, keep user status
+      // consistent. Final status becomes pending_approval only
+      // after pressing Submit.
+      // ----------------------------------------------------------
+
+      batch.set(
+        userRef,
+        {
+          'role': 'courier',
+          'updatedAt':
+              FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      await batch.commit();
+
+      // ----------------------------------------------------------
+      // DELETE OLD STORAGE FILE AFTER NEW FILE IS SAFE
+      // ----------------------------------------------------------
+
+      if (oldDocument != null) {
+        final oldPath =
+            oldDocument['storagePath']
+                ?.toString()
+                .trim();
+
+        if (oldPath != null &&
+            oldPath.isNotEmpty &&
+            oldPath != storagePath) {
+          try {
+            await _storage
+                .ref(oldPath)
+                .delete();
+          } catch (_) {
+            // Old file delete failure should not
+            // make the new upload fail.
+          }
+        }
+      }
 
       if (!mounted) return;
 
@@ -660,8 +959,6 @@ class _CourierDocumentsPageState
           'rejectionReason': '',
         };
 
-        // Agar rejected document replace hua hai,
-        // to final submit ke baad hi pending approval hoga.
         if (_status == 'rejected') {
           _documentsSubmitted = false;
         }
@@ -702,23 +999,18 @@ class _CourierDocumentsPageState
   ) async {
     if (_uid == null) return;
 
-    final document =
-        _documents[key];
-
-    if (document == null) return;
-
-    final status =
-        document['status']
-                ?.toString() ??
-            '';
-
-    if (status == 'verified') {
+    if (!_canEditDocuments) {
       _showMessage(
-        'Verified document delete nahi kiya ja sakta.',
+        'Abhi document delete nahi kiya ja sakta.',
         isError: true,
       );
       return;
     }
+
+    final document =
+        _documents[key];
+
+    if (document == null) return;
 
     final confirmed =
         await showDialog<bool>(
@@ -729,27 +1021,33 @@ class _CourierDocumentsPageState
               const Text(
             'Delete Document',
           ),
-          content: Text(
+          content:
+              Text(
             '${_documentTitles[key]} ko delete karna chahte hain?',
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  false,
-                );
-              },
+              onPressed: () =>
+                  Navigator.pop(
+                dialogContext,
+                false,
+              ),
               child:
                   const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: () {
-                Navigator.pop(
-                  dialogContext,
-                  true,
-                );
-              },
+              style:
+                  ElevatedButton.styleFrom(
+                backgroundColor:
+                    Colors.red,
+                foregroundColor:
+                    Colors.white,
+              ),
+              onPressed: () =>
+                  Navigator.pop(
+                dialogContext,
+                true,
+              ),
               child:
                   const Text('Delete'),
             ),
@@ -758,12 +1056,15 @@ class _CourierDocumentsPageState
       },
     );
 
-    if (confirmed != true) return;
+    if (confirmed != true) {
+      return;
+    }
 
     try {
       final storagePath =
           document['storagePath']
-              ?.toString();
+              ?.toString()
+              .trim();
 
       if (storagePath != null &&
           storagePath.isNotEmpty) {
@@ -779,10 +1080,17 @@ class _CourierDocumentsPageState
         }
       }
 
-      await _firestore
-          .collection('couriers')
-          .doc(_uid)
-          .set(
+      final courierRef =
+          _firestore.collection('couriers').doc(_uid);
+
+      final userRef =
+          _firestore.collection('users').doc(_uid);
+
+      final batch =
+          _firestore.batch();
+
+      batch.set(
+        courierRef,
         {
           'documents.$key':
               FieldValue.delete(),
@@ -790,16 +1098,34 @@ class _CourierDocumentsPageState
               false,
           'status':
               'pending_documents',
+          'registrationStatus':
+              'pending_documents',
           'active': false,
           'approvedByAdmin':
               false,
           'updatedAt':
               FieldValue.serverTimestamp(),
         },
-        SetOptions(
-          merge: true,
-        ),
+        SetOptions(merge: true),
       );
+
+      batch.set(
+        userRef,
+        {
+          'status':
+              'pending_documents',
+          'registrationStatus':
+              'pending_documents',
+          'active': false,
+          'approvedByAdmin':
+              false,
+          'updatedAt':
+              FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      await batch.commit();
 
       if (mounted) {
         setState(() {
@@ -831,82 +1157,14 @@ class _CourierDocumentsPageState
   }
 
   // ============================================================
-  // SAVE REGISTRATION DETAILS
-  // ============================================================
-
-  Future<void>
-      _saveRegistrationDetails() async {
-    if (_uid == null) return;
-
-    final type =
-        _registrationType.trim();
-
-    final number =
-        _registrationNo.trim();
-
-    if (type.isEmpty) {
-      _showMessage(
-        'Registration Type select karein.',
-        isError: true,
-      );
-      return;
-    }
-
-    if (number.isEmpty) {
-      _showMessage(
-        'Registration No. enter karein.',
-        isError: true,
-      );
-      return;
-    }
-
-    try {
-      await _firestore
-          .collection('couriers')
-          .doc(_uid)
-          .set(
-        {
-          'registrationType':
-              type,
-          'registrationNo':
-              number,
-          'updatedAt':
-              FieldValue.serverTimestamp(),
-        },
-        SetOptions(
-          merge: true,
-        ),
-      );
-
-      _showMessage(
-        'Registration details save ho gayi.',
-      );
-    } on FirebaseException catch (e) {
-      _showMessage(
-        _firebaseErrorMessage(e),
-        isError: true,
-      );
-    } catch (e) {
-      _showMessage(
-        'Details save nahi ho payi.\n$e',
-        isError: true,
-      );
-    }
-  }
-
-  // ============================================================
-  // CHECK REQUIRED DOCUMENTS
+  // CHECK ALL REQUIRED DOCUMENTS
   // ============================================================
 
   bool _allRequiredDocumentsUploaded() {
-    for (final entry
-        in _requiredDocuments.entries) {
-      if (entry.value != true) {
-        continue;
-      }
-
+    for (final key
+        in _requiredDocumentKeys) {
       final document =
-          _documents[entry.key];
+          _documents[key];
 
       if (document == null) {
         return false;
@@ -933,6 +1191,14 @@ class _CourierDocumentsPageState
   Future<void> _submitForApproval() async {
     if (_uid == null) return;
 
+    if (!_canEditDocuments) {
+      _showMessage(
+        'Abhi application submit nahi ki ja sakti.',
+        isError: true,
+      );
+      return;
+    }
+
     if (_registrationType
         .trim()
         .isEmpty) {
@@ -955,7 +1221,7 @@ class _CourierDocumentsPageState
 
     if (!_allRequiredDocumentsUploaded()) {
       _showMessage(
-        'Sabhi required documents upload karna zaroori hai.',
+        'Sabhi 5 required documents upload karna zaroori hai.',
         isError: true,
       );
       return;
@@ -966,21 +1232,34 @@ class _CourierDocumentsPageState
         _uploading = true;
       });
 
+      final courierRef =
+          _firestore.collection('couriers').doc(_uid);
+
+      final userRef =
+          _firestore.collection('users').doc(_uid);
+
+      final now =
+          FieldValue.serverTimestamp();
+
+      final batch =
+          _firestore.batch();
+
       // ----------------------------------------------------------
-      // COURIER DOCUMENT
+      // COURIER
       // ----------------------------------------------------------
 
-      await _firestore
-          .collection('couriers')
-          .doc(_uid)
-          .set(
+      batch.set(
+        courierRef,
         {
+          'uid': _uid,
+          'role': 'courier',
+          'name': _courierName,
+          'phone': _courierPhone,
+          'email': _courierEmail,
           'registrationType':
-              _registrationType
-                  .trim(),
+              _registrationType.trim(),
           'registrationNo':
-              _registrationNo
-                  .trim(),
+              _registrationNo.trim(),
           'documentsSubmitted':
               true,
           'status':
@@ -990,45 +1269,46 @@ class _CourierDocumentsPageState
           'active': false,
           'approvedByAdmin':
               false,
-          'rejectionReason':
-              '',
-          'updatedAt':
-              FieldValue.serverTimestamp(),
+          'rejectionReason': '',
+          'submittedAt': now,
+          'updatedAt': now,
         },
-        SetOptions(
-          merge: true,
-        ),
+        SetOptions(merge: true),
       );
 
       // ----------------------------------------------------------
-      // USER PROFILE
-      //
-      // update() ki jagah set(merge:true) rakha hai.
-      // Isse users document missing hone par bhi error nahi aayega.
+      // USERS
       // ----------------------------------------------------------
 
-      await _firestore
-          .collection('users')
-          .doc(_uid)
-          .set(
+      batch.set(
+        userRef,
         {
           'uid': _uid,
           'role': 'courier',
           'name': _courierName,
           'phone': _courierPhone,
           'email': _courierEmail,
+          'registrationType':
+              _registrationType.trim(),
+          'registrationNo':
+              _registrationNo.trim(),
+          'documentsSubmitted':
+              true,
           'status':
               'pending_approval',
           'registrationStatus':
               'pending_approval',
           'active': false,
-          'updatedAt':
-              FieldValue.serverTimestamp(),
+          'approvedByAdmin':
+              false,
+          'rejectionReason': '',
+          'submittedAt': now,
+          'updatedAt': now,
         },
-        SetOptions(
-          merge: true,
-        ),
+        SetOptions(merge: true),
       );
+
+      await batch.commit();
 
       if (!mounted) return;
 
@@ -1045,8 +1325,7 @@ class _CourierDocumentsPageState
 
       await showDialog(
         context: context,
-        barrierDismissible:
-            false,
+        barrierDismissible: false,
         builder:
             (dialogContext) {
           return AlertDialog(
@@ -1075,11 +1354,10 @@ class _CourierDocumentsPageState
             ),
             actions: [
               ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(
-                    dialogContext,
-                  );
-                },
+                onPressed: () =>
+                    Navigator.pop(
+                  dialogContext,
+                ),
                 child:
                     const Text('OK'),
               ),
@@ -1111,286 +1389,14 @@ class _CourierDocumentsPageState
   }
 
   // ============================================================
-  // STATUS HELPERS
-  // ============================================================
-
-  Color _documentStatusColor(
-    String status,
-  ) {
-    switch (status) {
-      case 'verified':
-        return Colors.green;
-
-      case 'rejected':
-        return Colors.red;
-
-      case 'pending':
-        return Colors.orange;
-
-      default:
-        return Colors.grey;
-    }
-  }
-
-  String _documentStatusText(
-    String status,
-  ) {
-    switch (status) {
-      case 'verified':
-        return 'Verified';
-
-      case 'rejected':
-        return 'Rejected';
-
-      case 'pending':
-        return 'Pending Review';
-
-      default:
-        return 'Not Uploaded';
-    }
-  }
-
-  // ============================================================
-  // DOCUMENT CARD
-  // ============================================================
-
-  Widget _buildDocumentCard(
-    String key,
-  ) {
-    final title =
-        _documentTitles[key] ??
-            key;
-
-    final document =
-        _documents[key];
-
-    final isUploaded =
-        document != null &&
-        (document['url']
-                ?.toString()
-                .trim()
-                .isNotEmpty ??
-            false);
-
-    final status =
-        document?['status']
-                ?.toString() ??
-            '';
-
-    final isRequired =
-        _requiredDocuments[key] ==
-            true;
-
-    final rejectionReason =
-        document?[
-                    'rejectionReason']
-                ?.toString() ??
-            '';
-
-    return Card(
-      margin:
-          const EdgeInsets.only(
-        bottom: 12,
-      ),
-      elevation: 2,
-      child: Padding(
-        padding:
-            const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration:
-                  BoxDecoration(
-                color:
-                    isUploaded
-                        ? Colors.green
-                            .withValues(
-                            alpha: 0.10,
-                          )
-                        : Colors.grey
-                            .withValues(
-                            alpha: 0.10,
-                          ),
-                borderRadius:
-                    BorderRadius.circular(
-                  12,
-                ),
-              ),
-              child: Icon(
-                isUploaded
-                    ? Icons.description
-                    : Icons.upload_file,
-                color: isUploaded
-                    ? Colors.green
-                    : Colors.grey
-                        .shade700,
-              ),
-            ),
-            const SizedBox(
-              width: 14,
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          title,
-                          style:
-                              const TextStyle(
-                            fontSize: 16,
-                            fontWeight:
-                                FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      if (isRequired)
-                        const Text(
-                          ' *',
-                          style:
-                              TextStyle(
-                            color:
-                                Colors.red,
-                            fontWeight:
-                                FontWeight.bold,
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(
-                    height: 6,
-                  ),
-                  if (isUploaded)
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.circle,
-                          size: 9,
-                          color:
-                              _documentStatusColor(
-                            status,
-                          ),
-                        ),
-                        const SizedBox(
-                          width: 6,
-                        ),
-                        Text(
-                          _documentStatusText(
-                            status,
-                          ),
-                          style:
-                              TextStyle(
-                            color:
-                                _documentStatusColor(
-                              status,
-                            ),
-                            fontWeight:
-                                FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    )
-                  else
-                    const Text(
-                      'Not uploaded',
-                      style:
-                          TextStyle(
-                        color:
-                            Colors.grey,
-                      ),
-                    ),
-                  if (rejectionReason
-                      .trim()
-                      .isNotEmpty)
-                    Padding(
-                      padding:
-                          const EdgeInsets
-                              .only(
-                        top: 6,
-                      ),
-                      child: Text(
-                        'Reason: $rejectionReason',
-                        style:
-                            const TextStyle(
-                          color:
-                              Colors.red,
-                          fontSize:
-                              12,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(
-              width: 8,
-            ),
-            Column(
-              children: [
-                ElevatedButton.icon(
-                  onPressed:
-                      _uploading
-                          ? null
-                          : () =>
-                              _pickAndUploadDocument(
-                                key,
-                              ),
-                  icon: Icon(
-                    isUploaded
-                        ? Icons.refresh
-                        : Icons.upload,
-                    size: 18,
-                  ),
-                  label:
-                      Text(
-                    isUploaded
-                        ? 'Replace'
-                        : 'Upload',
-                  ),
-                ),
-                if (isUploaded &&
-                    status !=
-                        'verified')
-                  TextButton(
-                    onPressed:
-                        _uploading
-                            ? null
-                            : () =>
-                                _deleteDocument(
-                                  key,
-                                ),
-                    child:
-                        const Text(
-                      'Delete',
-                      style:
-                          TextStyle(
-                        color:
-                            Colors.red,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ============================================================
-  // PROGRESS CARD
+  // PROGRESS
   // ============================================================
 
   Widget _buildProgressCard() {
     int uploaded = 0;
 
     for (final key
-        in _requiredDocuments.keys) {
+        in _requiredDocumentKeys) {
       final document =
           _documents[key];
 
@@ -1405,7 +1411,7 @@ class _CourierDocumentsPageState
     }
 
     final total =
-        _requiredDocuments.length;
+        _requiredDocumentKeys.length;
 
     final progress =
         total == 0
@@ -1429,9 +1435,7 @@ class _CourierDocumentsPageState
                     FontWeight.bold,
               ),
             ),
-            const SizedBox(
-              height: 12,
-            ),
+            const SizedBox(height: 12),
             LinearProgressIndicator(
               value: progress,
               minHeight: 8,
@@ -1440,13 +1444,10 @@ class _CourierDocumentsPageState
                 10,
               ),
             ),
-            const SizedBox(
-              height: 10,
-            ),
+            const SizedBox(height: 10),
             Text(
               '$uploaded / $total required documents uploaded',
-              style:
-                  TextStyle(
+              style: TextStyle(
                 color:
                     Colors.grey.shade700,
               ),
@@ -1458,140 +1459,295 @@ class _CourierDocumentsPageState
   }
 
   // ============================================================
-  // REGISTRATION DETAILS
+  // DOCUMENT CARD
   // ============================================================
 
-  Widget _buildRegistrationDetails() {
+  Widget _buildDocumentCard(
+    String key,
+  ) {
+    final title =
+        _documentTitles[key] ?? key;
+
+    final document =
+        _documents[key];
+
+    final isUploaded =
+        document != null &&
+        (document['url']
+                ?.toString()
+                .trim()
+                .isNotEmpty ??
+            false);
+
+    final status =
+        document?['status']
+                ?.toString()
+                .toLowerCase() ??
+            '';
+
+    final rejectionReason =
+        document?['rejectionReason']
+                ?.toString()
+                .trim() ??
+            '';
+
+    final editable =
+        _canEditDocuments;
+
     return Card(
+      margin:
+          const EdgeInsets.only(
+        bottom: 12,
+      ),
       elevation: 2,
       child: Padding(
         padding:
-            const EdgeInsets.all(16),
+            const EdgeInsets.all(14),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Vehicle Registration Details',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight:
-                    FontWeight.bold,
-              ),
-            ),
-            const SizedBox(
-              height: 14,
-            ),
-
-            DropdownButtonFormField<
-                String>(
-              value:
-                  _registrationType
-                          .isEmpty
-                      ? null
-                      : _registrationType,
-              decoration:
-                  const InputDecoration(
-                labelText:
-                    'Registration Type',
-                border:
-                    OutlineInputBorder(),
-                prefixIcon:
-                    Icon(
-                  Icons.badge_outlined,
+            Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration:
+                      BoxDecoration(
+                    color:
+                        isUploaded
+                            ? Colors.green
+                                .withValues(
+                                alpha: 0.10,
+                              )
+                            : Colors.grey
+                                .withValues(
+                                alpha: 0.10,
+                              ),
+                    borderRadius:
+                        BorderRadius.circular(
+                      12,
+                    ),
+                  ),
+                  child: Icon(
+                    isUploaded
+                        ? Icons.description
+                        : Icons.upload_file,
+                    color: isUploaded
+                        ? Colors.green
+                        : Colors.grey
+                            .shade700,
+                  ),
                 ),
-              ),
-              items: const [
-                DropdownMenuItem(
-                  value:
-                      'Private',
-                  child:
-                      Text('Private'),
-                ),
-                DropdownMenuItem(
-                  value:
-                      'Commercial',
-                  child:
-                      Text('Commercial'),
-                ),
-                DropdownMenuItem(
-                  value:
-                      'Other',
-                  child:
-                      Text('Other'),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              title,
+                              style:
+                                  const TextStyle(
+                                fontSize: 16,
+                                fontWeight:
+                                    FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          const Text(
+                            ' *',
+                            style:
+                                TextStyle(
+                              color:
+                                  Colors.red,
+                              fontWeight:
+                                  FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      if (isUploaded)
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.circle,
+                              size: 9,
+                              color:
+                                  _documentStatusColor(
+                                status,
+                              ),
+                            ),
+                            const SizedBox(
+                              width: 6,
+                            ),
+                            Text(
+                              _documentStatusText(
+                                status,
+                              ),
+                              style:
+                                  TextStyle(
+                                color:
+                                    _documentStatusColor(
+                                  status,
+                                ),
+                                fontWeight:
+                                    FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        )
+                      else
+                        const Text(
+                          'Not uploaded',
+                          style:
+                              TextStyle(
+                            color:
+                                Colors.grey,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ],
-              onChanged:
-                  _uploading ||
-                          _status ==
-                              'pending_approval'
-                      ? null
-                      : (value) {
-                          setState(() {
-                            _registrationType =
-                                value ??
-                                    '';
-                          });
-                        },
             ),
 
-            const SizedBox(
-              height: 14,
-            ),
+            if (isUploaded) ...[
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius:
+                    BorderRadius.circular(
+                  10,
+                ),
+                child: Image.network(
+                  document['url']
+                      .toString(),
+                  height: 190,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  loadingBuilder:
+                      (
+                    context,
+                    child,
+                    loadingProgress,
+                  ) {
+                    if (loadingProgress ==
+                        null) {
+                      return child;
+                    }
 
-            TextFormField(
-              initialValue:
-                  _registrationNo,
-              textCapitalization:
-                  TextCapitalization.characters,
-              enabled:
-                  !_uploading &&
-                      _status !=
-                          'pending_approval',
-              decoration:
-                  const InputDecoration(
-                labelText:
-                    'Registration No.',
-                hintText:
-                    'Example: RJ01AB1234',
-                border:
-                    OutlineInputBorder(),
-                prefixIcon:
-                    Icon(
-                  Icons.confirmation_number_outlined,
+                    return const SizedBox(
+                      height: 190,
+                      child: Center(
+                        child:
+                            CircularProgressIndicator(),
+                      ),
+                    );
+                  },
+                  errorBuilder:
+                      (
+                    context,
+                    error,
+                    stackTrace,
+                  ) {
+                    return Container(
+                      height: 190,
+                      alignment:
+                          Alignment.center,
+                      color:
+                          Colors.grey.shade200,
+                      child:
+                          const Text(
+                        'Document preview nahi ho paya.',
+                      ),
+                    );
+                  },
                 ),
               ),
-              onChanged: (value) {
-                _registrationNo =
-                    value;
-              },
-            ),
+            ],
 
-            const SizedBox(
-              height: 12,
-            ),
-
-            SizedBox(
-              width:
-                  double.infinity,
-              child:
-                  OutlinedButton.icon(
-                onPressed:
-                    _uploading ||
-                            _status ==
-                                'pending_approval'
-                        ? null
-                        : _saveRegistrationDetails,
-                icon:
-                    const Icon(
-                  Icons.save_outlined,
+            if (rejectionReason
+                .isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.all(
+                  10,
                 ),
-                label:
-                    const Text(
-                  'Save Registration Details',
+                decoration:
+                    BoxDecoration(
+                  color:
+                      Colors.red.shade50,
+                  borderRadius:
+                      BorderRadius.circular(
+                    8,
+                  ),
+                ),
+                child: Text(
+                  'Rejection Reason:\n$rejectionReason',
+                  style:
+                      TextStyle(
+                    color:
+                        Colors.red.shade800,
+                    fontSize: 12,
+                  ),
                 ),
               ),
-            ),
+            ],
+
+            if (editable) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child:
+                        ElevatedButton.icon(
+                      onPressed:
+                          _uploading
+                              ? null
+                              : () =>
+                                  _pickAndUploadDocument(
+                                    key,
+                                  ),
+                      icon: Icon(
+                        isUploaded
+                            ? Icons.refresh
+                            : Icons.upload,
+                        size: 18,
+                      ),
+                      label: Text(
+                        isUploaded
+                            ? 'Replace'
+                            : 'Upload',
+                      ),
+                    ),
+                  ),
+                  if (isUploaded) ...[
+                    const SizedBox(width: 8),
+                    IconButton(
+                      tooltip:
+                          'Delete',
+                      onPressed:
+                          _uploading
+                              ? null
+                              : () =>
+                                  _deleteDocument(
+                                    key,
+                                  ),
+                      icon:
+                          const Icon(
+                        Icons.delete_outline,
+                        color:
+                            Colors.red,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
           ],
         ),
       ),
@@ -1599,7 +1755,49 @@ class _CourierDocumentsPageState
   }
 
   // ============================================================
-  // FIREBASE ERROR MESSAGE
+  // DOCUMENT STATUS
+  // ============================================================
+
+  Color _documentStatusColor(
+    String status,
+  ) {
+    switch (status) {
+      case 'verified':
+      case 'approved':
+        return Colors.green;
+
+      case 'rejected':
+        return Colors.red;
+
+      case 'pending':
+        return Colors.orange;
+
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _documentStatusText(
+    String status,
+  ) {
+    switch (status) {
+      case 'verified':
+      case 'approved':
+        return 'Verified';
+
+      case 'rejected':
+        return 'Rejected';
+
+      case 'pending':
+        return 'Pending Review';
+
+      default:
+        return 'Uploaded';
+    }
+  }
+
+  // ============================================================
+  // FIREBASE ERROR
   // ============================================================
 
   String _firebaseErrorMessage(
@@ -1609,17 +1807,14 @@ class _CourierDocumentsPageState
       case 'permission-denied':
         return 'Permission denied. Firebase Rules check karein.';
 
-      case 'unauthorized':
-        return 'Aapko is action ki permission nahi hai.';
+      case 'unauthenticated':
+        return 'Login session expire ho gaya. Dobara login karein.';
 
       case 'object-not-found':
         return 'File nahi mili.';
 
       case 'canceled':
         return 'Upload cancel ho gaya.';
-
-      case 'unauthenticated':
-        return 'Login session expire ho gaya.';
 
       case 'network-request-failed':
         return 'Internet connection check karein.';
@@ -1687,7 +1882,8 @@ class _CourierDocumentsPageState
             'Courier Documents',
           ),
         ),
-        body: const Center(
+        body:
+            const Center(
           child: Text(
             'Courier account nahi mila.',
             style:
@@ -1704,9 +1900,11 @@ class _CourierDocumentsPageState
             'pending_approval';
 
     final isApproved =
-        _status == 'approved' &&
-            _active &&
-            _approvedByAdmin;
+        _isApproved;
+
+    final canSubmit =
+        _canEditDocuments &&
+        !_uploading;
 
     return Scaffold(
       appBar: AppBar(
@@ -1728,19 +1926,11 @@ class _CourierDocumentsPageState
                 crossAxisAlignment:
                     CrossAxisAlignment.start,
                 children: [
-                  // ==================================================
-                  // STATUS
-                  // ==================================================
-
                   _buildStatusHeader(),
 
                   const SizedBox(
                     height: 16,
                   ),
-
-                  // ==================================================
-                  // COURIER PROFILE
-                  // ==================================================
 
                   _buildCourierProfileCard(),
 
@@ -1759,10 +1949,7 @@ class _CourierDocumentsPageState
                           .isNotEmpty)
                     Card(
                       color:
-                          Colors.red
-                              .withValues(
-                        alpha: 0.06,
-                      ),
+                          Colors.red.shade50,
                       child:
                           Padding(
                         padding:
@@ -1818,29 +2005,17 @@ class _CourierDocumentsPageState
                       height: 12,
                     ),
 
-                  // ==================================================
-                  // PROGRESS
-                  // ==================================================
-
                   _buildProgressCard(),
 
                   const SizedBox(
                     height: 16,
                   ),
 
-                  // ==================================================
-                  // REGISTRATION
-                  // ==================================================
-
                   _buildRegistrationDetails(),
 
                   const SizedBox(
                     height: 20,
                   ),
-
-                  // ==================================================
-                  // DOCUMENTS
-                  // ==================================================
 
                   const Text(
                     'Required Documents',
@@ -1857,7 +2032,7 @@ class _CourierDocumentsPageState
                   ),
 
                   const Text(
-                    'Sabhi marked (*) documents upload karna zaroori hai.',
+                    'Sabhi 5 documents upload karna zaroori hai.',
                     style:
                         TextStyle(
                       color:
@@ -1870,18 +2045,17 @@ class _CourierDocumentsPageState
                     height: 12,
                   ),
 
-                  ..._requiredDocuments
-                      .keys
+                  ..._requiredDocumentKeys
                       .map(
-                        _buildDocumentCard,
-                      ),
+                    _buildDocumentCard,
+                  ),
 
                   const SizedBox(
                     height: 8,
                   ),
 
                   // ==================================================
-                  // SUBMIT BUTTON
+                  // SUBMIT
                   // ==================================================
 
                   SizedBox(
@@ -1891,11 +2065,9 @@ class _CourierDocumentsPageState
                     child:
                         ElevatedButton.icon(
                       onPressed:
-                          _uploading ||
-                                  isPendingApproval ||
-                                  isApproved
-                              ? null
-                              : _submitForApproval,
+                          canSubmit
+                              ? _submitForApproval
+                              : null,
                       icon:
                           Icon(
                         isPendingApproval
@@ -1903,8 +2075,6 @@ class _CourierDocumentsPageState
                             : isApproved
                                 ? Icons.check_circle
                                 : Icons.send,
-                        color:
-                            Colors.white,
                       ),
                       label:
                           Text(
@@ -1924,11 +2094,11 @@ class _CourierDocumentsPageState
                   ),
 
                   const SizedBox(
-                    height: 24,
+                    height: 20,
                   ),
 
                   // ==================================================
-                  // APPROVAL INFORMATION
+                  // SECURITY INFORMATION
                   // ==================================================
 
                   Card(
@@ -1955,7 +2125,7 @@ class _CourierDocumentsPageState
                           const Expanded(
                             child:
                                 Text(
-                              'Admin approval ke bina Courier account active nahi hoga aur koi order/task assign nahi kiya ja sakega.',
+                              'Admin approval ke bina Courier account active nahi hoga aur koi order assign nahi kiya jayega.',
                               style:
                                   TextStyle(
                                 fontSize:
@@ -1978,7 +2148,7 @@ class _CourierDocumentsPageState
             ),
 
             // ========================================================
-            // UPLOAD OVERLAY
+            // UPLOAD / SUBMIT OVERLAY
             // ========================================================
 
             if (_uploading)
@@ -2008,7 +2178,7 @@ class _CourierDocumentsPageState
                             height: 16,
                           ),
                           Text(
-                            'Document upload ho raha hai...',
+                            'Please wait...',
                             style:
                                 TextStyle(
                               fontWeight:
