@@ -40,7 +40,7 @@ class _ProfilePageState extends State<ProfilePage> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => const LoginPage(),
+        builder: (_) => LoginPage(),
       ),
     ).then((_) {
       if (mounted) {
