@@ -138,11 +138,12 @@ class PreeshoApp extends StatelessWidget {
         useMaterial3: true,
         colorSchemeSeed: Colors.deepPurple,
         scaffoldBackgroundColor: const Color(0xffF7F7FA),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.white,
+          elevation: 0,
+        ),
       ),
-
-      // IMPORTANT:
-      // AppEntry decides whether the logged-in user is
-      // customer or courier.
       home: const AppEntry(),
     );
   }
@@ -150,22 +151,6 @@ class PreeshoApp extends StatelessWidget {
 
 // ============================================================
 // APP ENTRY / USER ROUTING
-// ============================================================
-//
-// IMPORTANT COURIER FIX
-//
-// Earlier code checked users/{uid} first and only checked
-// couriers/{uid} afterwards.
-//
-// If users/{uid} was missing or role was not courier,
-// the app immediately opened MainShell.
-//
-// Now BOTH documents are checked:
-//   users/{uid}
-//   couriers/{uid}
-//
-// If either one identifies the account as courier,
-// courier routing is used.
 // ============================================================
 
 class AppEntry extends StatefulWidget {
@@ -199,10 +184,6 @@ class _AppEntryState extends State<AppEntry> {
 
       final user = auth.currentUser;
 
-      // --------------------------------------------------------
-      // No logged-in user
-      // --------------------------------------------------------
-
       if (user == null) {
         if (!mounted) return;
 
@@ -215,16 +196,11 @@ class _AppEntryState extends State<AppEntry> {
 
       final uid = user.uid;
 
-      // --------------------------------------------------------
-      // Read BOTH user and courier documents.
-      // --------------------------------------------------------
-
       final results = await Future.wait([
         firestore
             .collection('users')
             .doc(uid)
             .get(),
-
         firestore
             .collection('couriers')
             .doc(uid)
@@ -243,30 +219,11 @@ class _AppEntryState extends State<AppEntry> {
       final courierData =
           courierSnapshot.data() ?? <String, dynamic>{};
 
-      // --------------------------------------------------------
-      // Get roles from BOTH documents.
-      // --------------------------------------------------------
-
       final userRole =
           userData['role']?.toString().trim().toLowerCase() ?? '';
 
       final courierRole =
           courierData['role']?.toString().trim().toLowerCase() ?? '';
-
-      // --------------------------------------------------------
-      // COURIER DETECTION
-      //
-      // Courier is recognised if:
-      //
-      // 1. users.role == courier
-      // OR
-      // 2. couriers.role == courier
-      // OR
-      // 3. courier document exists
-      //
-      // This prevents courier accounts from accidentally
-      // opening the normal customer Home page.
-      // --------------------------------------------------------
 
       final isCourier =
           userRole == 'courier' ||
@@ -274,13 +231,6 @@ class _AppEntryState extends State<AppEntry> {
           courierSnapshot.exists;
 
       if (isCourier) {
-        // ------------------------------------------------------
-        // Determine courier status.
-        //
-        // Prefer courier document.
-        // If missing/empty, use users document.
-        // ------------------------------------------------------
-
         String firstNonEmpty(
           dynamic first,
           dynamic second,
@@ -316,10 +266,6 @@ class _AppEntryState extends State<AppEntry> {
             status == 'approved' ||
             status == 'active';
 
-        // ------------------------------------------------------
-        // FULLY APPROVED COURIER
-        // ------------------------------------------------------
-
         if (approved &&
             active &&
             approvedByAdmin) {
@@ -335,13 +281,6 @@ class _AppEntryState extends State<AppEntry> {
           return;
         }
 
-        // ------------------------------------------------------
-        // PENDING / REJECTED / DOCUMENTS REQUIRED
-        //
-        // Every courier who is not fully approved goes to
-        // Courier Documents page.
-        // ------------------------------------------------------
-
         if (!mounted) return;
 
         Navigator.of(context).pushAndRemoveUntil(
@@ -355,10 +294,6 @@ class _AppEntryState extends State<AppEntry> {
 
         return;
       }
-
-      // --------------------------------------------------------
-      // NORMAL CUSTOMER
-      // --------------------------------------------------------
 
       if (!mounted) return;
 
@@ -462,7 +397,10 @@ class _MainShellState extends State<MainShell> {
     ];
 
     return Scaffold(
-      body: pages[index],
+      body: IndexedStack(
+        index: index,
+        children: pages,
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
         onDestinationSelected: (i) {
@@ -592,7 +530,7 @@ class ProductStream extends StatelessWidget {
 }
 
 // ============================================================
-// HOME PAGE - PREMIUM
+// HOME PAGE
 // ============================================================
 
 class HomePage extends StatelessWidget {
@@ -622,14 +560,26 @@ class HomePage extends StatelessWidget {
     );
   }
 
+  void openCategory(
+    BuildContext context,
+    String category,
+  ) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CategoryProductsPage(
+          category: category,
+          onCartChanged: onCartChanged,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xffF7F7FA),
       appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
         titleSpacing: 16,
         title: const Text(
           'Preesho',
@@ -749,6 +699,10 @@ class HomePage extends StatelessWidget {
 
                 const SizedBox(height: 18),
 
+                // ------------------------------------------------
+                // HERO BANNER
+                // ------------------------------------------------
+
                 Container(
                   height: 175,
                   padding: const EdgeInsets.all(22),
@@ -827,6 +781,10 @@ class HomePage extends StatelessWidget {
 
                 const SizedBox(height: 24),
 
+                // ------------------------------------------------
+                // CATEGORY HEADER
+                // ------------------------------------------------
+
                 Row(
                   mainAxisAlignment:
                       MainAxisAlignment.spaceBetween,
@@ -840,7 +798,18 @@ class HomePage extends StatelessWidget {
                       ),
                     ),
                     TextButton(
-                      onPressed: () {},
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                CategoriesPage(
+                              onCartChanged:
+                                  onCartChanged,
+                            ),
+                          ),
+                        );
+                      },
                       child:
                           const Text('View All'),
                     ),
@@ -849,37 +818,69 @@ class HomePage extends StatelessWidget {
 
                 const SizedBox(height: 8),
 
+                // ------------------------------------------------
+                // CLICKABLE CATEGORIES
+                // ------------------------------------------------
+
                 SizedBox(
-                  height: 105,
+                  height: 112,
                   child: ListView(
                     scrollDirection:
                         Axis.horizontal,
-                    children: const [
+                    children: [
                       CategoryCard(
                         icon:
                             Icons.phone_android_rounded,
                         text: 'Electronics',
+                        onTap: () {
+                          openCategory(
+                            context,
+                            'Electronics',
+                          );
+                        },
                       ),
                       CategoryCard(
                         icon:
                             Icons.checkroom_rounded,
                         text: 'Fashion',
+                        onTap: () {
+                          openCategory(
+                            context,
+                            'Fashion',
+                          );
+                        },
                       ),
                       CategoryCard(
                         icon:
                             Icons.home_rounded,
                         text: 'Home',
+                        onTap: () {
+                          openCategory(
+                            context,
+                            'Home',
+                          );
+                        },
                       ),
                       CategoryCard(
                         icon:
                             Icons.watch_rounded,
                         text: 'Accessories',
+                        onTap: () {
+                          openCategory(
+                            context,
+                            'Accessories',
+                          );
+                        },
                       ),
                     ],
                   ),
                 ),
 
                 const SizedBox(height: 24),
+
+                // ------------------------------------------------
+                // LATEST PRODUCTS
+                // ------------------------------------------------
 
                 Row(
                   mainAxisAlignment:
@@ -974,70 +975,265 @@ class HomePage extends StatelessWidget {
 class CategoryCard extends StatelessWidget {
   final IconData icon;
   final String text;
+  final VoidCallback? onTap;
 
   const CategoryCard({
     super.key,
     required this.icon,
     required this.text,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final primary =
+        Theme.of(context).colorScheme.primary;
+
     return Container(
-      width: 105,
+      width: 110,
       margin: const EdgeInsets.only(
-        right: 10,
+        right: 12,
       ),
-      decoration: BoxDecoration(
+      child: Material(
         color: Colors.white,
         borderRadius:
-            BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-            color: Colors.black.withValues(
-              alpha: 0.06,
+            BorderRadius.circular(20),
+        elevation: 1.5,
+        shadowColor:
+            Colors.black.withValues(
+          alpha: 0.08,
+        ),
+        child: InkWell(
+          borderRadius:
+              BorderRadius.circular(20),
+          onTap: onTap,
+          child: Padding(
+            padding:
+                const EdgeInsets.symmetric(
+              horizontal: 8,
+              vertical: 12,
             ),
+            child: Column(
+              mainAxisAlignment:
+                  MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration:
+                      BoxDecoration(
+                    shape: BoxShape.circle,
+                    color:
+                        primary.withValues(
+                      alpha: 0.10,
+                    ),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 27,
+                    color: primary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  text,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  textAlign:
+                      TextAlign.center,
+                  style:
+                      const TextStyle(
+                    fontSize: 12,
+                    fontWeight:
+                        FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// CATEGORY PRODUCTS PAGE
+// ============================================================
+
+class CategoryProductsPage
+    extends StatelessWidget {
+  final String category;
+  final VoidCallback onCartChanged;
+
+  const CategoryProductsPage({
+    super.key,
+    required this.category,
+    required this.onCartChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor:
+          const Color(0xffF7F7FA),
+      appBar: AppBar(
+        title: Text(
+          category,
+          style: const TextStyle(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        actions: [
+          CartIconButton(
+            onCartChanged:
+                onCartChanged,
           ),
         ],
       ),
-      child: Column(
-        mainAxisAlignment:
-            MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Theme.of(context)
-                  .colorScheme
-                  .primary
-                  .withValues(
-                alpha: 0.10,
+      body: ProductStream(
+        builder: (products) {
+          final selectedCategory =
+              category.trim().toLowerCase();
+
+          final categoryProducts =
+              products.where((product) {
+            final productCategory =
+                product.category
+                    .trim()
+                    .toLowerCase();
+
+            return productCategory ==
+                selectedCategory;
+          }).toList();
+
+          if (categoryProducts.isEmpty) {
+            return Center(
+              child: Padding(
+                padding:
+                    const EdgeInsets.all(30),
+                child: Column(
+                  mainAxisSize:
+                      MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 100,
+                      height: 100,
+                      decoration:
+                          BoxDecoration(
+                        color: Colors.white,
+                        shape:
+                            BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons
+                            .inventory_2_outlined,
+                        size: 52,
+                        color: Colors
+                            .grey
+                            .shade400,
+                      ),
+                    ),
+                    const SizedBox(
+                      height: 18,
+                    ),
+                    const Text(
+                      'No products found',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight:
+                            FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(
+                      height: 7,
+                    ),
+                    Text(
+                      'There are no products in $category yet.',
+                      textAlign:
+                          TextAlign.center,
+                      style: TextStyle(
+                        color: Colors
+                            .grey
+                            .shade600,
+                      ),
+                    ),
+                    const SizedBox(
+                      height: 20,
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(
+                          context,
+                        );
+                      },
+                      icon: const Icon(
+                        Icons
+                            .arrow_back_rounded,
+                      ),
+                      label: const Text(
+                        'Back to Home',
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            child: Icon(
-              icon,
-              color: Theme.of(context)
-                  .colorScheme
-                  .primary,
-            ),
-          ),
-          const SizedBox(height: 7),
-          Text(
-            text,
-            maxLines: 1,
-            overflow:
-                TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight:
-                  FontWeight.w600,
-            ),
-          ),
-        ],
+            );
+          }
+
+          return Column(
+            children: [
+              Padding(
+                padding:
+                    const EdgeInsets.fromLTRB(
+                  16,
+                  16,
+                  16,
+                  4,
+                ),
+                child: Row(
+                  children: [
+                    Text(
+                      '${categoryProducts.length} products',
+                      style: TextStyle(
+                        color:
+                            Colors.grey.shade700,
+                        fontWeight:
+                            FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: GridView.builder(
+                  padding:
+                      const EdgeInsets.all(16),
+                  itemCount:
+                      categoryProducts.length,
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 0.68,
+                  ),
+                  itemBuilder:
+                      (context, index) {
+                    return ProductTile(
+                      product:
+                          categoryProducts[
+                              index],
+                      onCartChanged:
+                          onCartChanged,
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1047,7 +1243,8 @@ class CategoryCard extends StatelessWidget {
 // CATEGORIES PAGE
 // ============================================================
 
-class CategoriesPage extends StatelessWidget {
+class CategoriesPage
+    extends StatelessWidget {
   final VoidCallback onCartChanged;
 
   const CategoriesPage({
@@ -1055,12 +1252,44 @@ class CategoriesPage extends StatelessWidget {
     required this.onCartChanged,
   });
 
+  IconData categoryIcon(
+    String category,
+  ) {
+    final value =
+        category.toLowerCase();
+
+    if (value.contains('electronic')) {
+      return Icons.phone_android_rounded;
+    }
+
+    if (value.contains('fashion') ||
+        value.contains('cloth')) {
+      return Icons.checkroom_rounded;
+    }
+
+    if (value.contains('home')) {
+      return Icons.home_rounded;
+    }
+
+    if (value.contains('accessor')) {
+      return Icons.watch_rounded;
+    }
+
+    return Icons.category_rounded;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor:
+          const Color(0xffF7F7FA),
       appBar: AppBar(
-        title:
-            const Text('Categories'),
+        title: const Text(
+          'Categories',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
         actions: [
           CartIconButton(
             onCartChanged:
@@ -1071,8 +1300,12 @@ class CategoriesPage extends StatelessWidget {
       body: ProductStream(
         builder: (products) {
           final categories = products
-              .map((p) => p.category)
-              .where((c) => c.isNotEmpty)
+              .map(
+                (p) => p.category.trim(),
+              )
+              .where(
+                (c) => c.isNotEmpty,
+              )
               .toSet()
               .toList();
 
@@ -1084,48 +1317,159 @@ class CategoriesPage extends StatelessWidget {
             );
           }
 
-          return ListView(
+          return ListView.builder(
             padding:
-                const EdgeInsets.all(8),
-            children: categories.map(
-              (category) {
-                final categoryProducts =
-                    products
-                        .where(
-                          (p) =>
-                              p.category ==
-                              category,
-                        )
-                        .toList();
+                const EdgeInsets.all(16),
+            itemCount:
+                categories.length,
+            itemBuilder:
+                (context, index) {
+              final category =
+                  categories[index];
 
-                return Card(
-                  margin:
-                      const EdgeInsets.only(
-                    bottom: 8,
+              final categoryCount =
+                  products.where(
+                (product) =>
+                    product.category
+                        .trim()
+                        .toLowerCase() ==
+                    category
+                        .trim()
+                        .toLowerCase(),
+              ).length;
+
+              return Container(
+                margin:
+                    const EdgeInsets.only(
+                  bottom: 12,
+                ),
+                decoration:
+                    BoxDecoration(
+                  color: Colors.white,
+                  borderRadius:
+                      BorderRadius.circular(
+                    20,
                   ),
-                  child: ExpansionTile(
-                    title:
-                        Text(category),
-                    leading:
-                        const Icon(
-                      Icons.category,
+                  boxShadow: [
+                    BoxShadow(
+                      blurRadius: 12,
+                      offset:
+                          const Offset(0, 5),
+                      color: Colors.black
+                          .withValues(
+                        alpha: 0.06,
+                      ),
                     ),
-                    children:
-                        categoryProducts
-                            .map(
-                              (product) =>
-                                  ProductTile(
-                                product:
-                                    product,
-                                onCartChanged:
-                                    onCartChanged,
+                  ],
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius:
+                        BorderRadius.circular(
+                      20,
+                    ),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              CategoryProductsPage(
+                            category:
+                                category,
+                            onCartChanged:
+                                onCartChanged,
+                          ),
+                        ),
+                      );
+                    },
+                    child: Padding(
+                      padding:
+                          const EdgeInsets.all(
+                        16,
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 58,
+                            height: 58,
+                            decoration:
+                                BoxDecoration(
+                              color: Theme.of(
+                                context,
+                              )
+                                  .colorScheme
+                                  .primary
+                                  .withValues(
+                                alpha: 0.10,
                               ),
-                            )
-                            .toList(),
+                              borderRadius:
+                                  BorderRadius
+                                      .circular(
+                                16,
+                              ),
+                            ),
+                            child: Icon(
+                              categoryIcon(
+                                category,
+                              ),
+                              color: Theme.of(
+                                context,
+                              )
+                                  .colorScheme
+                                  .primary,
+                              size: 28,
+                            ),
+                          ),
+                          const SizedBox(
+                            width: 15,
+                          ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment
+                                      .start,
+                              children: [
+                                Text(
+                                  category,
+                                  style:
+                                      const TextStyle(
+                                    fontSize:
+                                        17,
+                                    fontWeight:
+                                        FontWeight
+                                            .w800,
+                                  ),
+                                ),
+                                const SizedBox(
+                                  height: 4,
+                                ),
+                                Text(
+                                  '$categoryCount products',
+                                  style:
+                                      TextStyle(
+                                    color: Colors
+                                        .grey
+                                        .shade600,
+                                    fontSize:
+                                        13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(
+                            Icons
+                                .arrow_forward_ios_rounded,
+                            size: 17,
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                );
-              },
-            ).toList(),
+                ),
+              );
+            },
           );
         },
       ),
@@ -1134,10 +1478,11 @@ class CategoriesPage extends StatelessWidget {
 }
 
 // ============================================================
-// PREMIUM PRODUCT CARD
+// PRODUCT CARD
 // ============================================================
 
-class ProductTile extends StatelessWidget {
+class ProductTile
+    extends StatelessWidget {
   final Product product;
   final VoidCallback onCartChanged;
 
@@ -1179,14 +1524,16 @@ class ProductTile extends StatelessWidget {
         onCartChanged();
       },
       child: Container(
-        decoration: BoxDecoration(
+        decoration:
+            BoxDecoration(
           color: Colors.white,
           borderRadius:
               BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
               blurRadius: 12,
-              offset: const Offset(0, 5),
+              offset:
+                  const Offset(0, 5),
               color:
                   Colors.black.withValues(
                 alpha: 0.07,
@@ -1212,7 +1559,8 @@ class ProductTile extends StatelessWidget {
                             .isNotEmpty
                         ? Image.network(
                             product.imageUrl,
-                            fit: BoxFit.cover,
+                            fit:
+                                BoxFit.cover,
                             errorBuilder:
                                 (
                               context,
@@ -1220,7 +1568,8 @@ class ProductTile extends StatelessWidget {
                               stack,
                             ) {
                               return const Center(
-                                child: Icon(
+                                child:
+                                    Icon(
                                   Icons
                                       .image_not_supported_outlined,
                                   size: 50,
@@ -1229,7 +1578,8 @@ class ProductTile extends StatelessWidget {
                             },
                           )
                         : const Center(
-                            child: Icon(
+                            child:
+                                Icon(
                               Icons
                                   .shopping_bag_outlined,
                               size: 55,
@@ -1309,8 +1659,7 @@ class ProductTile extends StatelessWidget {
               ),
               child: Column(
                 crossAxisAlignment:
-                    CrossAxisAlignment
-                        .start,
+                    CrossAxisAlignment.start,
                 children: [
                   if (product
                       .category
@@ -1319,16 +1668,14 @@ class ProductTile extends StatelessWidget {
                       product.category,
                       maxLines: 1,
                       overflow:
-                          TextOverflow
-                              .ellipsis,
+                          TextOverflow.ellipsis,
                       style: TextStyle(
                         color: Colors
                             .grey
                             .shade600,
                         fontSize: 11,
                         fontWeight:
-                            FontWeight
-                                .w500,
+                            FontWeight.w500,
                       ),
                     ),
 
@@ -1367,8 +1714,7 @@ class ProductTile extends StatelessWidget {
                             const TextStyle(
                           fontSize: 18,
                           fontWeight:
-                              FontWeight
-                                  .w800,
+                              FontWeight.w800,
                         ),
                       ),
                       if (product
@@ -1414,8 +1760,7 @@ class ProductTile extends StatelessWidget {
                           FontWeight.w600,
                       color: outOfStock
                           ? Colors.red
-                          : product.stock <=
-                                  5
+                          : product.stock <= 5
                               ? Colors.orange
                               : Colors.green,
                     ),
@@ -1512,12 +1857,13 @@ class ProductTile extends StatelessWidget {
                                   ),
                                   border:
                                       Border.all(
-                                    color: Theme.of(
+                                    color:
+                                        Theme.of(
                                       context,
                                     )
-                                        .colorScheme
-                                        .primary
-                                        .withValues(
+                                            .colorScheme
+                                            .primary
+                                            .withValues(
                                       alpha:
                                           0.35,
                                     ),
