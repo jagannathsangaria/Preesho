@@ -23,6 +23,9 @@ class _LoginPageState extends State<LoginPage> {
   bool otpSent = false;
   bool obscurePassword = true;
 
+  String? verificationId;
+  int? resendToken;
+
   @override
   void dispose() {
     emailController.dispose();
@@ -36,9 +39,16 @@ class _LoginPageState extends State<LoginPage> {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 4),
+      ),
     );
   }
+
+  // ============================================================
+  // COURIER LOGIN / STATUS CHECK
+  // ============================================================
 
   Future<bool> handleCourierAfterLogin(User user) async {
     try {
@@ -52,9 +62,9 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       final userData = userSnapshot.data() ?? {};
-      final role = userData['role'];
+      final role = userData['role']?.toString();
 
-      // Normal customer
+      // Customer / other user
       if (role != 'courier') {
         return false;
       }
@@ -73,14 +83,16 @@ class _LoginPageState extends State<LoginPage> {
 
       final courierData = courierSnapshot.data() ?? {};
 
-      final status = courierData['status'];
+      final status = courierData['status']?.toString() ?? '';
       final documentsSubmitted =
           courierData['documentsSubmitted'] == true;
       final active = courierData['active'] == true;
       final approvedByAdmin =
           courierData['approvedByAdmin'] == true;
 
-      // Registration hui thi, lekin documents complete nahi hue.
+      // ----------------------------------------------------------
+      // 1. Registration complete, documents pending
+      // ----------------------------------------------------------
       if (status == 'pending_documents' ||
           !documentsSubmitted) {
         showMessage(
@@ -101,7 +113,9 @@ class _LoginPageState extends State<LoginPage> {
         return true;
       }
 
-      // Documents submit ho chuke hain, Admin approval pending hai.
+      // ----------------------------------------------------------
+      // 2. Documents submitted, Admin approval pending
+      // ----------------------------------------------------------
       if (status == 'pending_approval') {
         showMessage(
           'Documents submit ho chuke hain. Admin approval ka wait karein.',
@@ -121,7 +135,9 @@ class _LoginPageState extends State<LoginPage> {
         return true;
       }
 
-      // Admin ne reject kiya hai.
+      // ----------------------------------------------------------
+      // 3. Documents rejected
+      // ----------------------------------------------------------
       if (status == 'rejected') {
         showMessage(
           'Documents reject hue hain. Documents check/update karein.',
@@ -141,14 +157,18 @@ class _LoginPageState extends State<LoginPage> {
         return true;
       }
 
-      // Sirf fully approved + active courier ko normal login continue karne dein.
+      // ----------------------------------------------------------
+      // 4. Only fully approved and active courier continues
+      // ----------------------------------------------------------
       if (status == 'approved' &&
           active &&
           approvedByAdmin) {
         return false;
       }
 
-      // Kisi bhi unexpected/inactive condition mein Courier Panel na khule.
+      // ----------------------------------------------------------
+      // 5. Any other condition = block Courier Panel
+      // ----------------------------------------------------------
       showMessage(
         'Courier account abhi active/approved nahi hai.',
       );
@@ -156,7 +176,9 @@ class _LoginPageState extends State<LoginPage> {
       return true;
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('Courier login check error: $e');
+        debugPrint(
+          'Courier login check error: $e',
+        );
       }
 
       showMessage(
@@ -167,16 +189,23 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  // ============================================================
+  // SAVE USER PROFILE
+  // ============================================================
+
   Future<void> saveUserProfile(
     User user, {
     String loginType = 'email',
   }) async {
     try {
-      final userRef =
-          FirebaseFirestore.instance.collection('users').doc(user.uid);
+      final userRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid);
 
       final snapshot = await userRef.get();
 
+      // IMPORTANT:
+      // Existing courier/vendor/customer data ko overwrite nahi karna.
       if (!snapshot.exists) {
         await userRef.set({
           'uid': user.uid,
@@ -191,17 +220,25 @@ class _LoginPageState extends State<LoginPage> {
       }
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('Save user profile error: $e');
+        debugPrint(
+          'Save user profile error: $e',
+        );
       }
     }
   }
+
+  // ============================================================
+  // EMAIL LOGIN
+  // ============================================================
 
   Future<void> loginWithEmail() async {
     final email = emailController.text.trim();
     final password = passwordController.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
-      showMessage('Email aur password enter karein.');
+      showMessage(
+        'Email aur password enter karein.',
+      );
       return;
     }
 
@@ -228,7 +265,8 @@ class _LoginPageState extends State<LoginPage> {
         loginType: 'email',
       );
 
-      final handled = await handleCourierAfterLogin(user);
+      final handled =
+          await handleCourierAfterLogin(user);
 
       if (handled) {
         return;
@@ -240,26 +278,41 @@ class _LoginPageState extends State<LoginPage> {
     } on FirebaseAuthException catch (e) {
       String message = 'Login failed.';
 
-      if (e.code == 'user-not-found') {
-        message = 'User account nahi mila.';
-      } else if (e.code == 'wrong-password' ||
-          e.code == 'invalid-credential') {
-        message = 'Email ya password galat hai.';
-      } else if (e.code == 'invalid-email') {
-        message = 'Invalid email address.';
-      } else if (e.code == 'user-disabled') {
-        message = 'Ye account disabled hai.';
-      } else if (e.code == 'too-many-requests') {
-        message = 'Bahut attempts ho gaye. Thodi der baad try karein.';
+      switch (e.code) {
+        case 'user-not-found':
+          message = 'User account nahi mila.';
+          break;
+
+        case 'wrong-password':
+        case 'invalid-credential':
+          message = 'Email ya password galat hai.';
+          break;
+
+        case 'invalid-email':
+          message = 'Invalid email address.';
+          break;
+
+        case 'user-disabled':
+          message = 'Ye account disabled hai.';
+          break;
+
+        case 'too-many-requests':
+          message =
+              'Bahut attempts ho gaye. Thodi der baad try karein.';
+          break;
       }
 
       showMessage(message);
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('Email login error: $e');
+        debugPrint(
+          'Email login error: $e',
+        );
       }
 
-      showMessage('Something went wrong. Please try again.');
+      showMessage(
+        'Something went wrong. Please try again.',
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -269,30 +322,17 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  // ============================================================
+  // SEND FIREBASE OTP
+  // ============================================================
+
   Future<void> sendOtp() async {
     final mobile = mobileController.text.trim();
 
     if (mobile.isEmpty || mobile.length != 10) {
-      showMessage('10 digit mobile number enter karein.');
-      return;
-    }
-
-    // Development/Test OTP
-    if (mobile == '9111111111') {
-      setState(() {
-        otpSent = true;
-      });
-
-      showMessage('Test OTP: 911111');
-      return;
-    }
-
-    if (mobile == '9666666666') {
-      setState(() {
-        otpSent = true;
-      });
-
-      showMessage('Test OTP: 966666');
+      showMessage(
+        '10 digit mobile number enter karein.',
+      );
       return;
     }
 
@@ -303,6 +343,7 @@ class _LoginPageState extends State<LoginPage> {
     try {
       await FirebaseAuth.instance.verifyPhoneNumber(
         phoneNumber: '+91$mobile',
+
         verificationCompleted:
             (PhoneAuthCredential credential) async {
           try {
@@ -323,9 +364,15 @@ class _LoginPageState extends State<LoginPage> {
                 'Automatic phone verification error: $e',
               );
             }
+
+            showMessage(
+              'Automatic verification failed.',
+            );
           }
         },
-        verificationFailed: (FirebaseAuthException e) {
+
+        verificationFailed:
+            (FirebaseAuthException e) {
           if (mounted) {
             setState(() {
               isLoading = false;
@@ -336,23 +383,37 @@ class _LoginPageState extends State<LoginPage> {
             e.message ?? 'OTP send nahi ho paya.',
           );
         },
-        codeSent: (String verificationId, int? resendToken) {
+
+        codeSent: (
+          String id,
+          int? token,
+        ) {
           if (!mounted) return;
 
           setState(() {
+            verificationId = id;
+            resendToken = token;
             otpSent = true;
             isLoading = false;
           });
 
-          showMessage('OTP send ho gaya.');
+          showMessage(
+            'OTP send ho gaya.',
+          );
         },
-        codeAutoRetrievalTimeout: (String verificationId) {
+
+        codeAutoRetrievalTimeout:
+            (String id) {
+          verificationId = id;
+
           if (mounted) {
             setState(() {
               isLoading = false;
             });
           }
         },
+
+        forceResendingToken: resendToken,
       );
     } catch (e) {
       if (mounted) {
@@ -361,9 +422,103 @@ class _LoginPageState extends State<LoginPage> {
         });
       }
 
-      showMessage('OTP send nahi ho paya.');
+      if (kDebugMode) {
+        debugPrint(
+          'Send OTP error: $e',
+        );
+      }
+
+      showMessage(
+        'OTP send nahi ho paya.',
+      );
     }
   }
+
+  // ============================================================
+  // VERIFY NORMAL FIREBASE OTP
+  // ============================================================
+
+  Future<void> verifyFirebaseOtp() async {
+    final otp = otpController.text.trim();
+
+    if (otp.isEmpty || otp.length != 6) {
+      showMessage(
+        '6 digit OTP enter karein.',
+      );
+      return;
+    }
+
+    if (verificationId == null ||
+        verificationId!.isEmpty) {
+      showMessage(
+        'Pehle OTP send karein.',
+      );
+      return;
+    }
+
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      final credential =
+          PhoneAuthProvider.credential(
+        verificationId: verificationId!,
+        smsCode: otp,
+      );
+
+      final result = await FirebaseAuth.instance
+          .signInWithCredential(credential);
+
+      final user = result.user;
+
+      if (user == null) {
+        showMessage(
+          'OTP login failed.',
+        );
+        return;
+      }
+
+      await saveMobileAndFinish(
+        mobileController.text.trim(),
+        existingUser: user,
+      );
+    } on FirebaseAuthException catch (e) {
+      String message = 'OTP verification failed.';
+
+      if (e.code == 'invalid-verification-code') {
+        message = 'OTP galat hai.';
+      } else if (e.code == 'session-expired') {
+        message =
+            'OTP expire ho gaya. Dobara OTP send karein.';
+      } else if (e.code == 'invalid-verification-id') {
+        message =
+            'Verification session invalid hai. Dobara OTP send karein.';
+      }
+
+      showMessage(message);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+          'Firebase OTP verification error: $e',
+        );
+      }
+
+      showMessage(
+        'OTP verification failed.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
+    }
+  }
+
+  // ============================================================
+  // TEST OTP
+  // ============================================================
 
   Future<void> verifyTestOtp() async {
     final mobile = mobileController.text.trim();
@@ -378,12 +533,16 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     if (expectedOtp == null) {
-      showMessage('Test OTP sirf test mobile numbers ke liye hai.');
+      showMessage(
+        'Test OTP sirf test mobile numbers ke liye hai.',
+      );
       return;
     }
 
     if (otp != expectedOtp) {
-      showMessage('Invalid OTP.');
+      showMessage(
+        'Invalid OTP.',
+      );
       return;
     }
 
@@ -392,6 +551,19 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
+      /*
+       * TEST ACCOUNT:
+       *
+       * Mobile: 9111111111
+       * OTP/Password: 911111
+       *
+       * Mobile: 9666666666
+       * OTP/Password: 966666
+       *
+       * Ye test accounts Firebase Email/Password auth
+       * ke through login karte hain.
+       */
+
       final email = '$mobile@preesho.test';
 
       UserCredential credential;
@@ -413,7 +585,9 @@ class _LoginPageState extends State<LoginPage> {
       final user = credential.user;
 
       if (user == null) {
-        showMessage('Login failed.');
+        showMessage(
+          'Test login failed.',
+        );
         return;
       }
 
@@ -423,11 +597,13 @@ class _LoginPageState extends State<LoginPage> {
       );
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('Test OTP login error: $e');
+        debugPrint(
+          'Test OTP login error: $e',
+        );
       }
 
       showMessage(
-        'OTP login failed. Please try again.',
+        'Test OTP login failed.',
       );
     } finally {
       if (mounted) {
@@ -438,25 +614,56 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  // ============================================================
+  // MOBILE LOGIN
+  // ============================================================
+
+  Future<void> loginWithOtp() async {
+    final mobile = mobileController.text.trim();
+
+    // Test courier
+    if (mobile == '9111111111') {
+      await verifyTestOtp();
+      return;
+    }
+
+    // Test vendor
+    if (mobile == '9666666666') {
+      await verifyTestOtp();
+      return;
+    }
+
+    await verifyFirebaseOtp();
+  }
+
+  // ============================================================
+  // SAVE MOBILE USER
+  // ============================================================
+
   Future<void> saveMobileAndFinish(
     String mobile, {
     User? existingUser,
   }) async {
-    final user = existingUser ?? FirebaseAuth.instance.currentUser;
+    final user =
+        existingUser ?? FirebaseAuth.instance.currentUser;
 
     if (user == null) {
-      showMessage('User login nahi hua.');
+      showMessage(
+        'User login nahi hua.',
+      );
       return;
     }
 
     try {
-      final userRef =
-          FirebaseFirestore.instance.collection('users').doc(user.uid);
+      final userRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid);
 
       final snapshot = await userRef.get();
 
       // IMPORTANT:
-      // Existing courier/vendor/customer ka role/status overwrite nahi karna.
+      // Existing courier/vendor/customer ka role/status
+      // overwrite nahi hoga.
       if (!snapshot.exists) {
         await userRef.set({
           'uid': user.uid,
@@ -469,16 +676,21 @@ class _LoginPageState extends State<LoginPage> {
           'loginType': 'mobile',
         });
       } else {
-        await userRef.set({
-          'uid': user.uid,
-          'phone': mobile,
-          'email': user.email ?? '',
-          'updatedAt': FieldValue.serverTimestamp(),
-          'loginType': 'mobile',
-        }, SetOptions(merge: true));
+        await userRef.set(
+          {
+            'uid': user.uid,
+            'phone': mobile,
+            'email': user.email ?? '',
+            'updatedAt':
+                FieldValue.serverTimestamp(),
+            'loginType': 'mobile',
+          },
+          SetOptions(merge: true),
+        );
       }
 
-      final handled = await handleCourierAfterLogin(user);
+      final handled =
+          await handleCourierAfterLogin(user);
 
       if (handled) {
         return;
@@ -489,7 +701,9 @@ class _LoginPageState extends State<LoginPage> {
       Navigator.pop(context, true);
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('Save mobile profile error: $e');
+        debugPrint(
+          'Save mobile profile error: $e',
+        );
       }
 
       showMessage(
@@ -498,28 +712,23 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  Future<void> loginWithOtp() async {
-    final mobile = mobileController.text.trim();
-
-    if (mobile == '9111111111' ||
-        mobile == '9666666666') {
-      await verifyTestOtp();
-      return;
-    }
-
-    showMessage(
-      'OTP verification ke liye OTP enter karein.',
-    );
-  }
+  // ============================================================
+  // FORGOT PASSWORD
+  // ============================================================
 
   void openForgotPassword() {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => const ForgotPasswordPage(),
+        builder: (_) =>
+            const ForgotPasswordPage(),
       ),
     );
   }
+
+  // ============================================================
+  // UI
+  // ============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -531,7 +740,8 @@ class _LoginPageState extends State<LoginPage> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment:
+                CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 20),
 
@@ -546,26 +756,38 @@ class _LoginPageState extends State<LoginPage> {
 
               const SizedBox(height: 30),
 
+              // EMAIL
               TextField(
                 controller: emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
+                keyboardType:
+                    TextInputType.emailAddress,
+                decoration:
+                    const InputDecoration(
                   labelText: 'Email',
-                  prefixIcon: Icon(Icons.email_outlined),
-                  border: OutlineInputBorder(),
+                  prefixIcon:
+                      Icon(Icons.email_outlined),
+                  border:
+                      OutlineInputBorder(),
                 ),
               ),
 
               const SizedBox(height: 15),
 
+              // PASSWORD
               TextField(
                 controller: passwordController,
                 obscureText: obscurePassword,
-                decoration: InputDecoration(
+                decoration:
+                    InputDecoration(
                   labelText: 'Password',
-                  prefixIcon: const Icon(Icons.lock_outline),
-                  border: const OutlineInputBorder(),
-                  suffixIcon: IconButton(
+                  prefixIcon:
+                      const Icon(
+                    Icons.lock_outline,
+                  ),
+                  border:
+                      const OutlineInputBorder(),
+                  suffixIcon:
+                      IconButton(
                     icon: Icon(
                       obscurePassword
                           ? Icons.visibility_off
@@ -573,7 +795,8 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                     onPressed: () {
                       setState(() {
-                        obscurePassword = !obscurePassword;
+                        obscurePassword =
+                            !obscurePassword;
                       });
                     },
                   ),
@@ -583,10 +806,12 @@ class _LoginPageState extends State<LoginPage> {
               const SizedBox(height: 10),
 
               Align(
-                alignment: Alignment.centerRight,
+                alignment:
+                    Alignment.centerRight,
                 child: TextButton(
-                  onPressed:
-                      isLoading ? null : openForgotPassword,
+                  onPressed: isLoading
+                      ? null
+                      : openForgotPassword,
                   child: const Text(
                     'Forgot Password?',
                   ),
@@ -595,71 +820,94 @@ class _LoginPageState extends State<LoginPage> {
 
               const SizedBox(height: 5),
 
+              // EMAIL LOGIN
               ElevatedButton(
                 onPressed:
-                    isLoading ? null : loginWithEmail,
-                child: isLoading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const Text('Login with Email'),
+                    isLoading
+                        ? null
+                        : loginWithEmail,
+                child: const Text(
+                  'Login with Email',
+                ),
               ),
 
               const SizedBox(height: 25),
 
               const Row(
                 children: [
-                  Expanded(child: Divider()),
+                  Expanded(
+                    child: Divider(),
+                  ),
                   Padding(
                     padding:
-                        EdgeInsets.symmetric(horizontal: 10),
+                        EdgeInsets.symmetric(
+                      horizontal: 10,
+                    ),
                     child: Text('OR'),
                   ),
-                  Expanded(child: Divider()),
+                  Expanded(
+                    child: Divider(),
+                  ),
                 ],
               ),
 
               const SizedBox(height: 25),
 
+              // MOBILE
               TextField(
-                controller: mobileController,
-                keyboardType: TextInputType.phone,
+                controller:
+                    mobileController,
+                keyboardType:
+                    TextInputType.phone,
                 maxLength: 10,
-                decoration: const InputDecoration(
-                  labelText: 'Mobile Number',
+                decoration:
+                    const InputDecoration(
+                  labelText:
+                      'Mobile Number',
                   prefixText: '+91 ',
                   prefixIcon:
-                      Icon(Icons.phone_android),
-                  border: OutlineInputBorder(),
+                      Icon(
+                    Icons.phone_android,
+                  ),
+                  border:
+                      OutlineInputBorder(),
                   counterText: '',
                 ),
               ),
 
               const SizedBox(height: 15),
 
+              // SEND OTP
               if (!otpSent)
                 ElevatedButton(
-                  onPressed:
-                      isLoading ? null : sendOtp,
-                  child: const Text('Send OTP'),
+                  onPressed: isLoading
+                      ? null
+                      : sendOtp,
+                  child: const Text(
+                    'Send OTP',
+                  ),
                 ),
 
+              // OTP
               if (otpSent) ...[
                 const SizedBox(height: 5),
 
                 TextField(
-                  controller: otpController,
-                  keyboardType: TextInputType.number,
+                  controller:
+                      otpController,
+                  keyboardType:
+                      TextInputType.number,
                   maxLength: 6,
-                  decoration: const InputDecoration(
-                    labelText: 'Enter OTP',
+                  decoration:
+                      const InputDecoration(
+                    labelText:
+                        'Enter OTP',
                     prefixIcon:
-                        Icon(Icons.password),
-                    border: OutlineInputBorder(),
+                        Icon(
+                      Icons.password,
+                    ),
+                    border:
+                        OutlineInputBorder(),
                     counterText: '',
                   ),
                 ),
@@ -667,8 +915,9 @@ class _LoginPageState extends State<LoginPage> {
                 const SizedBox(height: 15),
 
                 ElevatedButton(
-                  onPressed:
-                      isLoading ? null : loginWithOtp,
+                  onPressed: isLoading
+                      ? null
+                      : loginWithOtp,
                   child: isLoading
                       ? const SizedBox(
                           height: 20,
@@ -678,7 +927,28 @@ class _LoginPageState extends State<LoginPage> {
                             strokeWidth: 2,
                           ),
                         )
-                      : const Text('Verify OTP'),
+                      : const Text(
+                          'Verify OTP',
+                        ),
+                ),
+
+                const SizedBox(height: 8),
+
+                TextButton(
+                  onPressed: isLoading
+                      ? null
+                      : () {
+                          setState(() {
+                            otpSent = false;
+                            verificationId =
+                                null;
+                            otpController
+                                .clear();
+                          });
+                        },
+                  child: const Text(
+                    'Change Mobile Number',
+                  ),
                 ),
               ],
 
