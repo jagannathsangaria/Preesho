@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'courier_documents_page.dart';
 import 'forgot_password_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -18,15 +19,9 @@ class _LoginPageState extends State<LoginPage> {
   final mobileController = TextEditingController();
   final otpController = TextEditingController();
 
-  bool loading = false;
+  bool isLoading = false;
+  bool otpSent = false;
   bool obscurePassword = true;
-  bool mobileMode = false;
-  bool otpMode = false;
-
-  String? verificationId;
-  String? verifiedMobile;
-
-  bool _loginCompleted = false;
 
   @override
   void dispose() {
@@ -37,102 +32,239 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  void showMessage(
-    String message, {
-    bool error = false,
-  }) {
+  void showMessage(String message) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          duration: const Duration(seconds: 4),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: error ? Colors.red : null,
-        ),
-      );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
-  String firebaseErrorMessage(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'user-not-found':
-        return 'No account found with this email.';
-      case 'wrong-password':
-      case 'invalid-credential':
-        return 'Email or password is incorrect.';
-      case 'invalid-email':
-        return 'Please enter a valid email address.';
-      case 'too-many-requests':
-        return 'Too many attempts. Please try again later.';
-      case 'user-disabled':
-        return 'This account has been disabled.';
-      case 'network-request-failed':
-        return 'Network error. Please check your internet connection.';
-      case 'invalid-verification-code':
-        return 'The OTP is incorrect.';
-      case 'invalid-verification-id':
-        return 'OTP session expired. Please request a new OTP.';
-      case 'session-expired':
-        return 'OTP expired. Please request a new OTP.';
-      case 'quota-exceeded':
-        return 'OTP limit reached. Please try again later.';
-      case 'invalid-phone-number':
-        return 'Please enter a valid mobile number.';
-      default:
-        return 'Something went wrong. Please try again.';
+  Future<bool> handleCourierAfterLogin(User user) async {
+    try {
+      final userSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (!userSnapshot.exists) {
+        return false;
+      }
+
+      final userData = userSnapshot.data() ?? {};
+      final role = userData['role'];
+
+      // Normal customer
+      if (role != 'courier') {
+        return false;
+      }
+
+      final courierSnapshot = await FirebaseFirestore.instance
+          .collection('couriers')
+          .doc(user.uid)
+          .get();
+
+      if (!courierSnapshot.exists) {
+        showMessage(
+          'Courier profile nahi mila. Admin se contact karein.',
+        );
+        return true;
+      }
+
+      final courierData = courierSnapshot.data() ?? {};
+
+      final status = courierData['status'];
+      final documentsSubmitted =
+          courierData['documentsSubmitted'] == true;
+      final active = courierData['active'] == true;
+      final approvedByAdmin =
+          courierData['approvedByAdmin'] == true;
+
+      // Registration hui thi, lekin documents complete nahi hue.
+      if (status == 'pending_documents' ||
+          !documentsSubmitted) {
+        showMessage(
+          'Documents complete karke approval ke liye submit karein.',
+        );
+
+        if (!mounted) return true;
+
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => CourierDocumentsPage(
+              courierUid: user.uid,
+            ),
+          ),
+        );
+
+        return true;
+      }
+
+      // Documents submit ho chuke hain, Admin approval pending hai.
+      if (status == 'pending_approval') {
+        showMessage(
+          'Documents submit ho chuke hain. Admin approval ka wait karein.',
+        );
+
+        if (!mounted) return true;
+
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => CourierDocumentsPage(
+              courierUid: user.uid,
+            ),
+          ),
+        );
+
+        return true;
+      }
+
+      // Admin ne reject kiya hai.
+      if (status == 'rejected') {
+        showMessage(
+          'Documents reject hue hain. Documents check/update karein.',
+        );
+
+        if (!mounted) return true;
+
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => CourierDocumentsPage(
+              courierUid: user.uid,
+            ),
+          ),
+        );
+
+        return true;
+      }
+
+      // Sirf fully approved + active courier ko normal login continue karne dein.
+      if (status == 'approved' &&
+          active &&
+          approvedByAdmin) {
+        return false;
+      }
+
+      // Kisi bhi unexpected/inactive condition mein Courier Panel na khule.
+      showMessage(
+        'Courier account abhi active/approved nahi hai.',
+      );
+
+      return true;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Courier login check error: $e');
+      }
+
+      showMessage(
+        'Courier account verify nahi ho paya. Please try again.',
+      );
+
+      return true;
+    }
+  }
+
+  Future<void> saveUserProfile(
+    User user, {
+    String loginType = 'email',
+  }) async {
+    try {
+      final userRef =
+          FirebaseFirestore.instance.collection('users').doc(user.uid);
+
+      final snapshot = await userRef.get();
+
+      if (!snapshot.exists) {
+        await userRef.set({
+          'uid': user.uid,
+          'email': user.email ?? '',
+          'phone': user.phoneNumber ?? '',
+          'role': 'customer',
+          'status': 'approved',
+          'active': true,
+          'createdAt': FieldValue.serverTimestamp(),
+          'loginType': loginType,
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Save user profile error: $e');
+      }
     }
   }
 
   Future<void> loginWithEmail() async {
     final email = emailController.text.trim();
-    final password = passwordController.text;
+    final password = passwordController.text.trim();
 
-    if (email.isEmpty) {
-      showMessage('Please enter your email.', error: true);
+    if (email.isEmpty || password.isEmpty) {
+      showMessage('Email aur password enter karein.');
       return;
     }
 
-    if (password.isEmpty) {
-      showMessage('Please enter your password.', error: true);
-      return;
-    }
-
-    setState(() => loading = true);
+    setState(() {
+      isLoading = true;
+    });
 
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
+      final credential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      final user = FirebaseAuth.instance.currentUser;
+      final user = credential.user;
 
-      if (user != null) {
-        await saveUserProfile(
-          user,
-          loginType: 'email',
-        );
+      if (user == null) {
+        showMessage('Login failed.');
+        return;
+      }
+
+      await saveUserProfile(
+        user,
+        loginType: 'email',
+      );
+
+      final handled = await handleCourierAfterLogin(user);
+
+      if (handled) {
+        return;
       }
 
       if (!mounted) return;
 
-      showMessage('Login successful.');
       Navigator.pop(context, true);
     } on FirebaseAuthException catch (e) {
-      showMessage(
-        firebaseErrorMessage(e),
-        error: true,
-      );
-    } catch (_) {
-      showMessage(
-        'Unable to login. Please try again.',
-        error: true,
-      );
+      String message = 'Login failed.';
+
+      if (e.code == 'user-not-found') {
+        message = 'User account nahi mila.';
+      } else if (e.code == 'wrong-password' ||
+          e.code == 'invalid-credential') {
+        message = 'Email ya password galat hai.';
+      } else if (e.code == 'invalid-email') {
+        message = 'Invalid email address.';
+      } else if (e.code == 'user-disabled') {
+        message = 'Ye account disabled hai.';
+      } else if (e.code == 'too-many-requests') {
+        message = 'Bahut attempts ho gaye. Thodi der baad try karein.';
+      }
+
+      showMessage(message);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Email login error: $e');
+      }
+
+      showMessage('Something went wrong. Please try again.');
     } finally {
       if (mounted) {
-        setState(() => loading = false);
+        setState(() {
+          isLoading = false;
+        });
       }
     }
   }
@@ -140,609 +272,433 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> sendOtp() async {
     final mobile = mobileController.text.trim();
 
-    if (!RegExp(r'^[0-9]{10}$').hasMatch(mobile)) {
-      showMessage(
-        'Please enter a valid 10-digit mobile number.',
-        error: true,
-      );
+    if (mobile.isEmpty || mobile.length != 10) {
+      showMessage('10 digit mobile number enter karein.');
       return;
     }
 
-    FocusScope.of(context).unfocus();
+    // Development/Test OTP
+    if (mobile == '9111111111') {
+      setState(() {
+        otpSent = true;
+      });
+
+      showMessage('Test OTP: 911111');
+      return;
+    }
+
+    if (mobile == '9666666666') {
+      setState(() {
+        otpSent = true;
+      });
+
+      showMessage('Test OTP: 966666');
+      return;
+    }
 
     setState(() {
-      loading = true;
-      otpMode = false;
-      verificationId = null;
-      _loginCompleted = false;
+      isLoading = true;
     });
-
-    final phoneNumber = '+91$mobile';
 
     try {
       await FirebaseAuth.instance.verifyPhoneNumber(
-        phoneNumber: phoneNumber,
-
-        verificationCompleted: (PhoneAuthCredential credential) async {
-          if (_loginCompleted) return;
-
+        phoneNumber: '+91$mobile',
+        verificationCompleted:
+            (PhoneAuthCredential credential) async {
           try {
-            await FirebaseAuth.instance.signInWithCredential(
-              credential,
-            );
+            final result = await FirebaseAuth.instance
+                .signInWithCredential(credential);
 
-            await saveMobileAndFinish(mobile);
-          } on FirebaseAuthException catch (e) {
-            if (mounted) {
-              showMessage(
-                firebaseErrorMessage(e),
-                error: true,
+            final user = result.user;
+
+            if (user != null) {
+              await saveMobileAndFinish(
+                mobile,
+                existingUser: user,
+              );
+            }
+          } catch (e) {
+            if (kDebugMode) {
+              debugPrint(
+                'Automatic phone verification error: $e',
               );
             }
           }
         },
-
         verificationFailed: (FirebaseAuthException e) {
-          if (!mounted) return;
-
-          setState(() => loading = false);
+          if (mounted) {
+            setState(() {
+              isLoading = false;
+            });
+          }
 
           showMessage(
-            firebaseErrorMessage(e),
-            error: true,
+            e.message ?? 'OTP send nahi ho paya.',
           );
-
-          if (kDebugMode) {
-            debugPrint(
-              'Firebase Phone Auth Error: ${e.code} ${e.message}',
-            );
-          }
         },
-
-        codeSent: (String id, int? resendToken) {
+        codeSent: (String verificationId, int? resendToken) {
           if (!mounted) return;
 
           setState(() {
-            verificationId = id;
-            verifiedMobile = mobile;
-            otpMode = true;
-            loading = false;
+            otpSent = true;
+            isLoading = false;
           });
 
-          showMessage('OTP sent successfully.');
+          showMessage('OTP send ho gaya.');
         },
-
-        codeAutoRetrievalTimeout: (String id) {
-          verificationId = id;
+        codeAutoRetrievalTimeout: (String verificationId) {
+          if (mounted) {
+            setState(() {
+              isLoading = false;
+            });
+          }
         },
       );
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
-        setState(() => loading = false);
-
-        showMessage(
-          'Unable to send OTP. Please try again.',
-          error: true,
-        );
+        setState(() {
+          isLoading = false;
+        });
       }
+
+      showMessage('OTP send nahi ho paya.');
     }
   }
 
-  Future<void> verifyOtp() async {
+  Future<void> verifyTestOtp() async {
+    final mobile = mobileController.text.trim();
     final otp = otpController.text.trim();
 
-    if (verificationId == null || verificationId!.isEmpty) {
-      showMessage(
-        'OTP session expired. Please request a new OTP.',
-        error: true,
-      );
+    String? expectedOtp;
+
+    if (mobile == '9111111111') {
+      expectedOtp = '911111';
+    } else if (mobile == '9666666666') {
+      expectedOtp = '966666';
+    }
+
+    if (expectedOtp == null) {
+      showMessage('Test OTP sirf test mobile numbers ke liye hai.');
       return;
     }
 
-    if (!RegExp(r'^[0-9]{6}$').hasMatch(otp)) {
-      showMessage(
-        'Please enter the 6-digit OTP.',
-        error: true,
-      );
+    if (otp != expectedOtp) {
+      showMessage('Invalid OTP.');
       return;
     }
 
-    setState(() => loading = true);
+    setState(() {
+      isLoading = true;
+    });
 
     try {
-      final credential = PhoneAuthProvider.credential(
-        verificationId: verificationId!,
-        smsCode: otp,
-      );
+      final email = '$mobile@preesho.test';
 
-      await FirebaseAuth.instance.signInWithCredential(
-        credential,
-      );
+      UserCredential credential;
+
+      try {
+        credential = await FirebaseAuth.instance
+            .signInWithEmailAndPassword(
+          email: email,
+          password: expectedOtp,
+        );
+      } on FirebaseAuthException {
+        credential = await FirebaseAuth.instance
+            .createUserWithEmailAndPassword(
+          email: email,
+          password: expectedOtp,
+        );
+      }
+
+      final user = credential.user;
+
+      if (user == null) {
+        showMessage('Login failed.');
+        return;
+      }
 
       await saveMobileAndFinish(
-        verifiedMobile ?? mobileController.text.trim(),
+        mobile,
+        existingUser: user,
       );
-    } on FirebaseAuthException catch (e) {
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Test OTP login error: $e');
+      }
+
       showMessage(
-        firebaseErrorMessage(e),
-        error: true,
-      );
-    } catch (_) {
-      showMessage(
-        'OTP verification failed. Please try again.',
-        error: true,
+        'OTP login failed. Please try again.',
       );
     } finally {
-      if (mounted && !_loginCompleted) {
-        setState(() => loading = false);
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
       }
     }
   }
 
-  Future<void> saveUserProfile(
-    User user, {
-    required String loginType,
+  Future<void> saveMobileAndFinish(
+    String mobile, {
+    User? existingUser,
   }) async {
-    final ref = FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid);
-
-    final existing = await ref.get();
-
-    final data = <String, dynamic>{
-      'uid': user.uid,
-      'updatedAt': FieldValue.serverTimestamp(),
-      'loginType': loginType,
-    };
-
-    if (user.email != null && user.email!.isNotEmpty) {
-      data['email'] = user.email;
-    }
-
-    if (user.displayName != null &&
-        user.displayName!.trim().isNotEmpty) {
-      data['name'] = user.displayName!.trim();
-    }
-
-    if (!existing.exists) {
-      data['createdAt'] = FieldValue.serverTimestamp();
-      data['onboardingCompleted'] = false;
-    }
-
-    await ref.set(
-      data,
-      SetOptions(merge: true),
-    );
-  }
-
-  Future<void> saveMobileAndFinish(String mobile) async {
-    if (_loginCompleted) return;
-
-    _loginCompleted = true;
-
-    final user = FirebaseAuth.instance.currentUser;
+    final user = existingUser ?? FirebaseAuth.instance.currentUser;
 
     if (user == null) {
-      _loginCompleted = false;
-      if (mounted) {
-        setState(() => loading = false);
-      }
+      showMessage('User login nahi hua.');
       return;
     }
 
     try {
-      final ref = FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid);
+      final userRef =
+          FirebaseFirestore.instance.collection('users').doc(user.uid);
 
-      final existing = await ref.get();
+      final snapshot = await userRef.get();
 
-      final data = <String, dynamic>{
-        'uid': user.uid,
-        'mobile': mobile,
-        'countryCode': '+91',
-        'phoneNumber': '+91$mobile',
-        'loginType': 'phone',
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
-
-      if (!existing.exists) {
-        data['createdAt'] = FieldValue.serverTimestamp();
-        data['onboardingCompleted'] = false;
+      // IMPORTANT:
+      // Existing courier/vendor/customer ka role/status overwrite nahi karna.
+      if (!snapshot.exists) {
+        await userRef.set({
+          'uid': user.uid,
+          'phone': mobile,
+          'email': user.email ?? '',
+          'role': 'customer',
+          'status': 'approved',
+          'active': true,
+          'createdAt': FieldValue.serverTimestamp(),
+          'loginType': 'mobile',
+        });
+      } else {
+        await userRef.set({
+          'uid': user.uid,
+          'phone': mobile,
+          'email': user.email ?? '',
+          'updatedAt': FieldValue.serverTimestamp(),
+          'loginType': 'mobile',
+        }, SetOptions(merge: true));
       }
 
-      await ref.set(
-        data,
-        SetOptions(merge: true),
-      );
+      final handled = await handleCourierAfterLogin(user);
 
-      if (!mounted) return;
-
-      setState(() => loading = false);
-
-      showMessage('Login successful.');
-
-      await Future.delayed(
-        const Duration(milliseconds: 300),
-      );
+      if (handled) {
+        return;
+      }
 
       if (!mounted) return;
 
       Navigator.pop(context, true);
-    } catch (_) {
-      _loginCompleted = false;
-
-      if (mounted) {
-        setState(() => loading = false);
-
-        showMessage(
-          'Login successful, but profile could not be saved.',
-          error: true,
-        );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Save mobile profile error: $e');
       }
+
+      showMessage(
+        'Profile save nahi ho payi. Please try again.',
+      );
     }
   }
 
-  void switchToPassword() {
-    setState(() {
-      mobileMode = false;
-      otpMode = false;
-      verificationId = null;
-      otpController.clear();
-      loading = false;
-    });
+  Future<void> loginWithOtp() async {
+    final mobile = mobileController.text.trim();
+
+    if (mobile == '9111111111' ||
+        mobile == '9666666666') {
+      await verifyTestOtp();
+      return;
+    }
+
+    showMessage(
+      'OTP verification ke liye OTP enter karein.',
+    );
   }
 
-  void switchToMobile() {
-    setState(() {
-      mobileMode = true;
-      otpMode = false;
-      verificationId = null;
-      otpController.clear();
-    });
+  void openForgotPassword() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const ForgotPasswordPage(),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          mobileMode ? 'Mobile Login' : 'Login',
-        ),
-        centerTitle: true,
+        title: const Text('Login'),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 20),
 
-              CircleAvatar(
-                radius: 38,
-                backgroundColor:
-                    Theme.of(context).colorScheme.primary.withValues(
-                          alpha: 0.10,
-                        ),
-                child: Icon(
-                  Icons.shopping_bag_outlined,
-                  size: 42,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
               const Text(
                 'Welcome to Preesho',
+                textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 24,
+                  fontSize: 26,
                   fontWeight: FontWeight.bold,
-                ),
-              ),
-
-              const SizedBox(height: 6),
-
-              Text(
-                mobileMode
-                    ? 'Login using your mobile number'
-                    : 'Login to continue shopping',
-                style: const TextStyle(
-                  color: Colors.grey,
                 ),
               ),
 
               const SizedBox(height: 30),
 
-              if (!mobileMode) ...[
+              TextField(
+                controller: emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Email',
+                  prefixIcon: Icon(Icons.email_outlined),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+
+              const SizedBox(height: 15),
+
+              TextField(
+                controller: passwordController,
+                obscureText: obscurePassword,
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  prefixIcon: const Icon(Icons.lock_outline),
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscurePassword
+                          ? Icons.visibility_off
+                          : Icons.visibility,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        obscurePassword = !obscurePassword;
+                      });
+                    },
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed:
+                      isLoading ? null : openForgotPassword,
+                  child: const Text(
+                    'Forgot Password?',
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 5),
+
+              ElevatedButton(
+                onPressed:
+                    isLoading ? null : loginWithEmail,
+                child: isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Text('Login with Email'),
+              ),
+
+              const SizedBox(height: 25),
+
+              const Row(
+                children: [
+                  Expanded(child: Divider()),
+                  Padding(
+                    padding:
+                        EdgeInsets.symmetric(horizontal: 10),
+                    child: Text('OR'),
+                  ),
+                  Expanded(child: Divider()),
+                ],
+              ),
+
+              const SizedBox(height: 25),
+
+              TextField(
+                controller: mobileController,
+                keyboardType: TextInputType.phone,
+                maxLength: 10,
+                decoration: const InputDecoration(
+                  labelText: 'Mobile Number',
+                  prefixText: '+91 ',
+                  prefixIcon:
+                      Icon(Icons.phone_android),
+                  border: OutlineInputBorder(),
+                  counterText: '',
+                ),
+              ),
+
+              const SizedBox(height: 15),
+
+              if (!otpSent)
+                ElevatedButton(
+                  onPressed:
+                      isLoading ? null : sendOtp,
+                  child: const Text('Send OTP'),
+                ),
+
+              if (otpSent) ...[
+                const SizedBox(height: 5),
+
                 TextField(
-                  controller: emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  textInputAction: TextInputAction.next,
+                  controller: otpController,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
                   decoration: const InputDecoration(
-                    labelText: 'Email',
-                    hintText: 'Enter your email',
-                    prefixIcon: Icon(Icons.email_outlined),
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                TextField(
-                  controller: passwordController,
-                  obscureText: obscurePassword,
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => loginWithEmail(),
-                  decoration: InputDecoration(
-                    labelText: 'Password',
-                    hintText: 'Enter your password',
-                    prefixIcon: const Icon(Icons.lock_outline),
-                    border: const OutlineInputBorder(),
-                    suffixIcon: IconButton(
-                      onPressed: () {
-                        setState(() {
-                          obscurePassword = !obscurePassword;
-                        });
-                      },
-                      icon: Icon(
-                        obscurePassword
-                            ? Icons.visibility_outlined
-                            : Icons.visibility_off_outlined,
-                      ),
-                    ),
-                  ),
-                ),
-
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: loading
-                        ? null
-                        : () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    const ForgotPasswordPage(),
-                              ),
-                            );
-                          },
-                    child: const Text(
-                      'Forgot Password?',
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 8),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: FilledButton(
-                    onPressed: loading
-                        ? null
-                        : loginWithEmail,
-                    child: loading
-                        ? const SizedBox(
-                            height: 22,
-                            width: 22,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text(
-                            'Login',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: OutlinedButton.icon(
-                    onPressed: loading
-                        ? null
-                        : switchToMobile,
-                    icon: const Icon(
-                      Icons.phone_android,
-                    ),
-                    label: const Text(
-                      'Login with Mobile',
-                    ),
-                  ),
-                ),
-              ] else ...[
-                TextField(
-                  controller: mobileController,
-                  keyboardType: TextInputType.phone,
-                  maxLength: 10,
-                  enabled: !otpMode,
-                  decoration: const InputDecoration(
-                    labelText: 'Mobile Number',
-                    hintText: '10-digit mobile number',
-                    prefixText: '+91 ',
-                    prefixIcon: Icon(
-                      Icons.phone_android_outlined,
-                    ),
+                    labelText: 'Enter OTP',
+                    prefixIcon:
+                        Icon(Icons.password),
                     border: OutlineInputBorder(),
                     counterText: '',
                   ),
                 ),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: 15),
 
-                if (!otpMode)
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: FilledButton.icon(
-                      onPressed: loading
-                          ? null
-                          : sendOtp,
-                      icon: loading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(
-                              Icons.sms_outlined,
-                            ),
-                      label: Text(
-                        loading
-                            ? 'Sending OTP...'
-                            : 'Send OTP',
-                      ),
-                    ),
-                  ),
-
-                if (otpMode) ...[
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      color: Colors.green.withValues(
-                        alpha: 0.08,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.check_circle_outline,
-                          color: Colors.green,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'OTP sent to +91 ${verifiedMobile ?? mobileController.text}',
+                ElevatedButton(
+                  onPressed:
+                      isLoading ? null : loginWithOtp,
+                  child: isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child:
+                              CircularProgressIndicator(
+                            strokeWidth: 2,
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  TextField(
-                    controller: otpController,
-                    keyboardType: TextInputType.number,
-                    maxLength: 6,
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Enter OTP',
-                      hintText: '6-digit OTP',
-                      prefixIcon: Icon(
-                        Icons.password_outlined,
-                      ),
-                      border: OutlineInputBorder(),
-                      counterText: '',
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: FilledButton(
-                      onPressed: loading
-                          ? null
-                          : verifyOtp,
-                      child: loading
-                          ? const SizedBox(
-                              height: 22,
-                              width: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Text(
-                              'Verify OTP',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  TextButton(
-                    onPressed: loading
-                        ? null
-                        : () {
-                            setState(() {
-                              otpMode = false;
-                              verificationId = null;
-                              otpController.clear();
-                            });
-                          },
-                    child: const Text(
-                      'Change Mobile Number',
-                    ),
-                  ),
-                ],
-
-                const SizedBox(height: 12),
-
-                OutlinedButton.icon(
-                  onPressed: loading
-                      ? null
-                      : switchToPassword,
-                  icon: const Icon(
-                    Icons.email_outlined,
-                  ),
-                  label: const Text(
-                    'Login with Password',
-                  ),
+                        )
+                      : const Text('Verify OTP'),
                 ),
-
-                if (kDebugMode && otpMode) ...[
-                  const SizedBox(height: 18),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withValues(
-                        alpha: 0.10,
-                      ),
-                      borderRadius:
-                          BorderRadius.circular(10),
-                    ),
-                    child: const Text(
-                      'DEBUG MODE: Firebase test phone numbers '
-                      'configured in Firebase Console can be used here.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.orange,
-                      ),
-                    ),
-                  ),
-                ],
               ],
 
-              const SizedBox(height: 28),
+              const SizedBox(height: 25),
 
               const Text(
-                'Your login is secured by Firebase Authentication.',
+                'Test Courier: 9111111111 / OTP 911111',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,
-                  color: Colors.grey,
+                ),
+              ),
+
+              const SizedBox(height: 5),
+
+              const Text(
+                'Test Vendor: 9666666666 / OTP 966666',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
                 ),
               ),
             ],
