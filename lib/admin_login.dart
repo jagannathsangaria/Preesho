@@ -19,14 +19,10 @@ class AdminLogin extends StatefulWidget {
 
 class _AdminLoginState extends State<AdminLogin> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore =
-      FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  final TextEditingController _emailController =
-      TextEditingController();
-
-  final TextEditingController _passwordController =
-      TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
 
   bool _loading = false;
   bool _obscurePassword = true;
@@ -47,26 +43,21 @@ class _AdminLoginState extends State<AdminLogin> {
   Future<void> _login() async {
     if (_loading) return;
 
-    final email =
-        _emailController.text.trim().toLowerCase();
-
-    final password =
-        _passwordController.text.trim();
+    final email = _emailController.text.trim().toLowerCase();
+    final password = _passwordController.text.trim();
 
     if (email.isEmpty) {
       _showMessage('Please enter your email address.');
       return;
     }
 
-    if (password.isEmpty) {
-      _showMessage('Please enter password.');
+    if (!email.contains('@')) {
+      _showMessage('Please enter a valid email address.');
       return;
     }
 
-    if (!email.contains('@')) {
-      _showMessage(
-        'Please use the registered email address for login.',
-      );
+    if (password.isEmpty) {
+      _showMessage('Please enter your password.');
       return;
     }
 
@@ -75,12 +66,7 @@ class _AdminLoginState extends State<AdminLogin> {
     });
 
     try {
-      // ========================================================
-      // FIREBASE AUTH
-      // ========================================================
-
-      final credential =
-          await _auth.signInWithEmailAndPassword(
+      final credential = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
@@ -88,21 +74,22 @@ class _AdminLoginState extends State<AdminLogin> {
       final user = credential.user;
 
       if (user == null) {
-        throw Exception('Unable to login.');
+        _showMessage('Login failed. Please try again.');
+        return;
       }
 
-      // ========================================================
+      // ----------------------------------------------------------
       // ADMIN LOGIN
-      // ========================================================
+      // ----------------------------------------------------------
 
       if (_selectedRole == 'admin') {
         await _checkAdmin(user.uid);
         return;
       }
 
-      // ========================================================
-      // USERS DOCUMENT
-      // ========================================================
+      // ----------------------------------------------------------
+      // USER PROFILE
+      // ----------------------------------------------------------
 
       final userDoc = await _firestore
           .collection('users')
@@ -115,34 +102,28 @@ class _AdminLoginState extends State<AdminLogin> {
         _showMessage(
           'Staff profile not found. Please contact Admin.',
         );
-
         return;
       }
 
-      final userData =
-          userDoc.data() ?? {};
+      final userData = userDoc.data() ?? {};
 
-      final roleValue =
-          userData['role'] ?? userData['Role'];
+      final userRole = (
+        userData['role'] ??
+        userData['Role'] ??
+        ''
+      ).toString().trim().toLowerCase();
 
-      final role =
-          roleValue
-              ?.toString()
-              .trim()
-              .toLowerCase();
-
-      // ========================================================
+      // ----------------------------------------------------------
       // COURIER LOGIN
-      // ========================================================
+      // ----------------------------------------------------------
 
       if (_selectedRole == 'courier') {
-        if (role != 'courier') {
+        if (userRole != 'courier') {
           await _auth.signOut();
 
           _showMessage(
             'This account is not registered as a Courier.',
           );
-
           return;
         }
 
@@ -154,18 +135,17 @@ class _AdminLoginState extends State<AdminLogin> {
         return;
       }
 
-      // ========================================================
+      // ----------------------------------------------------------
       // VENDOR LOGIN
-      // ========================================================
+      // ----------------------------------------------------------
 
       if (_selectedRole == 'vendor') {
-        if (role != 'vendor') {
+        if (userRole != 'vendor') {
           await _auth.signOut();
 
           _showMessage(
             'This account is not registered as a Vendor.',
           );
-
           return;
         }
 
@@ -176,69 +156,47 @@ class _AdminLoginState extends State<AdminLogin> {
 
         return;
       }
-
-      await _auth.signOut();
-
-      _showMessage(
-        'Invalid login role.',
-      );
     } on FirebaseAuthException catch (e) {
       String message;
 
       switch (e.code) {
         case 'invalid-credential':
-          message =
-              'Invalid email or password.';
+          message = 'Email or password is incorrect.';
           break;
 
         case 'invalid-email':
-          message =
-              'Please enter a valid email address.';
+          message = 'Please enter a valid email address.';
           break;
 
         case 'user-disabled':
-          message =
-              'This account has been disabled.';
+          message = 'This account has been disabled.';
           break;
 
         case 'user-not-found':
-          message =
-              'Account not found.';
+          message = 'No account found with this email.';
           break;
 
         case 'wrong-password':
-          message =
-              'Incorrect password.';
+          message = 'Incorrect password.';
           break;
 
         case 'too-many-requests':
-          message =
-              'Too many login attempts. Please try again later.';
+          message = 'Too many attempts. Please try again later.';
           break;
 
         case 'network-request-failed':
-          message =
-              'Network error. Please check your internet connection.';
+          message = 'Network error. Please check your internet.';
           break;
 
         default:
-          message =
-              'Login failed. Please try again.';
+          message = e.message ?? 'Login failed. Please try again.';
       }
 
-      if (mounted) {
-        _showMessage(message);
-      }
+      _showMessage(message);
     } catch (e) {
-      debugPrint(
-        'Staff login error: $e',
+      _showMessage(
+        'Something went wrong. Please try again.',
       );
-
-      if (mounted) {
-        _showMessage(
-          'Unable to login. Please try again.',
-        );
-      }
     } finally {
       if (mounted) {
         setState(() {
@@ -261,33 +219,22 @@ class _AdminLoginState extends State<AdminLogin> {
     if (!adminDoc.exists) {
       await _auth.signOut();
 
-      _showMessage(
-        'Admin access denied.',
-      );
-
+      _showMessage('Admin access denied.');
       return;
     }
 
-    final adminData =
-        adminDoc.data() ?? {};
+    final adminData = adminDoc.data() ?? {};
 
-    final roleValue =
-        adminData['role'] ??
-        adminData['Role'];
-
-    final role =
-        roleValue
-            ?.toString()
-            .trim()
-            .toLowerCase();
+    final role = (
+      adminData['role'] ??
+      adminData['Role'] ??
+      ''
+    ).toString().trim().toLowerCase();
 
     if (role != 'admin') {
       await _auth.signOut();
 
-      _showMessage(
-        'Admin access denied.',
-      );
-
+      _showMessage('Admin access denied.');
       return;
     }
 
@@ -309,54 +256,32 @@ class _AdminLoginState extends State<AdminLogin> {
     String uid,
     Map<String, dynamic> userData,
   ) async {
-    // ----------------------------------------------------------
-    // GET COURIER PROFILE
-    // ----------------------------------------------------------
-
     final courierDoc = await _firestore
         .collection('couriers')
         .doc(uid)
         .get();
 
-    Map<String, dynamic> courierData = {};
+    final courierData = courierDoc.exists
+        ? (courierDoc.data() ?? {})
+        : <String, dynamic>{};
 
-    if (courierDoc.exists) {
-      courierData =
-          courierDoc.data() ?? {};
-    }
+    final userStatus = (
+      userData['status'] ?? ''
+    ).toString().trim().toLowerCase();
 
-    // ----------------------------------------------------------
-    // GET STATUS FROM BOTH USERS AND COURIERS
-    // ----------------------------------------------------------
+    final courierStatus = (
+      courierData['status'] ?? ''
+    ).toString().trim().toLowerCase();
 
-    final userStatus =
-        userData['status']
-            ?.toString()
-            .trim()
-            .toLowerCase();
+    final status = courierStatus.isNotEmpty
+        ? courierStatus
+        : userStatus;
 
-    final courierStatus =
-        courierData['status']
-            ?.toString()
-            .trim()
-            .toLowerCase();
-
-    final status =
-        courierStatus ?? userStatus;
-
-    // ----------------------------------------------------------
-    // ROLE
-    // ----------------------------------------------------------
-
-    final courierRole =
-        courierData['role']
-            ?.toString()
-            .trim()
-            .toLowerCase();
-
-    // ----------------------------------------------------------
-    // ACTIVE
-    // ----------------------------------------------------------
+    final courierRole = (
+      courierData['role'] ??
+      courierData['Role'] ??
+      ''
+    ).toString().trim().toLowerCase();
 
     final courierActive =
         courierData['active'] == true;
@@ -364,44 +289,34 @@ class _AdminLoginState extends State<AdminLogin> {
     final userActive =
         userData['active'] == true;
 
-    // ----------------------------------------------------------
-    // ADMIN APPROVAL
-    // ----------------------------------------------------------
-
     final approvedByAdmin =
         courierData['approvedByAdmin'] == true ||
         userData['approvedByAdmin'] == true;
-
-    // ----------------------------------------------------------
-    // DOCUMENTS
-    // ----------------------------------------------------------
 
     final documentsSubmitted =
         courierData['documentsSubmitted'] == true ||
         userData['documentsSubmitted'] == true;
 
-    // ==========================================================
-    // COURIER ROLE CHECK
-    // ==========================================================
+    // ----------------------------------------------------------
+    // If courier document exists, verify role
+    // ----------------------------------------------------------
 
-    if (courierDoc.exists &&
-        courierRole != null &&
-        courierRole != 'courier') {
-      await _auth.signOut();
+    if (courierDoc.exists && courierRole.isNotEmpty) {
+      if (courierRole != 'courier') {
+        await _auth.signOut();
 
-      _showMessage(
-        'Invalid Courier profile.',
-      );
-
-      return;
+        _showMessage(
+          'Courier account verification failed.',
+        );
+        return;
+      }
     }
 
-    // ==========================================================
+    // ----------------------------------------------------------
     // IMPORTANT:
-    // DOCUMENTS NOT SUBMITTED
-    // DO NOT SIGN OUT
-    // OPEN DOCUMENT PAGE
-    // ==========================================================
+    // Pending documents should NOT sign out.
+    // Courier must be able to open document upload page.
+    // ----------------------------------------------------------
 
     if (status == 'pending_documents' ||
         !documentsSubmitted) {
@@ -419,10 +334,9 @@ class _AdminLoginState extends State<AdminLogin> {
       return;
     }
 
-    // ==========================================================
-    // DOCUMENTS SUBMITTED
-    // WAITING FOR ADMIN APPROVAL
-    // ==========================================================
+    // ----------------------------------------------------------
+    // DOCUMENTS SUBMITTED - WAITING FOR ADMIN
+    // ----------------------------------------------------------
 
     if (status == 'pending_approval') {
       if (!mounted) return;
@@ -439,10 +353,9 @@ class _AdminLoginState extends State<AdminLogin> {
       return;
     }
 
-    // ==========================================================
+    // ----------------------------------------------------------
     // REJECTED
-    // OPEN DOCUMENT PAGE FOR CORRECTION / RESUBMISSION
-    // ==========================================================
+    // ----------------------------------------------------------
 
     if (status == 'rejected') {
       if (!mounted) return;
@@ -459,9 +372,9 @@ class _AdminLoginState extends State<AdminLogin> {
       return;
     }
 
-    // ==========================================================
+    // ----------------------------------------------------------
     // SUSPENDED
-    // ==========================================================
+    // ----------------------------------------------------------
 
     if (status == 'suspended') {
       await _auth.signOut();
@@ -469,57 +382,51 @@ class _AdminLoginState extends State<AdminLogin> {
       _showMessage(
         'Courier account is suspended.',
       );
-
       return;
     }
 
-    // ==========================================================
-    // APPROVED CHECK
-    // ==========================================================
+    // ----------------------------------------------------------
+    // STATUS MUST BE APPROVED
+    // ----------------------------------------------------------
 
     if (status != 'approved') {
       await _auth.signOut();
 
       _showMessage(
-        'Courier account is not approved.',
+        'Courier account is not approved yet.',
       );
-
       return;
     }
 
-    // ==========================================================
+    // ----------------------------------------------------------
     // ADMIN APPROVAL CHECK
-    // ==========================================================
+    // ----------------------------------------------------------
 
     if (!approvedByAdmin) {
       await _auth.signOut();
 
       _showMessage(
-        'Courier has not been approved by Admin.',
+        'Courier approval is pending from Admin.',
       );
-
       return;
     }
 
-    // ==========================================================
+    // ----------------------------------------------------------
     // ACTIVE CHECK
-    // ==========================================================
+    // ----------------------------------------------------------
 
-    if (!courierActive ||
-        !userActive) {
+    if (!courierActive || !userActive) {
       await _auth.signOut();
 
       _showMessage(
-        'Courier account is inactive.',
+        'Courier account is currently inactive.',
       );
-
       return;
     }
 
-    // ==========================================================
-    // APPROVED COURIER
-    // OPEN COURIER PANEL
-    // ==========================================================
+    // ----------------------------------------------------------
+    // APPROVED COURIER PANEL
+    // ----------------------------------------------------------
 
     if (!mounted) return;
 
@@ -550,30 +457,24 @@ class _AdminLoginState extends State<AdminLogin> {
       _showMessage(
         'Vendor profile not found. Please contact Admin.',
       );
-
       return;
     }
 
-    final vendorData =
-        vendorDoc.data() ?? {};
+    final vendorData = vendorDoc.data() ?? {};
 
-    final vendorRole =
-        vendorData['role']
-            ?.toString()
-            .trim()
-            .toLowerCase();
+    final vendorRole = (
+      vendorData['role'] ??
+      vendorData['Role'] ??
+      ''
+    ).toString().trim().toLowerCase();
 
-    final userStatus =
-        userData['status']
-            ?.toString()
-            .trim()
-            .toLowerCase();
+    final userStatus = (
+      userData['status'] ?? ''
+    ).toString().trim().toLowerCase();
 
-    final vendorStatus =
-        vendorData['status']
-            ?.toString()
-            .trim()
-            .toLowerCase();
+    final vendorStatus = (
+      vendorData['status'] ?? ''
+    ).toString().trim().toLowerCase();
 
     final userActive =
         userData['active'] == true;
@@ -592,44 +493,78 @@ class _AdminLoginState extends State<AdminLogin> {
       await _auth.signOut();
 
       _showMessage(
-        'Invalid Vendor profile.',
+        'Vendor account verification failed.',
       );
-
       return;
     }
 
     // ----------------------------------------------------------
-    // BOTH USER + VENDOR MUST BE APPROVED
+    // PENDING DOCUMENTS
+    // ----------------------------------------------------------
+
+    if (userStatus == 'pending_documents' ||
+        vendorStatus == 'pending_documents') {
+      await _auth.signOut();
+
+      _showMessage(
+        'Please complete Vendor documents first.',
+      );
+      return;
+    }
+
+    // ----------------------------------------------------------
+    // PENDING APPROVAL
+    // ----------------------------------------------------------
+
+    if (userStatus == 'pending_approval' ||
+        vendorStatus == 'pending_approval') {
+      await _auth.signOut();
+
+      _showMessage(
+        'Vendor documents are under Admin review.',
+      );
+      return;
+    }
+
+    // ----------------------------------------------------------
+    // REJECTED
+    // ----------------------------------------------------------
+
+    if (userStatus == 'rejected' ||
+        vendorStatus == 'rejected') {
+      await _auth.signOut();
+
+      _showMessage(
+        'Vendor account/documents were rejected by Admin.',
+      );
+      return;
+    }
+
+    // ----------------------------------------------------------
+    // SUSPENDED
+    // ----------------------------------------------------------
+
+    if (userStatus == 'suspended' ||
+        vendorStatus == 'suspended') {
+      await _auth.signOut();
+
+      _showMessage(
+        'Vendor account is suspended.',
+      );
+      return;
+    }
+
+    // ----------------------------------------------------------
+    // APPROVED STATUS CHECK
     // ----------------------------------------------------------
 
     if (userStatus != 'approved' ||
         vendorStatus != 'approved') {
       await _auth.signOut();
 
-      String message;
-
-      if (userStatus == 'pending_documents' ||
-          vendorStatus == 'pending_documents') {
-        message =
-            'Please complete Vendor documents first.';
-      } else if (userStatus == 'pending_approval' ||
-          vendorStatus == 'pending_approval') {
-        message =
-            'Vendor documents are under Admin review.';
-      } else if (userStatus == 'rejected' ||
-          vendorStatus == 'rejected') {
-        message =
-            'Vendor account/documents were rejected by Admin.';
-      } else if (userStatus == 'suspended' ||
-          vendorStatus == 'suspended') {
-        message =
-            'Vendor account is suspended.';
-      } else {
-        message =
-            'Vendor account is not approved.';
-      }
-
-      _showMessage(message);
+      _showMessage(
+        'Vendor account is not approved.',
+      );
       return;
     }
 
@@ -641,29 +576,26 @@ class _AdminLoginState extends State<AdminLogin> {
       await _auth.signOut();
 
       _showMessage(
-        'Vendor has not been approved by Admin.',
+        'Vendor approval is pending from Admin.',
       );
-
       return;
     }
 
     // ----------------------------------------------------------
-    // BOTH USER + VENDOR MUST BE ACTIVE
+    // ACTIVE CHECK
     // ----------------------------------------------------------
 
-    if (!userActive ||
-        !vendorActive) {
+    if (!userActive || !vendorActive) {
       await _auth.signOut();
 
       _showMessage(
-        'Vendor account is inactive.',
+        'Vendor account is currently inactive.',
       );
-
       return;
     }
 
     // ----------------------------------------------------------
-    // OPEN VENDOR PANEL
+    // VENDOR PANEL
     // ----------------------------------------------------------
 
     if (!mounted) return;
@@ -677,7 +609,7 @@ class _AdminLoginState extends State<AdminLogin> {
   }
 
   // ============================================================
-  // FORGOT PASSWORD
+  // NAVIGATION
   // ============================================================
 
   void _openForgotPassword() {
@@ -689,30 +621,20 @@ class _AdminLoginState extends State<AdminLogin> {
     );
   }
 
-  // ============================================================
-  // COURIER REGISTRATION
-  // ============================================================
-
   void _openCourierRegistration() {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            const CourierRegistrationPage(),
+        builder: (_) => const CourierRegistrationPage(),
       ),
     );
   }
-
-  // ============================================================
-  // VENDOR REGISTRATION
-  // ============================================================
 
   void _openVendorRegistration() {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            const VendorRegistrationPage(),
+        builder: (_) => const VendorRegistrationPage(),
       ),
     );
   }
@@ -725,19 +647,21 @@ class _AdminLoginState extends State<AdminLogin> {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context)
-        .hideCurrentSnackBar();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior:
-            SnackBarBehavior.floating,
-      ),
-    );
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+      );
   }
 
   // ============================================================
-  // ROLE NAME
+  // ROLE TITLE
   // ============================================================
 
   String get _roleTitle {
@@ -753,413 +677,476 @@ class _AdminLoginState extends State<AdminLogin> {
     }
   }
 
+  String get _roleSubtitle {
+    switch (_selectedRole) {
+      case 'courier':
+        return 'Login to manage deliveries and orders';
+
+      case 'vendor':
+        return 'Login to manage your products and orders';
+
+      default:
+        return 'Secure access to Preesho administration';
+    }
+  }
+
+  IconData get _roleIcon {
+    switch (_selectedRole) {
+      case 'courier':
+        return Icons.delivery_dining_rounded;
+
+      case 'vendor':
+        return Icons.storefront_rounded;
+
+      default:
+        return Icons.admin_panel_settings_rounded;
+    }
+  }
+
   // ============================================================
-  // BUILD
+  // UI
   // ============================================================
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF7F8FC),
       appBar: AppBar(
-        title: Text(
-          _roleTitle,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
+        title: const Text(
+          'Preesho',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
           ),
         ),
+        centerTitle: true,
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
       ),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding:
-                const EdgeInsets.all(24),
+            padding: const EdgeInsets.fromLTRB(
+              20,
+              16,
+              20,
+              32,
+            ),
             child: ConstrainedBox(
-              constraints:
-                  const BoxConstraints(
-                maxWidth: 450,
+              constraints: const BoxConstraints(
+                maxWidth: 460,
               ),
-              child: Card(
-                elevation: 3,
-                child: Padding(
-                  padding:
-                      const EdgeInsets.all(24),
-                  child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.stretch,
-                    children: [
-                      // ==================================================
-                      // ICON
-                      // ==================================================
+              child: Column(
+                children: [
+                  // ------------------------------------------------
+                  // TOP ICON
+                  // ------------------------------------------------
 
-                      CircleAvatar(
-                        radius: 38,
-                        child: Icon(
-                          _selectedRole ==
-                                  'courier'
-                              ? Icons
-                                  .delivery_dining
-                              : _selectedRole ==
-                                      'vendor'
-                                  ? Icons
-                                      .storefront_outlined
-                                  : Icons
-                                      .admin_panel_settings_outlined,
-                          size: 42,
+                  Container(
+                    width: 82,
+                    height: 82,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(26),
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Color(0xFF111827),
+                          Color(0xFF374151),
+                        ],
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          blurRadius: 24,
+                          offset: const Offset(0, 10),
+                          color: Colors.black.withOpacity(0.12),
                         ),
-                      ),
+                      ],
+                    ),
+                    child: Icon(
+                      _roleIcon,
+                      color: Colors.white,
+                      size: 40,
+                    ),
+                  ),
 
-                      const SizedBox(
-                        height: 18,
-                      ),
+                  const SizedBox(height: 20),
 
-                      Text(
-                        _roleTitle,
-                        textAlign:
-                            TextAlign.center,
-                        style:
-                            const TextStyle(
-                          fontSize: 24,
-                          fontWeight:
-                              FontWeight.bold,
+                  // ------------------------------------------------
+                  // TITLE
+                  // ------------------------------------------------
+
+                  Text(
+                    _roleTitle,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 29,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.7,
+                    ),
+                  ),
+
+                  const SizedBox(height: 7),
+
+                  Text(
+                    _roleSubtitle,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey.shade600,
+                      height: 1.4,
+                    ),
+                  ),
+
+                  const SizedBox(height: 26),
+
+                  // ------------------------------------------------
+                  // LOGIN CARD
+                  // ------------------------------------------------
+
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(26),
+                      border: Border.all(
+                        color: Colors.grey.shade200,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          blurRadius: 30,
+                          offset: const Offset(0, 12),
+                          color: Colors.black.withOpacity(0.06),
                         ),
-                      ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment:
+                          CrossAxisAlignment.stretch,
+                      children: [
+                        // ------------------------------------------
+                        // ROLE
+                        // ------------------------------------------
 
-                      const SizedBox(
-                        height: 8,
-                      ),
-
-                      const Text(
-                        'Preesho Staff Access',
-                        textAlign:
-                            TextAlign.center,
-                        style:
-                            TextStyle(
-                          color: Colors.grey,
-                        ),
-                      ),
-
-                      const SizedBox(
-                        height: 28,
-                      ),
-
-                      // ==================================================
-                      // ROLE DROPDOWN
-                      // ==================================================
-
-                      DropdownButtonFormField<String>(
-                        value:
-                            _selectedRole,
-                        decoration:
-                            const InputDecoration(
-                          labelText:
-                              'Login Type',
-                          prefixIcon:
-                              Icon(
-                            Icons
-                                .manage_accounts_outlined,
-                          ),
-                          border:
-                              OutlineInputBorder(),
-                        ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'admin',
-                            child: Text(
-                              'Admin Login',
+                        DropdownButtonFormField<String>(
+                          value: _selectedRole,
+                          decoration: InputDecoration(
+                            labelText: 'Login As',
+                            prefixIcon: const Icon(
+                              Icons.manage_accounts_rounded,
+                            ),
+                            filled: true,
+                            fillColor: const Color(0xFFF8F9FC),
+                            border: OutlineInputBorder(
+                              borderRadius:
+                                  BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
                             ),
                           ),
-                          DropdownMenuItem(
-                            value: 'vendor',
-                            child: Text(
-                              'Vendor Login',
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'admin',
+                              child: Text('Admin'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'vendor',
+                              child: Text('Vendor'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'courier',
+                              child: Text('Courier'),
+                            ),
+                          ],
+                          onChanged: _loading
+                              ? null
+                              : (value) {
+                                  if (value == null) return;
+
+                                  setState(() {
+                                    _selectedRole = value;
+                                  });
+                                },
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // ------------------------------------------
+                        // EMAIL
+                        // ------------------------------------------
+
+                        TextField(
+                          controller: _emailController,
+                          keyboardType:
+                              TextInputType.emailAddress,
+                          textInputAction:
+                              TextInputAction.next,
+                          enabled: !_loading,
+                          decoration: InputDecoration(
+                            labelText: 'Email Address',
+                            hintText: 'Enter your email',
+                            prefixIcon: const Icon(
+                              Icons.email_outlined,
+                            ),
+                            filled: true,
+                            fillColor:
+                                const Color(0xFFF8F9FC),
+                            border: OutlineInputBorder(
+                              borderRadius:
+                                  BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
                             ),
                           ),
-                          DropdownMenuItem(
-                            value: 'courier',
-                            child: Text(
-                              'Courier Login',
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // ------------------------------------------
+                        // PASSWORD
+                        // ------------------------------------------
+
+                        TextField(
+                          controller: _passwordController,
+                          obscureText: _obscurePassword,
+                          enabled: !_loading,
+                          textInputAction:
+                              TextInputAction.done,
+                          onSubmitted: (_) => _login(),
+                          decoration: InputDecoration(
+                            labelText: 'Password',
+                            hintText: 'Enter your password',
+                            prefixIcon: const Icon(
+                              Icons.lock_outline_rounded,
+                            ),
+                            suffixIcon: IconButton(
+                              onPressed: () {
+                                setState(() {
+                                  _obscurePassword =
+                                      !_obscurePassword;
+                                });
+                              },
+                              icon: Icon(
+                                _obscurePassword
+                                    ? Icons.visibility_outlined
+                                    : Icons
+                                        .visibility_off_outlined,
+                              ),
+                            ),
+                            filled: true,
+                            fillColor:
+                                const Color(0xFFF8F9FC),
+                            border: OutlineInputBorder(
+                              borderRadius:
+                                  BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 6),
+
+                        // ------------------------------------------
+                        // FORGOT PASSWORD
+                        // ------------------------------------------
+
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: _loading
+                                ? null
+                                : _openForgotPassword,
+                            child: const Text(
+                              'Forgot Password?',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        // ------------------------------------------
+                        // LOGIN BUTTON
+                        // ------------------------------------------
+
+                        SizedBox(
+                          height: 54,
+                          child: FilledButton(
+                            onPressed:
+                                _loading ? null : _login,
+                            style: FilledButton.styleFrom(
+                              backgroundColor:
+                                  const Color(0xFF111827),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(16),
+                              ),
+                            ),
+                            child: _loading
+                                ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child:
+                                        CircularProgressIndicator(
+                                      strokeWidth: 2.5,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.login_rounded,
+                                      ),
+                                      SizedBox(width: 10),
+                                      Text(
+                                        'Login',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight:
+                                              FontWeight.w800,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                          ),
+                        ),
+
+                        // ------------------------------------------
+                        // REGISTRATION
+                        // ------------------------------------------
+
+                        if (_selectedRole == 'vendor') ...[
+                          const SizedBox(height: 14),
+                          OutlinedButton.icon(
+                            onPressed: _loading
+                                ? null
+                                : _openVendorRegistration,
+                            icon: const Icon(
+                              Icons.storefront_rounded,
+                            ),
+                            label: const Text(
+                              'Register as Vendor',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              minimumSize:
+                                  const Size.fromHeight(52),
+                              shape: RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(16),
+                              ),
                             ),
                           ),
                         ],
-                        onChanged:
-                            _loading
+
+                        if (_selectedRole == 'courier') ...[
+                          const SizedBox(height: 14),
+                          OutlinedButton.icon(
+                            onPressed: _loading
                                 ? null
-                                : (value) {
-                                    if (value ==
-                                        null) {
-                                      return;
-                                    }
-
-                                    setState(() {
-                                      _selectedRole =
-                                          value;
-                                    });
-                                  },
-                      ),
-
-                      const SizedBox(
-                        height: 16,
-                      ),
-
-                      // ==================================================
-                      // EMAIL
-                      // ==================================================
-
-                      TextField(
-                        controller:
-                            _emailController,
-                        keyboardType:
-                            TextInputType
-                                .emailAddress,
-                        textInputAction:
-                            TextInputAction.next,
-                        decoration:
-                            const InputDecoration(
-                          labelText:
-                              'Email Address',
-                          hintText:
-                              'Enter registered email',
-                          prefixIcon:
-                              Icon(
-                            Icons
-                                .email_outlined,
-                          ),
-                          border:
-                              OutlineInputBorder(),
-                        ),
-                      ),
-
-                      const SizedBox(
-                        height: 16,
-                      ),
-
-                      // ==================================================
-                      // PASSWORD
-                      // ==================================================
-
-                      TextField(
-                        controller:
-                            _passwordController,
-                        obscureText:
-                            _obscurePassword,
-                        textInputAction:
-                            TextInputAction.done,
-                        onSubmitted: (_) {
-                          _login();
-                        },
-                        decoration:
-                            InputDecoration(
-                          labelText:
-                              'Password',
-                          hintText:
-                              'Enter password',
-                          prefixIcon:
-                              const Icon(
-                            Icons.lock_outline,
-                          ),
-                          suffixIcon:
-                              IconButton(
-                            onPressed: () {
-                              setState(() {
-                                _obscurePassword =
-                                    !_obscurePassword;
-                              });
-                            },
-                            icon: Icon(
-                              _obscurePassword
-                                  ? Icons
-                                      .visibility_outlined
-                                  : Icons
-                                      .visibility_off_outlined,
+                                : _openCourierRegistration,
+                            icon: const Icon(
+                              Icons.delivery_dining_rounded,
+                            ),
+                            label: const Text(
+                              'Register as Courier',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              minimumSize:
+                                  const Size.fromHeight(52),
+                              shape: RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(16),
+                              ),
                             ),
                           ),
-                          border:
-                              const OutlineInputBorder(),
-                        ),
-                      ),
-
-                      const SizedBox(
-                        height: 10,
-                      ),
-
-                      // ==================================================
-                      // FORGOT PASSWORD
-                      // ==================================================
-
-                      Align(
-                        alignment:
-                            Alignment.centerRight,
-                        child:
-                            TextButton(
-                          onPressed:
-                              _loading
-                                  ? null
-                                  : _openForgotPassword,
-                          child:
-                              const Text(
-                            'Forgot Password?',
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(
-                        height: 8,
-                      ),
-
-                      // ==================================================
-                      // LOGIN BUTTON
-                      // ==================================================
-
-                      SizedBox(
-                        height: 52,
-                        child:
-                            FilledButton(
-                          onPressed:
-                              _loading
-                                  ? null
-                                  : _login,
-                          child:
-                              _loading
-                                  ? const SizedBox(
-                                      width: 24,
-                                      height: 24,
-                                      child:
-                                          CircularProgressIndicator(
-                                        strokeWidth:
-                                            2.5,
-                                      ),
-                                    )
-                                  : const Text(
-                                      'Login',
-                                      style:
-                                          TextStyle(
-                                        fontSize:
-                                            16,
-                                        fontWeight:
-                                            FontWeight.bold,
-                                      ),
-                                    ),
-                        ),
-                      ),
-
-                      // ==================================================
-                      // VENDOR REGISTRATION
-                      // ==================================================
-
-                      if (_selectedRole ==
-                          'vendor') ...[
-                        const SizedBox(
-                          height: 18,
-                        ),
-                        const Divider(),
-                        const SizedBox(
-                          height: 8,
-                        ),
-                        const Text(
-                          'New Vendor?',
-                          textAlign:
-                              TextAlign.center,
-                          style:
-                              TextStyle(
-                            color:
-                                Colors.grey,
-                          ),
-                        ),
-                        const SizedBox(
-                          height: 6,
-                        ),
-                        OutlinedButton.icon(
-                          onPressed:
-                              _loading
-                                  ? null
-                                  : _openVendorRegistration,
-                          icon:
-                              const Icon(
-                            Icons
-                                .storefront_outlined,
-                          ),
-                          label:
-                              const Text(
-                            'Register as Vendor',
-                            style:
-                                TextStyle(
-                              fontWeight:
-                                  FontWeight.bold,
-                            ),
-                          ),
-                        ),
+                        ],
                       ],
-
-                      // ==================================================
-                      // COURIER REGISTRATION
-                      // ==================================================
-
-                      if (_selectedRole ==
-                          'courier') ...[
-                        const SizedBox(
-                          height: 18,
-                        ),
-                        const Divider(),
-                        const SizedBox(
-                          height: 8,
-                        ),
-                        const Text(
-                          'New Courier?',
-                          textAlign:
-                              TextAlign.center,
-                          style:
-                              TextStyle(
-                            color:
-                                Colors.grey,
-                          ),
-                        ),
-                        const SizedBox(
-                          height: 6,
-                        ),
-                        OutlinedButton.icon(
-                          onPressed:
-                              _loading
-                                  ? null
-                                  : _openCourierRegistration,
-                          icon:
-                              const Icon(
-                            Icons
-                                .delivery_dining,
-                          ),
-                          label:
-                              const Text(
-                            'Register as Courier',
-                            style:
-                                TextStyle(
-                              fontWeight:
-                                  FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-
-                      const SizedBox(
-                        height: 18,
-                      ),
-
-                      // ==================================================
-                      // SECURITY MESSAGE
-                      // ==================================================
-
-                      const Text(
-                        'Vendor and Courier accounts require Admin approval before access is allowed.',
-                        textAlign:
-                            TextAlign.center,
-                        style:
-                            TextStyle(
-                          fontSize: 12,
-                          color:
-                              Colors.grey,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+
+                  const SizedBox(height: 18),
+
+                  // ------------------------------------------------
+                  // SECURITY INFORMATION
+                  // ------------------------------------------------
+
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.grey.shade200,
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius:
+                                BorderRadius.circular(13),
+                          ),
+                          child: const Icon(
+                            Icons.verified_user_outlined,
+                            color: Color(0xFF111827),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Secure Login',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Your account information is protected '
+                                'using Firebase Authentication.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  Text(
+                    'Preesho • Secure Staff Portal',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade500,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
