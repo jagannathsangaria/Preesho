@@ -40,16 +40,34 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   // ============================================================
+  // STATUS NORMALIZER
+  // ============================================================
+
+  String normalizeStatus(dynamic value) {
+    return value
+            ?.toString()
+            .trim()
+            .toLowerCase()
+            .replaceAll(' ', '_') ??
+        '';
+  }
+
+  // ============================================================
   // MESSAGE
   // ============================================================
 
-  void showMessage(String message) {
+  void showMessage(
+    String message, {
+    bool isError = false,
+  }) {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
         duration: const Duration(seconds: 4),
+        backgroundColor:
+            isError ? Colors.red : null,
       ),
     );
   }
@@ -58,7 +76,9 @@ class _LoginPageState extends State<LoginPage> {
   // OPEN COURIER DOCUMENT PAGE
   // ============================================================
 
-  Future<void> openCourierDocuments(String uid) async {
+  Future<void> openCourierDocuments(
+    String uid,
+  ) async {
     if (!mounted) return;
 
     await Navigator.push(
@@ -74,9 +94,8 @@ class _LoginPageState extends State<LoginPage> {
   // ============================================================
   // RECOVER COURIER PROFILE
   //
-  // Agar Firebase Auth account hai lekin Firestore courier
-  // profile missing hai, to users profile se courier profile
-  // dobara create/restore karne ki koshish.
+  // Auth account मौजूद है लेकिन couriers/{uid} missing है,
+  // तो users/{uid} से courier profile restore की जाएगी.
   // ============================================================
 
   Future<Map<String, dynamic>?> recoverCourierProfile(
@@ -87,40 +106,87 @@ class _LoginPageState extends State<LoginPage> {
       final courierRef =
           _firestore.collection('couriers').doc(user.uid);
 
-      final courierSnapshot = await courierRef.get();
+      final courierSnapshot =
+          await courierRef.get();
 
+      // Existing courier document
       if (courierSnapshot.exists) {
         return courierSnapshot.data();
       }
 
-      final name =
-          userData['name']?.toString().trim().isNotEmpty == true
-              ? userData['name'].toString().trim()
-              : (user.displayName ?? '').trim();
+      // ----------------------------------------------------------
+      // DATA RECOVERY
+      // ----------------------------------------------------------
 
-      final phone =
-          userData['phone']?.toString().trim().isNotEmpty == true
-              ? userData['phone'].toString().trim()
-              : (user.phoneNumber ?? '').replaceFirst('+91', '');
+      String name =
+          userData['name']
+                  ?.toString()
+                  .trim() ??
+              '';
 
-      final email =
-          userData['email']?.toString().trim().isNotEmpty == true
-              ? userData['email'].toString().trim()
-              : (user.email ?? '');
+      String phone =
+          userData['phone']
+                  ?.toString()
+                  .trim() ??
+              '';
 
-      final courierData = <String, dynamic>{
+      String email =
+          userData['email']
+                  ?.toString()
+                  .trim() ??
+              '';
+
+      if (name.isEmpty) {
+        name =
+            (user.displayName ?? '').trim();
+      }
+
+      if (phone.isEmpty) {
+        phone =
+            (user.phoneNumber ?? '')
+                .replaceFirst('+91', '')
+                .trim();
+      }
+
+      if (email.isEmpty) {
+        email =
+            (user.email ?? '').trim();
+      }
+
+      final existingStatus =
+          normalizeStatus(
+        userData['status'] ??
+            userData['registrationStatus'],
+      );
+
+      final status =
+          existingStatus.isEmpty
+              ? 'pending_documents'
+              : existingStatus;
+
+      final courierData =
+          <String, dynamic>{
         'uid': user.uid,
         'name': name,
         'phone': phone,
         'email': email,
         'role': 'courier',
-        'status': 'pending_documents',
-        'active': false,
-        'documentsSubmitted': false,
-        'approvedByAdmin': false,
+        'status': status,
+        'registrationStatus':
+            status,
+        'active':
+            userData['active'] == true,
+        'documentsSubmitted':
+            userData['documentsSubmitted'] ==
+                true,
+        'approvedByAdmin':
+            userData['approvedByAdmin'] ==
+                true,
         'documents': {},
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
+        'createdAt':
+            FieldValue.serverTimestamp(),
+        'updatedAt':
+            FieldValue.serverTimestamp(),
       };
 
       await courierRef.set(
@@ -142,9 +208,18 @@ class _LoginPageState extends State<LoginPage> {
 
   // ============================================================
   // COURIER LOGIN ROUTING
+  //
+  // RETURN VALUE:
+  //
+  // true  = courier flow handled, normal login continue नहीं करना
+  //
+  // false = fully approved courier, caller Courier Panel flow
+  //         continue कर सकता है.
   // ============================================================
 
-  Future<bool> handleCourierAfterLogin(User user) async {
+  Future<bool> handleCourierAfterLogin(
+    User user,
+  ) async {
     try {
       // ----------------------------------------------------------
       // USERS PROFILE
@@ -153,24 +228,25 @@ class _LoginPageState extends State<LoginPage> {
       final userRef =
           _firestore.collection('users').doc(user.uid);
 
-      final userSnapshot = await userRef.get();
+      final userSnapshot =
+          await userRef.get();
 
-      Map<String, dynamic> userData = {};
+      Map<String, dynamic> userData =
+          {};
 
       if (userSnapshot.exists) {
-        userData = userSnapshot.data() ?? {};
+        userData =
+            userSnapshot.data() ?? {};
       }
 
       final userRole =
-          userData['role']?.toString().toLowerCase() ?? '';
+          userData['role']
+                  ?.toString()
+                  .trim()
+                  .toLowerCase() ??
+              '';
 
-      // ----------------------------------------------------------
-      // IMPORTANT
-      //
-      // Sirf courier role wale user ko courier flow mein bhejna.
-      // Customer/vendor ko normal login flow milega.
-      // ----------------------------------------------------------
-
+      // Not a courier
       if (userRole != 'courier') {
         return false;
       }
@@ -181,16 +257,16 @@ class _LoginPageState extends State<LoginPage> {
 
       Map<String, dynamic>? courierData;
 
-      final courierSnapshot = await _firestore
-          .collection('couriers')
-          .doc(user.uid)
-          .get();
+      final courierSnapshot =
+          await _firestore
+              .collection('couriers')
+              .doc(user.uid)
+              .get();
 
       if (courierSnapshot.exists) {
-        courierData = courierSnapshot.data();
+        courierData =
+            courierSnapshot.data();
       } else {
-        // Courier Auth account hai, lekin courier document
-        // missing hai. Profile recover karne ki koshish.
         courierData =
             await recoverCourierProfile(
           user,
@@ -199,64 +275,74 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       // ----------------------------------------------------------
-      // PROFILE RECOVERY FAILED
+      // PROFILE NOT FOUND
       // ----------------------------------------------------------
 
       if (courierData == null) {
         showMessage(
           'Courier profile nahi mil rahi. '
           'Please admin se contact karein.',
+          isError: true,
         );
 
         return true;
       }
 
       // ----------------------------------------------------------
-      // BASIC DATA
+      // DATA
       // ----------------------------------------------------------
 
       final status =
-          courierData['status']
-                  ?.toString()
-                  .toLowerCase() ??
-              'pending_documents';
+          normalizeStatus(
+        courierData['status'] ??
+            courierData['registrationStatus'] ??
+            userData['status'] ??
+            userData['registrationStatus'] ??
+            'pending_documents',
+      );
 
       final documentsSubmitted =
-          courierData['documentsSubmitted'] == true;
+          courierData['documentsSubmitted'] ==
+              true;
 
       final active =
           courierData['active'] == true;
 
       final approvedByAdmin =
-          courierData['approvedByAdmin'] == true;
+          courierData['approvedByAdmin'] ==
+              true;
 
       // ==========================================================
-      // 1. DOCUMENTS NOT SUBMITTED
+      // 1. DOCUMENTS NOT COMPLETE
       // ==========================================================
 
       if (status == 'pending_documents' ||
           !documentsSubmitted) {
         showMessage(
           'Registration complete hai. '
-          'Ab documents complete karein.',
+          'Ab required documents complete karein.',
         );
 
-        await openCourierDocuments(user.uid);
+        await openCourierDocuments(
+          user.uid,
+        );
 
         return true;
       }
 
       // ==========================================================
-      // 2. ADMIN APPROVAL PENDING
+      // 2. APPROVAL PENDING
       // ==========================================================
 
       if (status == 'pending_approval') {
         showMessage(
-          'Aapke documents submit ho gaye hain. '
+          'Documents submit ho gaye hain. '
           'Admin approval ka wait karein.',
         );
 
-        await openCourierDocuments(user.uid);
+        await openCourierDocuments(
+          user.uid,
+        );
 
         return true;
       }
@@ -275,15 +361,19 @@ class _LoginPageState extends State<LoginPage> {
         if (reason.isNotEmpty) {
           showMessage(
             'Documents reject hue hain: $reason',
+            isError: true,
           );
         } else {
           showMessage(
             'Documents reject hue hain. '
             'Documents check karke dobara submit karein.',
+            isError: true,
           );
         }
 
-        await openCourierDocuments(user.uid);
+        await openCourierDocuments(
+          user.uid,
+        );
 
         return true;
       }
@@ -291,8 +381,7 @@ class _LoginPageState extends State<LoginPage> {
       // ==========================================================
       // 4. FULLY APPROVED
       //
-      // Ye ONLY condition hai jisme courier ko Courier Panel
-      // mein jaane ki permission milegi.
+      // ONLY THIS CONDITION ALLOWS COURIER PANEL
       // ==========================================================
 
       if (status == 'approved' &&
@@ -302,13 +391,17 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       // ==========================================================
-      // 5. APPROVED NAHI HAI
+      // 5. APPROVED BUT NOT ACTIVE
       // ==========================================================
 
-      if (status == 'approved' &&
-          (!active || !approvedByAdmin)) {
+      if (status == 'approved') {
         showMessage(
-          'Courier account abhi active/approved nahi hai.',
+          'Courier approved hai, lekin account abhi active nahi hai.',
+          isError: true,
+        );
+
+        await openCourierDocuments(
+          user.uid,
         );
 
         return true;
@@ -322,7 +415,9 @@ class _LoginPageState extends State<LoginPage> {
         'Courier account verification pending hai.',
       );
 
-      await openCourierDocuments(user.uid);
+      await openCourierDocuments(
+        user.uid,
+      );
 
       return true;
     } catch (e) {
@@ -335,6 +430,7 @@ class _LoginPageState extends State<LoginPage> {
       showMessage(
         'Courier account verify nahi ho paya. '
         'Please try again.',
+        isError: true,
       );
 
       return true;
@@ -343,6 +439,9 @@ class _LoginPageState extends State<LoginPage> {
 
   // ============================================================
   // SAVE USER PROFILE
+  //
+  // Existing courier/vendor/customer profile ko overwrite नहीं
+  // किया जाएगा.
   // ============================================================
 
   Future<void> saveUserProfile(
@@ -353,9 +452,13 @@ class _LoginPageState extends State<LoginPage> {
       final userRef =
           _firestore.collection('users').doc(user.uid);
 
-      final snapshot = await userRef.get();
+      final snapshot =
+          await userRef.get();
 
-      // Existing profile ko overwrite nahi karna.
+      // ----------------------------------------------------------
+      // NEW USER
+      // ----------------------------------------------------------
+
       if (!snapshot.exists) {
         await userRef.set({
           'uid': user.uid,
@@ -363,6 +466,8 @@ class _LoginPageState extends State<LoginPage> {
           'phone': user.phoneNumber ?? '',
           'role': 'customer',
           'status': 'approved',
+          'registrationStatus':
+              'approved',
           'active': true,
           'createdAt':
               FieldValue.serverTimestamp(),
@@ -372,8 +477,20 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      // Existing courier/vendor/customer profile ko
-      // modify nahi karna.
+      // ----------------------------------------------------------
+      // EXISTING USER
+      // Do not change role/status.
+      // ----------------------------------------------------------
+
+      await userRef.set(
+        {
+          'uid': user.uid,
+          'updatedAt':
+              FieldValue.serverTimestamp(),
+          'loginType': loginType,
+        },
+        SetOptions(merge: true),
+      );
     } catch (e) {
       if (kDebugMode) {
         debugPrint(
@@ -398,9 +515,12 @@ class _LoginPageState extends State<LoginPage> {
         password.isEmpty) {
       showMessage(
         'Email aur password enter karein.',
+        isError: true,
       );
       return;
     }
+
+    FocusScope.of(context).unfocus();
 
     setState(() {
       isLoading = true;
@@ -413,21 +533,26 @@ class _LoginPageState extends State<LoginPage> {
         password: password,
       );
 
-      final user = credential.user;
+      final user =
+          credential.user;
 
       if (user == null) {
-        showMessage('Login failed.');
+        showMessage(
+          'Login failed.',
+          isError: true,
+        );
         return;
       }
 
       // ----------------------------------------------------------
-      // USER PROFILE CHECK
+      // USER PROFILE
       // ----------------------------------------------------------
 
-      final userSnapshot = await _firestore
-          .collection('users')
-          .doc(user.uid)
-          .get();
+      final userSnapshot =
+          await _firestore
+              .collection('users')
+              .doc(user.uid)
+              .get();
 
       final userData =
           userSnapshot.data() ?? {};
@@ -435,25 +560,28 @@ class _LoginPageState extends State<LoginPage> {
       final role =
           userData['role']
                   ?.toString()
+                  .trim()
                   .toLowerCase() ??
               '';
 
-      // ----------------------------------------------------------
+      // ==========================================================
       // COURIER
-      //
-      // Courier ko customer profile se overwrite nahi karna.
-      // ----------------------------------------------------------
+      // ==========================================================
 
       if (role == 'courier') {
         final handled =
-            await handleCourierAfterLogin(user);
+            await handleCourierAfterLogin(
+          user,
+        );
 
         if (handled) {
           return;
         }
 
-        // Approved courier.
-        // Existing app navigation ko continue karne dena.
+        // --------------------------------------------------------
+        // Fully approved + active courier
+        // --------------------------------------------------------
+
         if (!mounted) return;
 
         Navigator.pop(
@@ -464,9 +592,9 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      // ----------------------------------------------------------
-      // OTHER USERS
-      // ----------------------------------------------------------
+      // ==========================================================
+      // CUSTOMER / VENDOR / OTHER
+      // ==========================================================
 
       await saveUserProfile(
         user,
@@ -519,9 +647,17 @@ class _LoginPageState extends State<LoginPage> {
           message =
               'Email/password login Firebase mein enabled nahi hai.';
           break;
+
+        case 'network-request-failed':
+          message =
+              'Internet connection check karein.';
+          break;
       }
 
-      showMessage(message);
+      showMessage(
+        message,
+        isError: true,
+      );
     } catch (e) {
       if (kDebugMode) {
         debugPrint(
@@ -531,6 +667,7 @@ class _LoginPageState extends State<LoginPage> {
 
       showMessage(
         'Something went wrong. Please try again.',
+        isError: true,
       );
     } finally {
       if (mounted) {
@@ -553,7 +690,28 @@ class _LoginPageState extends State<LoginPage> {
         mobile.length != 10) {
       showMessage(
         '10 digit mobile number enter karein.',
+        isError: true,
       );
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+
+    // ----------------------------------------------------------
+    // TEST NUMBERS
+    // ----------------------------------------------------------
+
+    if (mobile == '9111111111' ||
+        mobile == '9666666666') {
+      setState(() {
+        otpSent = true;
+        isLoading = false;
+      });
+
+      showMessage(
+        'Test OTP available hai.',
+      );
+
       return;
     }
 
@@ -569,11 +727,13 @@ class _LoginPageState extends State<LoginPage> {
             (PhoneAuthCredential credential) async {
           try {
             final result =
-                await _auth.signInWithCredential(
+                await _auth
+                    .signInWithCredential(
               credential,
             );
 
-            final user = result.user;
+            final user =
+                result.user;
 
             if (user != null) {
               await saveMobileAndFinish(
@@ -590,6 +750,7 @@ class _LoginPageState extends State<LoginPage> {
 
             showMessage(
               'Automatic verification failed.',
+              isError: true,
             );
           }
         },
@@ -605,6 +766,7 @@ class _LoginPageState extends State<LoginPage> {
           showMessage(
             e.message ??
                 'OTP send nahi ho paya.',
+            isError: true,
           );
         },
 
@@ -655,6 +817,7 @@ class _LoginPageState extends State<LoginPage> {
 
       showMessage(
         'OTP send nahi ho paya.',
+        isError: true,
       );
     }
   }
@@ -671,6 +834,7 @@ class _LoginPageState extends State<LoginPage> {
         otp.length != 6) {
       showMessage(
         '6 digit OTP enter karein.',
+        isError: true,
       );
       return;
     }
@@ -679,9 +843,12 @@ class _LoginPageState extends State<LoginPage> {
         verificationId!.isEmpty) {
       showMessage(
         'Pehle OTP send karein.',
+        isError: true,
       );
       return;
     }
+
+    FocusScope.of(context).unfocus();
 
     setState(() {
       isLoading = true;
@@ -700,11 +867,13 @@ class _LoginPageState extends State<LoginPage> {
         credential,
       );
 
-      final user = result.user;
+      final user =
+          result.user;
 
       if (user == null) {
         showMessage(
           'OTP login failed.',
+          isError: true,
         );
         return;
       }
@@ -724,8 +893,7 @@ class _LoginPageState extends State<LoginPage> {
       } else if (e.code ==
           'session-expired') {
         message =
-            'OTP expire ho gaya. '
-            'Dobara OTP send karein.';
+            'OTP expire ho gaya. Dobara OTP send karein.';
       } else if (e.code ==
           'invalid-verification-id') {
         message =
@@ -733,7 +901,10 @@ class _LoginPageState extends State<LoginPage> {
             'Dobara OTP send karein.';
       }
 
-      showMessage(message);
+      showMessage(
+        message,
+        isError: true,
+      );
     } catch (e) {
       if (kDebugMode) {
         debugPrint(
@@ -743,6 +914,7 @@ class _LoginPageState extends State<LoginPage> {
 
       showMessage(
         'OTP verification failed.',
+        isError: true,
       );
     } finally {
       if (mounted) {
@@ -775,6 +947,7 @@ class _LoginPageState extends State<LoginPage> {
     if (expectedOtp == null) {
       showMessage(
         'Test OTP sirf test mobile numbers ke liye hai.',
+        isError: true,
       );
       return;
     }
@@ -782,6 +955,7 @@ class _LoginPageState extends State<LoginPage> {
     if (otp != expectedOtp) {
       showMessage(
         'Invalid OTP.',
+        isError: true,
       );
       return;
     }
@@ -798,13 +972,15 @@ class _LoginPageState extends State<LoginPage> {
 
       try {
         credential =
-            await _auth.signInWithEmailAndPassword(
+            await _auth
+                .signInWithEmailAndPassword(
           email: email,
           password: expectedOtp,
         );
       } on FirebaseAuthException {
         credential =
-            await _auth.createUserWithEmailAndPassword(
+            await _auth
+                .createUserWithEmailAndPassword(
           email: email,
           password: expectedOtp,
         );
@@ -816,6 +992,7 @@ class _LoginPageState extends State<LoginPage> {
       if (user == null) {
         showMessage(
           'Test login failed.',
+          isError: true,
         );
         return;
       }
@@ -833,6 +1010,7 @@ class _LoginPageState extends State<LoginPage> {
 
       showMessage(
         'Test OTP login failed.',
+        isError: true,
       );
     } finally {
       if (mounted) {
@@ -851,12 +1029,8 @@ class _LoginPageState extends State<LoginPage> {
     final mobile =
         mobileController.text.trim();
 
-    if (mobile == '9111111111') {
-      await verifyTestOtp();
-      return;
-    }
-
-    if (mobile == '9666666666') {
+    if (mobile == '9111111111' ||
+        mobile == '9666666666') {
       await verifyTestOtp();
       return;
     }
@@ -879,6 +1053,7 @@ class _LoginPageState extends State<LoginPage> {
     if (user == null) {
       showMessage(
         'User login nahi hua.',
+        isError: true,
       );
       return;
     }
@@ -892,9 +1067,9 @@ class _LoginPageState extends State<LoginPage> {
       final snapshot =
           await userRef.get();
 
-      // ----------------------------------------------------------
-      // Existing profile
-      // ----------------------------------------------------------
+      // ==========================================================
+      // EXISTING PROFILE
+      // ==========================================================
 
       if (snapshot.exists) {
         final existingData =
@@ -903,6 +1078,7 @@ class _LoginPageState extends State<LoginPage> {
         final role =
             existingData['role']
                     ?.toString()
+                    .trim()
                     .toLowerCase() ??
                 '';
 
@@ -920,6 +1096,7 @@ class _LoginPageState extends State<LoginPage> {
             return;
           }
 
+          // Fully approved courier
           if (!mounted) return;
 
           Navigator.pop(
@@ -931,7 +1108,7 @@ class _LoginPageState extends State<LoginPage> {
         }
 
         // --------------------------------------------------------
-        // OTHER EXISTING USER
+        // EXISTING CUSTOMER / VENDOR
         // --------------------------------------------------------
 
         await userRef.set(
@@ -948,9 +1125,9 @@ class _LoginPageState extends State<LoginPage> {
           ),
         );
       } else {
-        // --------------------------------------------------------
+        // ========================================================
         // NEW CUSTOMER
-        // --------------------------------------------------------
+        // ========================================================
 
         await userRef.set({
           'uid': user.uid,
@@ -958,6 +1135,8 @@ class _LoginPageState extends State<LoginPage> {
           'email': user.email ?? '',
           'role': 'customer',
           'status': 'approved',
+          'registrationStatus':
+              'approved',
           'active': true,
           'createdAt':
               FieldValue.serverTimestamp(),
@@ -981,6 +1160,7 @@ class _LoginPageState extends State<LoginPage> {
       showMessage(
         'Profile save nahi ho payi. '
         'Please try again.',
+        isError: true,
       );
     }
   }
@@ -1000,14 +1180,17 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   // ============================================================
-  // UI
+  // BUILD
   // ============================================================
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Login'),
+        title:
+            const Text('Login'),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -1017,7 +1200,9 @@ class _LoginPageState extends State<LoginPage> {
             crossAxisAlignment:
                 CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 20),
+              const SizedBox(
+                height: 20,
+              ),
 
               const Text(
                 'Welcome to Preesho',
@@ -1030,7 +1215,9 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               ),
 
-              const SizedBox(height: 30),
+              const SizedBox(
+                height: 30,
+              ),
 
               // ==================================================
               // EMAIL
@@ -1043,7 +1230,8 @@ class _LoginPageState extends State<LoginPage> {
                     TextInputType.emailAddress,
                 decoration:
                     const InputDecoration(
-                  labelText: 'Email',
+                  labelText:
+                      'Email',
                   prefixIcon:
                       Icon(
                     Icons.email_outlined,
@@ -1053,7 +1241,9 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               ),
 
-              const SizedBox(height: 15),
+              const SizedBox(
+                height: 15,
+              ),
 
               // ==================================================
               // PASSWORD
@@ -1076,7 +1266,8 @@ class _LoginPageState extends State<LoginPage> {
                       const OutlineInputBorder(),
                   suffixIcon:
                       IconButton(
-                    icon: Icon(
+                    icon:
+                        Icon(
                       obscurePassword
                           ? Icons
                               .visibility_off
@@ -1092,53 +1283,68 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               ),
 
-              const SizedBox(height: 10),
+              const SizedBox(
+                height: 10,
+              ),
 
               Align(
                 alignment:
                     Alignment.centerRight,
-                child: TextButton(
+                child:
+                    TextButton(
                   onPressed:
                       isLoading
                           ? null
                           : openForgotPassword,
-                  child: const Text(
+                  child:
+                      const Text(
                     'Forgot Password?',
                   ),
                 ),
               ),
 
-              const SizedBox(height: 5),
+              const SizedBox(
+                height: 5,
+              ),
 
               // ==================================================
               // EMAIL LOGIN
               // ==================================================
 
-              ElevatedButton(
-                onPressed:
-                    isLoading
-                        ? null
-                        : loginWithEmail,
-                child: isLoading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child:
-                            CircularProgressIndicator(
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const Text(
-                        'Login with Email',
-                      ),
+              SizedBox(
+                height: 50,
+                child:
+                    ElevatedButton(
+                  onPressed:
+                      isLoading
+                          ? null
+                          : loginWithEmail,
+                  child:
+                      isLoading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child:
+                                  CircularProgressIndicator(
+                                strokeWidth:
+                                    2,
+                              ),
+                            )
+                          : const Text(
+                              'Login with Email',
+                            ),
+                ),
               ),
 
-              const SizedBox(height: 25),
+              const SizedBox(
+                height: 25,
+              ),
 
               const Row(
                 children: [
                   Expanded(
-                    child: Divider(),
+                    child:
+                        Divider(),
                   ),
                   Padding(
                     padding:
@@ -1149,12 +1355,15 @@ class _LoginPageState extends State<LoginPage> {
                         Text('OR'),
                   ),
                   Expanded(
-                    child: Divider(),
+                    child:
+                        Divider(),
                   ),
                 ],
               ),
 
-              const SizedBox(height: 25),
+              const SizedBox(
+                height: 25,
+              ),
 
               // ==================================================
               // MOBILE
@@ -1178,25 +1387,32 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   border:
                       OutlineInputBorder(),
-                  counterText: '',
+                  counterText:
+                      '',
                 ),
               ),
 
-              const SizedBox(height: 15),
+              const SizedBox(
+                height: 15,
+              ),
 
               // ==================================================
               // SEND OTP
               // ==================================================
 
               if (!otpSent)
-                ElevatedButton(
-                  onPressed:
-                      isLoading
-                          ? null
-                          : sendOtp,
+                SizedBox(
+                  height: 50,
                   child:
-                      const Text(
-                    'Send OTP',
+                      ElevatedButton(
+                    onPressed:
+                        isLoading
+                            ? null
+                            : sendOtp,
+                    child:
+                        const Text(
+                      'Send OTP',
+                    ),
                   ),
                 ),
 
@@ -1205,7 +1421,9 @@ class _LoginPageState extends State<LoginPage> {
               // ==================================================
 
               if (otpSent) ...[
-                const SizedBox(height: 5),
+                const SizedBox(
+                  height: 5,
+                ),
 
                 TextField(
                   controller:
@@ -1223,32 +1441,43 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                     border:
                         OutlineInputBorder(),
-                    counterText: '',
+                    counterText:
+                        '',
                   ),
                 ),
 
-                const SizedBox(height: 15),
-
-                ElevatedButton(
-                  onPressed:
-                      isLoading
-                          ? null
-                          : loginWithOtp,
-                  child: isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child:
-                              CircularProgressIndicator(
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : const Text(
-                          'Verify OTP',
-                        ),
+                const SizedBox(
+                  height: 15,
                 ),
 
-                const SizedBox(height: 8),
+                SizedBox(
+                  height: 50,
+                  child:
+                      ElevatedButton(
+                    onPressed:
+                        isLoading
+                            ? null
+                            : loginWithOtp,
+                    child:
+                        isLoading
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child:
+                                    CircularProgressIndicator(
+                                  strokeWidth:
+                                      2,
+                                ),
+                              )
+                            : const Text(
+                                'Verify OTP',
+                              ),
+                  ),
+                ),
+
+                const SizedBox(
+                  height: 8,
+                ),
 
                 TextButton(
                   onPressed:
@@ -1259,6 +1488,8 @@ class _LoginPageState extends State<LoginPage> {
                                 otpSent =
                                     false;
                                 verificationId =
+                                    null;
+                                resendToken =
                                     null;
                                 otpController
                                     .clear();
@@ -1271,28 +1502,34 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               ],
 
-              const SizedBox(height: 25),
+              const SizedBox(
+                height: 25,
+              ),
 
               // ==================================================
-              // TEST LOGIN INFO
+              // TEST LOGIN
               // ==================================================
 
               const Text(
                 'Test Courier: 9111111111 / OTP 911111',
                 textAlign:
                     TextAlign.center,
-                style: TextStyle(
+                style:
+                    TextStyle(
                   fontSize: 12,
                 ),
               ),
 
-              const SizedBox(height: 5),
+              const SizedBox(
+                height: 5,
+              ),
 
               const Text(
                 'Test Vendor: 9666666666 / OTP 966666',
                 textAlign:
                     TextAlign.center,
-                style: TextStyle(
+                style:
+                    TextStyle(
                   fontSize: 12,
                 ),
               ),
