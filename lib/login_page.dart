@@ -1,48 +1,35 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'courier_documents_page.dart';
 import 'forgot_password_page.dart';
 
-class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+class AdminLoginPage extends StatefulWidget {
+  const AdminLoginPage({super.key});
 
   @override
-  State<LoginPage> createState() => _LoginPageState();
+  State<AdminLoginPage> createState() => _AdminLoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _AdminLoginPageState extends State<AdminLoginPage> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
-  final mobileController = TextEditingController();
-  final otpController = TextEditingController();
 
   bool isLoading = false;
-  bool otpSent = false;
   bool obscurePassword = true;
-
-  String? verificationId;
-  int? resendToken;
-
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   static const Color primary = Color(0xFF5B35D5);
   static const Color primaryDark = Color(0xFF4323A8);
+
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   void dispose() {
     emailController.dispose();
     passwordController.dispose();
-    mobileController.dispose();
-    otpController.dispose();
     super.dispose();
-  }
-
-  String normalizeStatus(dynamic value) {
-    return value?.toString().trim().toLowerCase().replaceAll(' ', '_') ?? '';
   }
 
   void showMessage(
@@ -59,7 +46,6 @@ class _LoginPageState extends State<LoginPage> {
             fontWeight: FontWeight.w600,
           ),
         ),
-        duration: const Duration(seconds: 4),
         backgroundColor: isError ? Colors.red.shade600 : null,
         behavior: SnackBarBehavior.floating,
         margin: const EdgeInsets.all(16),
@@ -70,297 +56,50 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Future<void> openCourierDocuments(String uid) async {
-    if (!mounted) return;
-
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => CourierDocumentsPage(
-          courierUid: uid,
-        ),
-      ),
-    );
+  Future<DocumentSnapshot<Map<String, dynamic>>> getUserDoc(
+    String uid,
+  ) {
+    return _firestore.collection('users').doc(uid).get();
   }
 
-  Future<Map<String, dynamic>?> recoverCourierProfile(
-    User user,
-    Map<String, dynamic> userData,
-  ) async {
-    try {
-      final courierRef =
-          _firestore.collection('couriers').doc(user.uid);
-
-      final courierSnapshot = await courierRef.get();
-
-      if (courierSnapshot.exists) {
-        return courierSnapshot.data();
-      }
-
-      String name =
-          userData['name']?.toString().trim() ?? '';
-
-      String phone =
-          userData['phone']?.toString().trim() ?? '';
-
-      String email =
-          userData['email']?.toString().trim() ?? '';
-
-      if (name.isEmpty) {
-        name = (user.displayName ?? '').trim();
-      }
-
-      if (phone.isEmpty) {
-        phone = (user.phoneNumber ?? '')
-            .replaceFirst('+91', '')
-            .trim();
-      }
-
-      if (email.isEmpty) {
-        email = (user.email ?? '').trim();
-      }
-
-      final existingStatus = normalizeStatus(
-        userData['status'] ??
-            userData['registrationStatus'],
-      );
-
-      final status = existingStatus.isEmpty
-          ? 'pending_documents'
-          : existingStatus;
-
-      final courierData = <String, dynamic>{
-        'uid': user.uid,
-        'name': name,
-        'phone': phone,
-        'email': email,
-        'role': 'courier',
-        'status': status,
-        'registrationStatus': status,
-        'active': userData['active'] == true,
-        'documentsSubmitted':
-            userData['documentsSubmitted'] == true,
-        'approvedByAdmin':
-            userData['approvedByAdmin'] == true,
-        'documents': {},
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
-
-      await courierRef.set(
-        courierData,
-        SetOptions(merge: true),
-      );
-
-      return courierData;
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint(
-          'Recover courier profile error: $e',
-        );
-      }
-
-      return null;
-    }
+  Future<DocumentSnapshot<Map<String, dynamic>>> getCourierDoc(
+    String uid,
+  ) {
+    return _firestore.collection('couriers').doc(uid).get();
   }
 
-  Future<bool> handleCourierAfterLogin(User user) async {
-    try {
-      final userRef =
-          _firestore.collection('users').doc(user.uid);
+  bool isTrue(dynamic value) {
+    if (value is bool) return value;
+    return value.toString().toLowerCase() == 'true';
+  }
 
-      final userSnapshot = await userRef.get();
+  String clean(dynamic value) {
+    return value?.toString().trim() ?? '';
+  }
 
-      Map<String, dynamic> userData = {};
+  Future<void> login() async {
+    final email = emailController.text.trim();
+    final password = passwordController.text;
 
-      if (userSnapshot.exists) {
-        userData = userSnapshot.data() ?? {};
-      }
-
-      final userRole =
-          userData['role']?.toString().trim().toLowerCase() ?? '';
-
-      if (userRole != 'courier') {
-        return false;
-      }
-
-      Map<String, dynamic>? courierData;
-
-      final courierSnapshot = await _firestore
-          .collection('couriers')
-          .doc(user.uid)
-          .get();
-
-      if (courierSnapshot.exists) {
-        courierData = courierSnapshot.data();
-      } else {
-        courierData = await recoverCourierProfile(
-          user,
-          userData,
-        );
-      }
-
-      if (courierData == null) {
-        showMessage(
-          'Courier profile nahi mil rahi. Please admin se contact karein.',
-          isError: true,
-        );
-
-        return true;
-      }
-
-      final status = normalizeStatus(
-        courierData['status'] ??
-            courierData['registrationStatus'] ??
-            userData['status'] ??
-            userData['registrationStatus'] ??
-            'pending_documents',
-      );
-
-      final documentsSubmitted =
-          courierData['documentsSubmitted'] == true;
-
-      final active =
-          courierData['active'] == true;
-
-      final approvedByAdmin =
-          courierData['approvedByAdmin'] == true;
-
-      if (status == 'pending_documents' ||
-          !documentsSubmitted) {
-        showMessage(
-          'Registration complete hai. Ab required documents complete karein.',
-        );
-
-        await openCourierDocuments(user.uid);
-
-        return true;
-      }
-
-      if (status == 'pending_approval') {
-        showMessage(
-          'Documents submit ho gaye hain. Admin approval ka wait karein.',
-        );
-
-        await openCourierDocuments(user.uid);
-
-        return true;
-      }
-
-      if (status == 'rejected') {
-        final reason =
-            courierData['rejectionReason']
-                    ?.toString()
-                    .trim() ??
-                '';
-
-        if (reason.isNotEmpty) {
-          showMessage(
-            'Documents reject hue hain: $reason',
-            isError: true,
-          );
-        } else {
-          showMessage(
-            'Documents reject hue hain. Documents check karke dobara submit karein.',
-            isError: true,
-          );
-        }
-
-        await openCourierDocuments(user.uid);
-
-        return true;
-      }
-
-      if (status == 'approved' &&
-          active &&
-          approvedByAdmin) {
-        return false;
-      }
-
-      if (status == 'approved') {
-        showMessage(
-          'Courier approved hai, lekin account abhi active nahi hai.',
-          isError: true,
-        );
-
-        await openCourierDocuments(user.uid);
-
-        return true;
-      }
-
+    if (email.isEmpty) {
       showMessage(
-        'Courier account verification pending hai.',
-      );
-
-      await openCourierDocuments(user.uid);
-
-      return true;
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint(
-          'Courier routing error: $e',
-        );
-      }
-
-      showMessage(
-        'Courier account verify nahi ho paya. Please try again.',
+        'Email enter karein.',
         isError: true,
       );
-
-      return true;
+      return;
     }
-  }
 
-  Future<void> saveUserProfile(
-    User user, {
-    String loginType = 'email',
-  }) async {
-    try {
-      final userRef =
-          _firestore.collection('users').doc(user.uid);
-
-      final snapshot = await userRef.get();
-
-      if (!snapshot.exists) {
-        await userRef.set({
-          'uid': user.uid,
-          'email': user.email ?? '',
-          'phone': user.phoneNumber ?? '',
-          'role': 'customer',
-          'status': 'approved',
-          'registrationStatus': 'approved',
-          'active': true,
-          'createdAt': FieldValue.serverTimestamp(),
-          'loginType': loginType,
-        });
-
-        return;
-      }
-
-      await userRef.set(
-        {
-          'uid': user.uid,
-          'updatedAt': FieldValue.serverTimestamp(),
-          'loginType': loginType,
-        },
-        SetOptions(merge: true),
-      );
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint(
-          'Save user profile error: $e',
-        );
-      }
-    }
-  }
-
-  Future<void> loginWithEmail() async {
-    final email = emailController.text.trim();
-    final password = passwordController.text.trim();
-
-    if (email.isEmpty || password.isEmpty) {
+    if (!email.contains('@')) {
       showMessage(
-        'Email aur password enter karein.',
+        'Valid email enter karein.',
+        isError: true,
+      );
+      return;
+    }
+
+    if (password.isEmpty) {
+      showMessage(
+        'Password enter karein.',
         isError: true,
       );
       return;
@@ -389,61 +128,91 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      final userSnapshot = await _firestore
-          .collection('users')
-          .doc(user.uid)
-          .get();
+      final uid = user.uid;
+
+      final userSnapshot = await getUserDoc(uid);
+      final courierSnapshot = await getCourierDoc(uid);
 
       final userData = userSnapshot.data() ?? {};
+      final courierData =
+          courierSnapshot.data() ?? {};
 
       final role =
-          userData['role']?.toString().trim().toLowerCase() ?? '';
+          clean(userData['role']).toLowerCase();
 
-      if (role == 'courier') {
-        final handled =
-            await handleCourierAfterLogin(user);
+      final courierRole =
+          clean(courierData['role']).toLowerCase();
 
-        if (handled) {
-          return;
-        }
+      final isCourier =
+          role == 'courier' ||
+          courierRole == 'courier' ||
+          courierSnapshot.exists;
 
-        if (!mounted) return;
-
-        Navigator.pop(context, true);
-
+      if (isCourier) {
+        await handleCourierLogin(
+          uid: uid,
+          userData: userData,
+          courierData: courierData,
+          courierExists: courierSnapshot.exists,
+        );
         return;
       }
 
-      await saveUserProfile(
-        user,
-        loginType: 'email',
-      );
+      final isAdmin =
+          role == 'admin' ||
+          role == 'superadmin' ||
+          role == 'administrator';
+
+      if (!isAdmin) {
+        await _auth.signOut();
+
+        showMessage(
+          'Ye account Admin/Courier login ke liye authorized nahi hai.',
+          isError: true,
+        );
+        return;
+      }
+
+      final active =
+          userData['active'] == null
+              ? true
+              : isTrue(userData['active']);
+
+      if (!active) {
+        await _auth.signOut();
+
+        showMessage(
+          'Admin account inactive hai.',
+          isError: true,
+        );
+        return;
+      }
 
       if (!mounted) return;
 
-      Navigator.pop(context, true);
+      Navigator.pop(context);
     } on FirebaseAuthException catch (e) {
       String message = 'Login failed.';
 
       switch (e.code) {
         case 'user-not-found':
-          message = 'Is email se account nahi mila.';
+          message = 'Account nahi mila.';
           break;
 
         case 'wrong-password':
-          message = 'Password galat hai.';
-          break;
-
         case 'invalid-credential':
-          message = 'Email ya password galat hai.';
+          message =
+              'Email ya password galat hai.';
           break;
 
         case 'invalid-email':
-          message = 'Invalid email address.';
+          message =
+              'Email address valid nahi hai.';
           break;
 
         case 'user-disabled':
-          message = 'Ye account disabled hai.';
+          message =
+              'Ye account disabled hai.';
           break;
 
         case 'too-many-requests':
@@ -451,13 +220,9 @@ class _LoginPageState extends State<LoginPage> {
               'Bahut attempts ho gaye. Thodi der baad try karein.';
           break;
 
-        case 'operation-not-allowed':
-          message =
-              'Email/password login Firebase mein enabled nahi hai.';
-          break;
-
         case 'network-request-failed':
-          message = 'Internet connection check karein.';
+          message =
+              'Internet connection check karein.';
           break;
       }
 
@@ -466,14 +231,8 @@ class _LoginPageState extends State<LoginPage> {
         isError: true,
       );
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint(
-          'Email login error: $e',
-        );
-      }
-
       showMessage(
-        'Something went wrong. Please try again.',
+        'Login ke time problem hui. Please try again.',
         isError: true,
       );
     } finally {
@@ -485,424 +244,153 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  Future<void> sendOtp() async {
-    final mobile = mobileController.text.trim();
+  Future<void> handleCourierLogin({
+    required String uid,
+    required Map<String, dynamic> userData,
+    required Map<String, dynamic> courierData,
+    required bool courierExists,
+  }) async {
+    Map<String, dynamic> data =
+        Map<String, dynamic>.from(courierData);
 
-    if (mobile.isEmpty || mobile.length != 10) {
-      showMessage(
-        '10 digit mobile number enter karein.',
-        isError: true,
-      );
-      return;
-    }
+    if (!courierExists) {
+      final name =
+          clean(userData['name']).isNotEmpty
+              ? clean(userData['name'])
+              : clean(userData['displayName']);
 
-    FocusScope.of(context).unfocus();
+      final email =
+          clean(userData['email']);
 
-    if (mobile == '9111111111' ||
-        mobile == '9666666666') {
-      setState(() {
-        otpSent = true;
-        isLoading = false;
+      final phone =
+          clean(userData['phone']).isNotEmpty
+              ? clean(userData['phone'])
+              : clean(userData['mobile']);
+
+      await _firestore
+          .collection('couriers')
+          .doc(uid)
+          .set({
+        'uid': uid,
+        'name': name,
+        'displayName': name,
+        'email': email,
+        'phone': phone,
+        'mobile': phone,
+        'role': 'courier',
+        'status': 'pending_documents',
+        'registrationStatus':
+            'pending_documents',
+        'active': false,
+        'documentsSubmitted': false,
+        'approvedByAdmin': false,
+        'documents': {},
+        'createdAt':
+            FieldValue.serverTimestamp(),
+        'updatedAt':
+            FieldValue.serverTimestamp(),
       });
 
-      showMessage(
-        'Test OTP available hai.',
-      );
-
-      return;
+      data = {
+        'uid': uid,
+        'name': name,
+        'displayName': name,
+        'email': email,
+        'phone': phone,
+        'mobile': phone,
+        'role': 'courier',
+        'status': 'pending_documents',
+        'registrationStatus':
+            'pending_documents',
+        'active': false,
+        'documentsSubmitted': false,
+        'approvedByAdmin': false,
+        'documents': {},
+      };
     }
 
-    setState(() {
-      isLoading = true;
-    });
+    final approved =
+        isTrue(data['approvedByAdmin']) ||
+            clean(data['status']).toLowerCase() ==
+                'approved' ||
+            clean(data['registrationStatus'])
+                    .toLowerCase() ==
+                'approved';
 
-    try {
-      await _auth.verifyPhoneNumber(
-        phoneNumber: '+91$mobile',
+    final active =
+        isTrue(data['active']);
 
-        verificationCompleted:
-            (PhoneAuthCredential credential) async {
-          try {
-            final result =
-                await _auth.signInWithCredential(
-              credential,
-            );
+    final documentsSubmitted =
+        isTrue(data['documentsSubmitted']);
 
-            final user = result.user;
+    final status =
+        clean(
+          data['status'],
+        ).toLowerCase();
 
-            if (user != null) {
-              await saveMobileAndFinish(
-                mobile,
-                existingUser: user,
-              );
-            }
-          } catch (e) {
-            if (kDebugMode) {
-              debugPrint(
-                'Automatic phone verification error: $e',
-              );
-            }
+    final registrationStatus =
+        clean(
+          data['registrationStatus'],
+        ).toLowerCase();
 
-            showMessage(
-              'Automatic verification failed.',
-              isError: true,
-            );
-          }
-        },
-
-        verificationFailed:
-            (FirebaseAuthException e) {
-          if (mounted) {
-            setState(() {
-              isLoading = false;
-            });
-          }
-
-          showMessage(
-            e.message ?? 'OTP send nahi ho paya.',
-            isError: true,
-          );
-        },
-
-        codeSent: (
-          String id,
-          int? token,
-        ) {
-          if (!mounted) return;
-
-          setState(() {
-            verificationId = id;
-            resendToken = token;
-            otpSent = true;
-            isLoading = false;
-          });
-
-          showMessage(
-            'OTP send ho gaya.',
-          );
-        },
-
-        codeAutoRetrievalTimeout:
-            (String id) {
-          verificationId = id;
-
-          if (mounted) {
-            setState(() {
-              isLoading = false;
-            });
-          }
-        },
-
-        forceResendingToken: resendToken,
-      );
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          isLoading = false;
-        });
-      }
-
-      if (kDebugMode) {
-        debugPrint(
-          'Send OTP error: $e',
-        );
-      }
-
-      showMessage(
-        'OTP send nahi ho paya.',
-        isError: true,
-      );
-    }
-  }
-
-  Future<void> verifyFirebaseOtp() async {
-    final otp = otpController.text.trim();
-
-    if (otp.isEmpty || otp.length != 6) {
-      showMessage(
-        '6 digit OTP enter karein.',
-        isError: true,
-      );
-      return;
-    }
-
-    if (verificationId == null ||
-        verificationId!.isEmpty) {
-      showMessage(
-        'Pehle OTP send karein.',
-        isError: true,
-      );
-      return;
-    }
-
-    FocusScope.of(context).unfocus();
-
-    setState(() {
-      isLoading = true;
-    });
-
-    try {
-      final credential =
-          PhoneAuthProvider.credential(
-        verificationId: verificationId!,
-        smsCode: otp,
-      );
-
-      final result =
-          await _auth.signInWithCredential(
-        credential,
-      );
-
-      final user = result.user;
-
-      if (user == null) {
-        showMessage(
-          'OTP login failed.',
-          isError: true,
-        );
-        return;
-      }
-
-      await saveMobileAndFinish(
-        mobileController.text.trim(),
-        existingUser: user,
-      );
-    } on FirebaseAuthException catch (e) {
-      String message =
-          'OTP verification failed.';
-
-      if (e.code == 'invalid-verification-code') {
-        message = 'OTP galat hai.';
-      } else if (e.code == 'session-expired') {
-        message =
-            'OTP expire ho gaya. Dobara OTP send karein.';
-      } else if (e.code == 'invalid-verification-id') {
-        message =
-            'Verification session invalid hai. Dobara OTP send karein.';
-      }
-
-      showMessage(
-        message,
-        isError: true,
-      );
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint(
-          'Firebase OTP verification error: $e',
-        );
-      }
-
-      showMessage(
-        'OTP verification failed.',
-        isError: true,
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> verifyTestOtp() async {
-    final mobile = mobileController.text.trim();
-    final otp = otpController.text.trim();
-
-    String? expectedOtp;
-
-    if (mobile == '9111111111') {
-      expectedOtp = '911111';
-    } else if (mobile == '9666666666') {
-      expectedOtp = '966666';
-    }
-
-    if (expectedOtp == null) {
-      showMessage(
-        'Test OTP sirf test mobile numbers ke liye hai.',
-        isError: true,
-      );
-      return;
-    }
-
-    if (otp != expectedOtp) {
-      showMessage(
-        'Invalid OTP.',
-        isError: true,
-      );
-      return;
-    }
-
-    setState(() {
-      isLoading = true;
-    });
-
-    try {
-      final email = '$mobile@preesho.test';
-
-      UserCredential credential;
-
-      try {
-        credential =
-            await _auth.signInWithEmailAndPassword(
-          email: email,
-          password: expectedOtp,
-        );
-      } on FirebaseAuthException {
-        credential =
-            await _auth.createUserWithEmailAndPassword(
-          email: email,
-          password: expectedOtp,
-        );
-      }
-
-      final user = credential.user;
-
-      if (user == null) {
-        showMessage(
-          'Test login failed.',
-          isError: true,
-        );
-        return;
-      }
-
-      await saveMobileAndFinish(
-        mobile,
-        existingUser: user,
-      );
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint(
-          'Test OTP login error: $e',
-        );
-      }
-
-      showMessage(
-        'Test OTP login failed.',
-        isError: true,
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> loginWithOtp() async {
-    final mobile = mobileController.text.trim();
-
-    if (mobile == '9111111111' ||
-        mobile == '9666666666') {
-      await verifyTestOtp();
-      return;
-    }
-
-    await verifyFirebaseOtp();
-  }
-
-  Future<void> saveMobileAndFinish(
-    String mobile, {
-    User? existingUser,
-  }) async {
-    final user = existingUser ?? _auth.currentUser;
-
-    if (user == null) {
-      showMessage(
-        'User login nahi hua.',
-        isError: true,
-      );
-      return;
-    }
-
-    try {
-      final userRef =
-          _firestore.collection('users').doc(user.uid);
-
-      final snapshot = await userRef.get();
-
-      if (snapshot.exists) {
-        final existingData =
-            snapshot.data() ?? {};
-
-        final role =
-            existingData['role']
-                    ?.toString()
-                    .trim()
-                    .toLowerCase() ??
-                '';
-
-        if (role == 'courier') {
-          final handled =
-              await handleCourierAfterLogin(user);
-
-          if (handled) {
-            return;
-          }
-
-          if (!mounted) return;
-
-          Navigator.pop(context, true);
-
-          return;
-        }
-
-        await userRef.set(
-          {
-            'uid': user.uid,
-            'phone': mobile,
-            'email': user.email ?? '',
-            'updatedAt': FieldValue.serverTimestamp(),
-            'loginType': 'mobile',
-          },
-          SetOptions(merge: true),
-        );
-      } else {
-        await userRef.set({
-          'uid': user.uid,
-          'phone': mobile,
-          'email': user.email ?? '',
-          'role': 'customer',
-          'status': 'approved',
-          'registrationStatus': 'approved',
-          'active': true,
-          'createdAt': FieldValue.serverTimestamp(),
-          'loginType': 'mobile',
-        });
-      }
-
+    if (approved && active) {
       if (!mounted) return;
 
-      Navigator.pop(context, true);
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint(
-          'Save mobile profile error: $e',
-        );
-      }
-
       showMessage(
-        'Profile save nahi ho payi. Please try again.',
-        isError: true,
+        'Courier login successful.',
       );
+
+      Navigator.pop(context);
+      return;
     }
+
+    // IMPORTANT:
+    // Pending courier ko sign out nahi karna.
+    // Direct documents page par bhejna hai.
+    if (!mounted) return;
+
+    if (!documentsSubmitted ||
+        status == 'pending_documents' ||
+        registrationStatus ==
+            'pending_documents' ||
+        !approved) {
+      showMessage(
+        'Documents upload karein.',
+      );
+
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              CourierDocumentsPage(
+            courierUid: uid,
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    showMessage(
+      'Courier account admin approval ke liye pending hai.',
+      isError: true,
+    );
   }
 
-  void openForgotPassword() {
-    Navigator.push(
+  Future<void> forgotPassword() async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => const ForgotPasswordPage(),
+        builder: (_) =>
+            const ForgotPasswordPage(),
       ),
     );
   }
 
-  InputDecoration _inputDecoration({
+  InputDecoration inputDecoration({
     required String label,
     required IconData icon,
     Widget? suffixIcon,
-    String? prefixText,
   }) {
     return InputDecoration(
       labelText: label,
@@ -910,29 +398,33 @@ class _LoginPageState extends State<LoginPage> {
         icon,
         color: primary,
       ),
-      prefixText: prefixText,
       suffixIcon: suffixIcon,
       filled: true,
       fillColor: Colors.grey.shade50,
-      contentPadding: const EdgeInsets.symmetric(
+      contentPadding:
+          const EdgeInsets.symmetric(
         horizontal: 16,
         vertical: 17,
       ),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius:
+            BorderRadius.circular(16),
         borderSide: BorderSide(
           color: Colors.grey.shade200,
         ),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius:
+            BorderRadius.circular(16),
         borderSide: BorderSide(
           color: Colors.grey.shade200,
         ),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(
+        borderRadius:
+            BorderRadius.circular(16),
+        borderSide:
+            const BorderSide(
           color: primary,
           width: 1.7,
         ),
@@ -940,437 +432,21 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildLogo() {
-    return Container(
-      height: 82,
-      width: 82,
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [
-            primary,
-            primaryDark,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(25),
-        boxShadow: [
-          BoxShadow(
-            color: primary.withOpacity(.25),
-            blurRadius: 25,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
-      child: const Icon(
-        Icons.shopping_bag_rounded,
-        color: Colors.white,
-        size: 43,
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Column(
-      children: [
-        _buildLogo(),
-        const SizedBox(height: 22),
-        const Text(
-          'Welcome to Preesho',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w900,
-            letterSpacing: -.6,
-          ),
-        ),
-        const SizedBox(height: 7),
-        Text(
-          'Login karke shopping start karein',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.grey.shade600,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildEmailLogin() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Email Login',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const SizedBox(height: 14),
-
-        TextField(
-          controller: emailController,
-          keyboardType: TextInputType.emailAddress,
-          textInputAction: TextInputAction.next,
-          decoration: _inputDecoration(
-            label: 'Email Address',
-            icon: Icons.email_outlined,
-          ),
-        ),
-
-        const SizedBox(height: 13),
-
-        TextField(
-          controller: passwordController,
-          obscureText: obscurePassword,
-          textInputAction: TextInputAction.done,
-          onSubmitted: (_) {
-            if (!isLoading) {
-              loginWithEmail();
-            }
-          },
-          decoration: _inputDecoration(
-            label: 'Password',
-            icon: Icons.lock_outline_rounded,
-            suffixIcon: IconButton(
-              onPressed: () {
-                setState(() {
-                  obscurePassword = !obscurePassword;
-                });
-              },
-              icon: Icon(
-                obscurePassword
-                    ? Icons.visibility_off_outlined
-                    : Icons.visibility_outlined,
-              ),
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 4),
-
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton(
-            onPressed:
-                isLoading ? null : openForgotPassword,
-            child: const Text(
-              'Forgot Password?',
-              style: TextStyle(
-                color: primary,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 5),
-
-        _primaryButton(
-          text: 'Login with Email',
-          icon: Icons.login_rounded,
-          onPressed:
-              isLoading ? null : loginWithEmail,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDivider() {
-    return Row(
-      children: [
-        Expanded(
-          child: Divider(
-            color: Colors.grey.shade300,
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 14,
-          ),
-          child: Text(
-            'OR',
-            style: TextStyle(
-              color: Colors.grey.shade500,
-              fontWeight: FontWeight.w800,
-              fontSize: 12,
-            ),
-          ),
-        ),
-        Expanded(
-          child: Divider(
-            color: Colors.grey.shade300,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMobileLogin() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Mobile Login',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const SizedBox(height: 6),
-
-        Text(
-          otpSent
-              ? 'OTP aapke mobile number par bheja gaya hai.'
-              : 'Mobile number se quick login karein.',
-          style: TextStyle(
-            color: Colors.grey.shade600,
-            fontSize: 13,
-          ),
-        ),
-
-        const SizedBox(height: 14),
-
-        TextField(
-          controller: mobileController,
-          keyboardType: TextInputType.phone,
-          maxLength: 10,
-          enabled: !otpSent && !isLoading,
-          decoration: _inputDecoration(
-            label: 'Mobile Number',
-            icon: Icons.phone_android_rounded,
-            prefixText: '+91 ',
-          ).copyWith(
-            counterText: '',
-          ),
-        ),
-
-        if (!otpSent) ...[
-          const SizedBox(height: 14),
-
-          _primaryButton(
-            text: 'Send OTP',
-            icon: Icons.sms_outlined,
-            onPressed:
-                isLoading ? null : sendOtp,
-          ),
-        ],
-
-        if (otpSent) ...[
-          const SizedBox(height: 14),
-
-          TextField(
-            controller: otpController,
-            keyboardType: TextInputType.number,
-            maxLength: 6,
-            decoration: _inputDecoration(
-              label: 'Enter 6 Digit OTP',
-              icon: Icons.password_rounded,
-            ).copyWith(
-              counterText: '',
-            ),
-          ),
-
-          const SizedBox(height: 14),
-
-          _primaryButton(
-            text: 'Verify OTP',
-            icon: Icons.verified_rounded,
-            onPressed:
-                isLoading ? null : loginWithOtp,
-          ),
-
-          const SizedBox(height: 5),
-
-          SizedBox(
-            width: double.infinity,
-            child: TextButton.icon(
-              onPressed: isLoading
-                  ? null
-                  : () {
-                      setState(() {
-                        otpSent = false;
-                        verificationId = null;
-                        resendToken = null;
-                        otpController.clear();
-                      });
-                    },
-              icon: const Icon(
-                Icons.edit_outlined,
-                size: 18,
-              ),
-              label: const Text(
-                'Change Mobile Number',
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _primaryButton({
-    required String text,
-    required IconData icon,
-    required VoidCallback? onPressed,
-  }) {
-    final disabled = onPressed == null;
-
-    return SizedBox(
-      width: double.infinity,
-      height: 55,
-      child: ElevatedButton.icon(
-        onPressed: onPressed,
-        icon: isLoading && onPressed == null
-            ? const SizedBox(
-                height: 21,
-                width: 21,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: Colors.white,
-                ),
-              )
-            : Icon(icon),
-        label: Text(
-          isLoading && onPressed == null
-              ? 'Please wait...'
-              : text,
-          style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor:
-              disabled ? Colors.grey.shade400 : primary,
-          foregroundColor: Colors.white,
-          elevation: disabled ? 0 : 3,
-          shadowColor: primary.withOpacity(.25),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(17),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSecurityCard() {
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.green.shade50,
-        borderRadius: BorderRadius.circular(17),
-        border: Border.all(
-          color: Colors.green.shade100,
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            height: 42,
-            width: 42,
-            decoration: BoxDecoration(
-              color: Colors.green.shade100,
-              borderRadius: BorderRadius.circular(13),
-            ),
-            child: Icon(
-              Icons.verified_user_outlined,
-              color: Colors.green.shade700,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Secure Login',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 13,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  'Aapki login details secure rakhi jaati hain.',
-                  style: TextStyle(
-                    color: Colors.green.shade800,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTestInfo() {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.orange.shade50,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.orange.shade100,
-        ),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.developer_mode_rounded,
-                size: 19,
-                color: Colors.orange.shade800,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Developer Test Login',
-                style: TextStyle(
-                  color: Colors.orange.shade900,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Courier: 9111111111  •  OTP: 911111\n'
-            'Vendor: 9666666666  •  OTP: 966666',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.orange.shade900,
-              fontSize: 11,
-              height: 1.5,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7FA),
+      backgroundColor:
+          const Color(0xFFF7F7FA),
 
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor:
+            Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
         leading: IconButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            Navigator.pop(context);
+          },
           icon: const Icon(
             Icons.arrow_back_rounded,
           ),
@@ -1379,64 +455,402 @@ class _LoginPageState extends State<LoginPage> {
 
       body: SafeArea(
         child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(
-            18,
-            5,
-            18,
+          physics:
+              const BouncingScrollPhysics(),
+          padding:
+              const EdgeInsets.fromLTRB(
+            20,
+            20,
+            20,
             35,
           ),
           child: Column(
             children: [
-              _buildHeader(),
+              Container(
+                height: 88,
+                width: 88,
+                decoration:
+                    BoxDecoration(
+                  gradient:
+                      const LinearGradient(
+                    colors: [
+                      primary,
+                      primaryDark,
+                    ],
+                    begin:
+                        Alignment.topLeft,
+                    end: Alignment
+                        .bottomRight,
+                  ),
+                  borderRadius:
+                      BorderRadius.circular(
+                    27,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: primary
+                          .withOpacity(.25),
+                      blurRadius: 25,
+                      offset:
+                          const Offset(
+                        0,
+                        11,
+                      ),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons
+                      .admin_panel_settings_rounded,
+                  color: Colors.white,
+                  size: 46,
+                ),
+              ),
+
+              const SizedBox(height: 22),
+
+              const Text(
+                'Admin / Courier Login',
+                textAlign:
+                    TextAlign.center,
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight:
+                      FontWeight.w900,
+                  letterSpacing: -.5,
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              Text(
+                'Authorized Preesho staff members ke liye secure login.',
+                textAlign:
+                    TextAlign.center,
+                style: TextStyle(
+                  color:
+                      Colors.grey.shade600,
+                  fontSize: 13,
+                  height: 1.45,
+                ),
+              ),
 
               const SizedBox(height: 30),
 
               Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.all(20),
+                decoration:
+                    BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(25),
+                  borderRadius:
+                      BorderRadius.circular(
+                    25,
+                  ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(.055),
+                      color: Colors.black
+                          .withOpacity(.055),
                       blurRadius: 25,
-                      offset: const Offset(0, 10),
+                      offset:
+                          const Offset(
+                        0,
+                        10,
+                      ),
                     ),
                   ],
                 ),
                 child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
                   children: [
-                    _buildEmailLogin(),
+                    const Text(
+                      'Sign in',
+                      style: TextStyle(
+                        fontSize: 19,
+                        fontWeight:
+                            FontWeight.w900,
+                      ),
+                    ),
 
-                    const SizedBox(height: 25),
+                    const SizedBox(height: 6),
 
-                    _buildDivider(),
+                    Text(
+                      'Enter your registered credentials.',
+                      style: TextStyle(
+                        color:
+                            Colors.grey.shade600,
+                        fontSize: 12,
+                      ),
+                    ),
 
-                    const SizedBox(height: 25),
+                    const SizedBox(height: 20),
 
-                    _buildMobileLogin(),
+                    TextField(
+                      controller:
+                          emailController,
+                      keyboardType:
+                          TextInputType.emailAddress,
+                      textInputAction:
+                          TextInputAction.next,
+                      decoration:
+                          inputDecoration(
+                        label:
+                            'Email Address',
+                        icon: Icons
+                            .email_outlined,
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    TextField(
+                      controller:
+                          passwordController,
+                      obscureText:
+                          obscurePassword,
+                      textInputAction:
+                          TextInputAction.done,
+                      onSubmitted: (_) {
+                        if (!isLoading) {
+                          login();
+                        }
+                      },
+                      decoration:
+                          inputDecoration(
+                        label: 'Password',
+                        icon: Icons
+                            .lock_outline_rounded,
+                        suffixIcon:
+                            IconButton(
+                          onPressed: () {
+                            setState(() {
+                              obscurePassword =
+                                  !obscurePassword;
+                            });
+                          },
+                          icon: Icon(
+                            obscurePassword
+                                ? Icons
+                                    .visibility_off_outlined
+                                : Icons
+                                    .visibility_outlined,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    Align(
+                      alignment:
+                          Alignment.centerRight,
+                      child: TextButton(
+                        onPressed:
+                            isLoading
+                                ? null
+                                : forgotPassword,
+                        child: const Text(
+                          'Forgot Password?',
+                          style: TextStyle(
+                            color: primary,
+                            fontWeight:
+                                FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    SizedBox(
+                      width:
+                          double.infinity,
+                      height: 56,
+                      child:
+                          ElevatedButton(
+                        onPressed:
+                            isLoading
+                                ? null
+                                : login,
+                        style:
+                            ElevatedButton
+                                .styleFrom(
+                          backgroundColor:
+                              primary,
+                          foregroundColor:
+                              Colors.white,
+                          elevation: 3,
+                          shadowColor:
+                              primary.withOpacity(
+                            .25,
+                          ),
+                          shape:
+                              RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius
+                                    .circular(
+                              17,
+                            ),
+                          ),
+                        ),
+                        child: isLoading
+                            ? const Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment
+                                        .center,
+                                children: [
+                                  SizedBox(
+                                    height: 21,
+                                    width: 21,
+                                    child:
+                                        CircularProgressIndicator(
+                                      color: Colors
+                                          .white,
+                                      strokeWidth:
+                                          2.5,
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: 12,
+                                  ),
+                                  Text(
+                                    'Signing in...',
+                                    style:
+                                        TextStyle(
+                                      fontWeight:
+                                          FontWeight
+                                              .w900,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : const Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment
+                                        .center,
+                                children: [
+                                  Icon(
+                                    Icons
+                                        .login_rounded,
+                                  ),
+                                  SizedBox(
+                                    width: 9,
+                                  ),
+                                  Text(
+                                    'Secure Login',
+                                    style:
+                                        TextStyle(
+                                      fontSize:
+                                          15,
+                                      fontWeight:
+                                          FontWeight
+                                              .w900,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
                   ],
                 ),
               ),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 18),
 
-              _buildSecurityCard(),
+              Container(
+                width:
+                    double.infinity,
+                padding:
+                    const EdgeInsets.all(15),
+                decoration:
+                    BoxDecoration(
+                  color:
+                      Colors.blue.shade50,
+                  borderRadius:
+                      BorderRadius.circular(
+                    18,
+                  ),
+                  border: Border.all(
+                    color:
+                        Colors.blue.shade100,
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      height: 42,
+                      width: 42,
+                      decoration:
+                          BoxDecoration(
+                        color: Colors
+                            .blue.shade100,
+                        borderRadius:
+                            BorderRadius
+                                .circular(
+                          13,
+                        ),
+                      ),
+                      child: Icon(
+                        Icons
+                            .verified_user_outlined,
+                        color: Colors
+                            .blue.shade700,
+                      ),
+                    ),
+                    const SizedBox(
+                        width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment:
+                            CrossAxisAlignment
+                                .start,
+                        children: [
+                          const Text(
+                            'Secure Staff Access',
+                            style: TextStyle(
+                              fontWeight:
+                                  FontWeight
+                                      .w900,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(
+                              height: 4),
+                          Text(
+                            'Courier account pending hone par login ke baad documents upload page automatically open hoga.',
+                            style:
+                                TextStyle(
+                              color: Colors
+                                  .blue
+                                  .shade900,
+                              fontSize: 11,
+                              height: 1.4,
+                              fontWeight:
+                                  FontWeight
+                                      .w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
 
-              const SizedBox(height: 16),
-
-              _buildTestInfo(),
-
-              const SizedBox(height: 15),
+              const SizedBox(height: 18),
 
               Text(
-                'By continuing, you agree to Preesho terms & privacy policy.',
-                textAlign: TextAlign.center,
+                'Preesho • Authorized Access',
                 style: TextStyle(
-                  color: Colors.grey.shade500,
-                  fontSize: 10,
-                  height: 1.4,
+                  color:
+                      Colors.grey.shade500,
+                  fontSize: 11,
+                  fontWeight:
+                      FontWeight.w600,
                 ),
               ),
             ],
