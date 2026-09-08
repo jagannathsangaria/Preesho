@@ -245,6 +245,10 @@ class _CourierRegistrationPageState
         'status': 'pending_documents',
         'active': false,
 
+        // IMPORTANT:
+        // Admin approval is required before activation.
+        'approvedByAdmin': false,
+
         'createdAt':
             FieldValue.serverTimestamp(),
       });
@@ -511,11 +515,9 @@ class _CourierRegistrationPageState
           'Courier Registration',
         ),
       ),
-
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
-
           child: Column(
             crossAxisAlignment:
                 CrossAxisAlignment.stretch,
