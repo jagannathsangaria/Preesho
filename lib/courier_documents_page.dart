@@ -15,18 +15,30 @@ class CourierDocumentsPage extends StatefulWidget {
   });
 
   @override
-  State<CourierDocumentsPage> createState() => _CourierDocumentsPageState();
+  State<CourierDocumentsPage> createState() =>
+      _CourierDocumentsPageState();
 }
 
-class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseStorage _storage = FirebaseStorage.instance;
+class _CourierDocumentsPageState
+    extends State<CourierDocumentsPage> {
+  final FirebaseFirestore _firestore =
+      FirebaseFirestore.instance;
+
+  final FirebaseStorage _storage =
+      FirebaseStorage.instance;
+
   final ImagePicker _picker = ImagePicker();
 
   bool _loading = true;
   bool _uploading = false;
 
   String? _uid;
+
+  String _status = 'pending_documents';
+
+  bool _documentsSubmitted = false;
+  bool _active = false;
+  bool _approvedByAdmin = false;
 
   String _registrationType = '';
   String _registrationNo = '';
@@ -53,10 +65,15 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
   void initState() {
     super.initState();
 
-    _uid = widget.courierUid ?? FirebaseAuth.instance.currentUser?.uid;
+    _uid = widget.courierUid ??
+        FirebaseAuth.instance.currentUser?.uid;
 
     _loadCourierData();
   }
+
+  // ============================================================
+  // LOAD COURIER DATA
+  // ============================================================
 
   Future<void> _loadCourierData() async {
     if (_uid == null) {
@@ -69,23 +86,42 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
     }
 
     try {
-      final doc =
-          await _firestore.collection('couriers').doc(_uid).get();
+      final doc = await _firestore
+          .collection('couriers')
+          .doc(_uid)
+          .get();
 
       if (doc.exists) {
         final data = doc.data() ?? {};
 
-        final documentsData = data['documents'];
+        _status =
+            data['status']?.toString() ??
+                'pending_documents';
+
+        _documentsSubmitted =
+            data['documentsSubmitted'] == true;
+
+        _active =
+            data['active'] == true;
+
+        _approvedByAdmin =
+            data['approvedByAdmin'] == true;
+
+        final documentsData =
+            data['documents'];
 
         if (documentsData is Map) {
           _documents.clear();
 
-          for (final entry in documentsData.entries) {
+          for (final entry
+              in documentsData.entries) {
             final key = entry.key.toString();
 
             if (entry.value is Map) {
               _documents[key] =
-                  Map<String, dynamic>.from(entry.value as Map);
+                  Map<String, dynamic>.from(
+                entry.value as Map,
+              );
             }
           }
         }
@@ -116,7 +152,120 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
     }
   }
 
-  Future<void> _pickAndUploadDocument(String key) async {
+  // ============================================================
+  // STATUS HEADER
+  // ============================================================
+
+  Widget _buildStatusHeader() {
+    String title;
+    String message;
+    IconData icon;
+    Color color;
+
+    if (_status == 'pending_documents' ||
+        !_documentsSubmitted) {
+      title = 'Documents Pending for Upload';
+      message =
+          'आपका Courier registration सफल हो गया है। '
+          'अब सभी required documents upload करें। '
+          'Documents complete होने के बाद Admin approval के लिए submit करें।';
+      icon = Icons.upload_file;
+      color = Colors.orange;
+    } else if (_status == 'pending_approval') {
+      title = 'Documents Submitted';
+      message =
+          'आपके सभी documents Admin approval के लिए submit हो चुके हैं। '
+          'Approval मिलने तक Courier Panel access नहीं मिलेगा।';
+      icon = Icons.hourglass_top;
+      color = Colors.orange;
+    } else if (_status == 'rejected') {
+      title = 'Documents Rejected';
+      message =
+          'Admin ने आपके documents reject किए हैं। '
+          'कृपया rejected documents check करके उन्हें update करें और फिर से submit करें।';
+      icon = Icons.cancel_outlined;
+      color = Colors.red;
+    } else if (_status == 'approved' &&
+        _active &&
+        _approvedByAdmin) {
+      title = 'Courier Approved';
+      message =
+          'आपका Courier account Admin द्वारा approved और active है।';
+      icon = Icons.check_circle;
+      color = Colors.green;
+    } else {
+      title = 'Application Status';
+      message =
+          'आपका Courier application अभी Admin verification में है।';
+      icon = Icons.info_outline;
+      color = Colors.blue;
+    }
+
+    return Card(
+      elevation: 3,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: color.withValues(alpha: 0.35),
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                color: color,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    message,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      height: 1.45,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // PICK & UPLOAD DOCUMENT
+  // ============================================================
+
+  Future<void> _pickAndUploadDocument(
+      String key) async {
     if (_uid == null) {
       _showMessage(
         'Courier account नहीं मिला।',
@@ -128,7 +277,8 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
     if (_uploading) return;
 
     try {
-      final XFile? pickedFile = await _picker.pickImage(
+      final XFile? pickedFile =
+          await _picker.pickImage(
         source: ImageSource.gallery,
         imageQuality: 85,
         maxWidth: 2000,
@@ -155,7 +305,6 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
 
       final fileSize = await file.length();
 
-      // Storage rules में 10 MB limit है.
       if (fileSize >= 10 * 1024 * 1024) {
         throw Exception(
           'File size 10 MB से कम होनी चाहिए।',
@@ -165,12 +314,14 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
       final timestamp =
           DateTime.now().millisecondsSinceEpoch;
 
-      final fileName = '${timestamp}_$key.jpg';
+      final fileName =
+          '${timestamp}_$key.jpg';
 
       final storagePath =
           'courier_documents/$_uid/$fileName';
 
-      final storageRef = _storage.ref().child(storagePath);
+      final storageRef =
+          _storage.ref().child(storagePath);
 
       final metadata = SettableMetadata(
         contentType: 'image/jpeg',
@@ -180,15 +331,14 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
         },
       );
 
-      // Upload file.
-      final uploadTask = storageRef.putFile(
+      final uploadTask =
+          storageRef.putFile(
         file,
         metadata,
       );
 
       await uploadTask;
 
-      // Make sure upload completed before requesting URL.
       final downloadUrl =
           await storageRef.getDownloadURL();
 
@@ -203,8 +353,10 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
         'url': downloadUrl,
         'fileName': fileName,
         'storagePath': storagePath,
-        'uploadedAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
+        'uploadedAt':
+            FieldValue.serverTimestamp(),
+        'updatedAt':
+            FieldValue.serverTimestamp(),
         'rejectionReason': '',
       };
 
@@ -213,7 +365,8 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
           .doc(_uid)
           .update({
         'documents.$key': documentData,
-        'updatedAt': FieldValue.serverTimestamp(),
+        'updatedAt':
+            FieldValue.serverTimestamp(),
       });
 
       if (!mounted) return;
@@ -256,7 +409,12 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
     }
   }
 
-  Future<void> _deleteDocument(String key) async {
+  // ============================================================
+  // DELETE DOCUMENT
+  // ============================================================
+
+  Future<void> _deleteDocument(
+      String key) async {
     if (_uid == null) return;
 
     final document = _documents[key];
@@ -274,24 +432,32 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
       return;
     }
 
-    final confirmed = await showDialog<bool>(
+    final confirmed =
+        await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Delete Document'),
+          title:
+              const Text('Delete Document'),
           content: Text(
             '${_documentTitles[key]} को delete करना चाहते हैं?',
           ),
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(context, false);
+                Navigator.pop(
+                  context,
+                  false,
+                );
               },
               child: const Text('Cancel'),
             ),
             ElevatedButton(
               onPressed: () {
-                Navigator.pop(context, true);
+                Navigator.pop(
+                  context,
+                  true,
+                );
               },
               child: const Text('Delete'),
             ),
@@ -309,11 +475,12 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
       final fileName =
           document['fileName']?.toString();
 
-      // Prefer exact storagePath saved with the document.
       if (storagePath != null &&
           storagePath.isNotEmpty) {
         try {
-          await _storage.ref(storagePath).delete();
+          await _storage
+              .ref(storagePath)
+              .delete();
         } on FirebaseException catch (e) {
           if (e.code != 'object-not-found') {
             rethrow;
@@ -339,17 +506,23 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
           .collection('couriers')
           .doc(_uid)
           .update({
-        'documents.$key': FieldValue.delete(),
+        'documents.$key':
+            FieldValue.delete(),
         'documentsSubmitted': false,
         'status': 'pending_documents',
         'active': false,
         'approvedByAdmin': false,
-        'updatedAt': FieldValue.serverTimestamp(),
+        'updatedAt':
+            FieldValue.serverTimestamp(),
       });
 
       if (mounted) {
         setState(() {
           _documents.remove(key);
+          _documentsSubmitted = false;
+          _status = 'pending_documents';
+          _active = false;
+          _approvedByAdmin = false;
         });
       }
 
@@ -369,11 +542,18 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
     }
   }
 
+  // ============================================================
+  // SAVE REGISTRATION DETAILS
+  // ============================================================
+
   Future<void> _saveRegistrationDetails() async {
     if (_uid == null) return;
 
-    final type = _registrationType.trim();
-    final number = _registrationNo.trim();
+    final type =
+        _registrationType.trim();
+
+    final number =
+        _registrationNo.trim();
 
     if (type.isEmpty) {
       _showMessage(
@@ -398,7 +578,8 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
           .update({
         'registrationType': type,
         'registrationNo': number,
-        'updatedAt': FieldValue.serverTimestamp(),
+        'updatedAt':
+            FieldValue.serverTimestamp(),
       });
 
       _showMessage(
@@ -417,10 +598,16 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
     }
   }
 
+  // ============================================================
+  // REQUIRED DOCUMENT CHECK
+  // ============================================================
+
   bool _allRequiredDocumentsUploaded() {
-    for (final entry in _requiredDocuments.entries) {
+    for (final entry
+        in _requiredDocuments.entries) {
       if (entry.value == true) {
-        final document = _documents[entry.key];
+        final document =
+            _documents[entry.key];
 
         if (document == null) {
           return false;
@@ -437,6 +624,10 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
 
     return true;
   }
+
+  // ============================================================
+  // SUBMIT FOR APPROVAL
+  // ============================================================
 
   Future<void> _submitForApproval() async {
     if (_uid == null) return;
@@ -476,13 +667,16 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
           .collection('couriers')
           .doc(_uid)
           .update({
-        'registrationType': _registrationType.trim(),
-        'registrationNo': _registrationNo.trim(),
+        'registrationType':
+            _registrationType.trim(),
+        'registrationNo':
+            _registrationNo.trim(),
         'documentsSubmitted': true,
         'status': 'pending_approval',
         'active': false,
         'approvedByAdmin': false,
-        'updatedAt': FieldValue.serverTimestamp(),
+        'updatedAt':
+            FieldValue.serverTimestamp(),
       });
 
       await _firestore
@@ -491,10 +685,18 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
           .update({
         'status': 'pending_approval',
         'active': false,
-        'updatedAt': FieldValue.serverTimestamp(),
+        'updatedAt':
+            FieldValue.serverTimestamp(),
       });
 
       if (!mounted) return;
+
+      setState(() {
+        _documentsSubmitted = true;
+        _status = 'pending_approval';
+        _active = false;
+        _approvedByAdmin = false;
+      });
 
       await showDialog(
         context: context,
@@ -517,7 +719,7 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
             ),
             content: const Text(
               'आपके documents Admin approval के लिए भेज दिए गए हैं.\n\n'
-              'Admin approval मिलने के बाद ही आपका Courier account active होगा और आप login करके orders प्राप्त कर सकेंगे.',
+              'Admin approval मिलने के बाद ही आपका Courier account active होगा और आप orders प्राप्त कर सकेंगे.',
             ),
             actions: [
               ElevatedButton(
@@ -553,6 +755,10 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
     }
   }
 
+  // ============================================================
+  // STATUS HELPERS
+  // ============================================================
+
   Color _statusColor(String status) {
     switch (status) {
       case 'verified':
@@ -579,15 +785,23 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
     }
   }
 
-  Widget _buildDocumentCard(String key) {
+  // ============================================================
+  // DOCUMENT CARD
+  // ============================================================
+
+  Widget _buildDocumentCard(
+      String key) {
     final title =
         _documentTitles[key] ?? key;
 
-    final document = _documents[key];
+    final document =
+        _documents[key];
 
     final isUploaded =
         document != null &&
-        (document['url']?.toString().isNotEmpty ??
+        (document['url']
+                ?.toString()
+                .isNotEmpty ??
             false);
 
     final status =
@@ -597,10 +811,12 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
         _requiredDocuments[key] == true;
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin:
+          const EdgeInsets.only(bottom: 12),
       elevation: 2,
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding:
+            const EdgeInsets.all(14),
         child: Row(
           children: [
             Container(
@@ -608,8 +824,12 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
               height: 52,
               decoration: BoxDecoration(
                 color: isUploaded
-                    ? Colors.green.withValues(alpha: 0.10)
-                    : Colors.grey.withValues(alpha: 0.10),
+                    ? Colors.green
+                        .withValues(
+                            alpha: 0.10)
+                    : Colors.grey
+                        .withValues(
+                            alpha: 0.10),
                 borderRadius:
                     BorderRadius.circular(12),
               ),
@@ -633,7 +853,8 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
                       Flexible(
                         child: Text(
                           title,
-                          style: const TextStyle(
+                          style:
+                              const TextStyle(
                             fontSize: 16,
                             fontWeight:
                                 FontWeight.bold,
@@ -659,14 +880,22 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
                           Icons.circle,
                           size: 9,
                           color:
-                              _statusColor(status),
+                              _statusColor(
+                            status,
+                          ),
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(
+                          width: 6,
+                        ),
                         Text(
-                          _statusText(status),
+                          _statusText(
+                            status,
+                          ),
                           style: TextStyle(
                             color:
-                                _statusColor(status),
+                                _statusColor(
+                              status,
+                            ),
                             fontWeight:
                                 FontWeight.w600,
                           ),
@@ -731,7 +960,9 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
                     onPressed: _uploading
                         ? null
                         : () =>
-                            _deleteDocument(key),
+                            _deleteDocument(
+                              key,
+                            ),
                     child: const Text(
                       'Delete',
                       style: TextStyle(
@@ -747,12 +978,17 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
     );
   }
 
+  // ============================================================
+  // PROGRESS CARD
+  // ============================================================
+
   Widget _buildProgressCard() {
     int uploaded = 0;
 
     for (final key
         in _requiredDocuments.keys) {
-      final document = _documents[key];
+      final document =
+          _documents[key];
 
       if (document != null &&
           (document['url']
@@ -763,7 +999,8 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
       }
     }
 
-    final total = _requiredDocuments.length;
+    final total =
+        _requiredDocuments.length;
 
     final progress =
         total == 0 ? 0.0 : uploaded / total;
@@ -771,7 +1008,8 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
     return Card(
       elevation: 2,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding:
+            const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment:
               CrossAxisAlignment.start,
@@ -780,7 +1018,8 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
               'Document Progress',
               style: TextStyle(
                 fontSize: 17,
-                fontWeight: FontWeight.bold,
+                fontWeight:
+                    FontWeight.bold,
               ),
             ),
             const SizedBox(height: 12),
@@ -794,7 +1033,8 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
             Text(
               '$uploaded / $total required documents uploaded',
               style: TextStyle(
-                color: Colors.grey.shade700,
+                color:
+                    Colors.grey.shade700,
               ),
             ),
           ],
@@ -803,11 +1043,16 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
     );
   }
 
+  // ============================================================
+  // REGISTRATION DETAILS
+  // ============================================================
+
   Widget _buildRegistrationDetails() {
     return Card(
       elevation: 2,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding:
+            const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment:
               CrossAxisAlignment.start,
@@ -816,7 +1061,8 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
               'Vehicle Registration Details',
               style: TextStyle(
                 fontSize: 17,
-                fontWeight: FontWeight.bold,
+                fontWeight:
+                    FontWeight.bold,
               ),
             ),
             const SizedBox(height: 14),
@@ -824,24 +1070,32 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
               value: _registrationType.isEmpty
                   ? null
                   : _registrationType,
-              decoration: const InputDecoration(
-                labelText: 'Registration Type',
-                border: OutlineInputBorder(),
+              decoration:
+                  const InputDecoration(
+                labelText:
+                    'Registration Type',
+                border:
+                    OutlineInputBorder(),
                 prefixIcon:
-                    Icon(Icons.badge_outlined),
+                    Icon(
+                  Icons.badge_outlined,
+                ),
               ),
               items: const [
                 DropdownMenuItem(
                   value: 'Private',
-                  child: Text('Private'),
+                  child:
+                      Text('Private'),
                 ),
                 DropdownMenuItem(
                   value: 'Commercial',
-                  child: Text('Commercial'),
+                  child:
+                      Text('Commercial'),
                 ),
                 DropdownMenuItem(
                   value: 'Other',
-                  child: Text('Other'),
+                  child:
+                      Text('Other'),
                 ),
               ],
               onChanged: _uploading
@@ -864,21 +1118,27 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
                   TextCapitalization.characters,
               decoration:
                   const InputDecoration(
-                labelText: 'Registration No.',
-                hintText: 'Example: RJ01AB1234',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(
+                labelText:
+                    'Registration No.',
+                hintText:
+                    'Example: RJ01AB1234',
+                border:
+                    OutlineInputBorder(),
+                prefixIcon:
+                    Icon(
                   Icons.confirmation_number_outlined,
                 ),
               ),
               onChanged: (value) {
-                _registrationNo = value;
+                _registrationNo =
+                    value;
               },
             ),
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
-              child: OutlinedButton.icon(
+              child:
+                  OutlinedButton.icon(
                 onPressed: _uploading
                     ? null
                     : _saveRegistrationDetails,
@@ -896,9 +1156,12 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
     );
   }
 
+  // ============================================================
+  // FIREBASE ERROR
+  // ============================================================
+
   String _firebaseErrorMessage(
-    FirebaseException e,
-  ) {
+      FirebaseException e) {
     switch (e.code) {
       case 'permission-denied':
         return 'Permission denied.\n'
@@ -931,6 +1194,10 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
     }
   }
 
+  // ============================================================
+  // MESSAGE
+  // ============================================================
+
   void _showMessage(
     String message, {
     bool isError = false,
@@ -942,19 +1209,26 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
       SnackBar(
         content: Text(message),
         backgroundColor:
-            isError ? Colors.red : Colors.green,
+            isError
+                ? Colors.red
+                : Colors.green,
         duration:
             const Duration(seconds: 4),
       ),
     );
   }
 
+  // ============================================================
+  // BUILD
+  // ============================================================
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(
         body: Center(
-          child: CircularProgressIndicator(),
+          child:
+              CircularProgressIndicator(),
         ),
       );
     }
@@ -962,13 +1236,15 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
     if (_uid == null) {
       return Scaffold(
         appBar: AppBar(
-          title:
-              const Text('Courier Documents'),
+          title: const Text(
+            'Courier Documents',
+          ),
         ),
         body: const Center(
           child: Text(
             'Courier account नहीं मिला।',
-            style: TextStyle(fontSize: 16),
+            style:
+                TextStyle(fontSize: 16),
           ),
         ),
       );
@@ -976,8 +1252,9 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title:
-            const Text('Courier Documents'),
+        title: const Text(
+          'Courier Documents',
+        ),
         centerTitle: true,
       ),
       body: SafeArea(
@@ -990,46 +1267,33 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
                 crossAxisAlignment:
                     CrossAxisAlignment.start,
                 children: [
-                  Card(
-                    elevation: 2,
-                    child: Padding(
-                      padding:
-                          const EdgeInsets.all(16),
-                      child: Row(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                        children: [
-                          const Icon(
-                            Icons.info_outline,
-                            color: Colors.blue,
-                          ),
-                          const SizedBox(
-                            width: 12,
-                          ),
-                          Expanded(
-                            child: Text(
-                              'Registration complete हो गया है। अब required documents upload करें। सभी documents और registration details complete होने के बाद आपका application Admin approval के लिए भेजा जाएगा.',
-                              style: TextStyle(
-                                color: Colors
-                                    .grey.shade800,
-                                height: 1.4,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                  // ==================================================
+                  // MAIN STATUS
+                  // ==================================================
+
+                  _buildStatusHeader(),
 
                   const SizedBox(height: 16),
+
+                  // ==================================================
+                  // PROGRESS
+                  // ==================================================
 
                   _buildProgressCard(),
 
                   const SizedBox(height: 16),
 
+                  // ==================================================
+                  // REGISTRATION
+                  // ==================================================
+
                   _buildRegistrationDetails(),
 
                   const SizedBox(height: 20),
+
+                  // ==================================================
+                  // DOCUMENTS
+                  // ==================================================
 
                   const Text(
                     'Required Documents',
@@ -1040,28 +1304,55 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
                     ),
                   ),
 
+                  const SizedBox(height: 6),
+
+                  const Text(
+                    'सभी marked (*) documents upload करना जरूरी है।',
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontSize: 13,
+                    ),
+                  ),
+
                   const SizedBox(height: 12),
 
-                  ..._requiredDocuments.keys
-                      .map(_buildDocumentCard),
+                  ..._requiredDocuments
+                      .keys
+                      .map(
+                        _buildDocumentCard,
+                      ),
 
                   const SizedBox(height: 8),
 
+                  // ==================================================
+                  // SUBMIT
+                  // ==================================================
+
                   SizedBox(
-                    width: double.infinity,
+                    width:
+                        double.infinity,
                     height: 52,
                     child:
                         ElevatedButton.icon(
-                      onPressed: _uploading
-                          ? null
-                          : _submitForApproval,
+                      onPressed:
+                          _uploading ||
+                                  _status ==
+                                      'pending_approval'
+                              ? null
+                              : _submitForApproval,
                       icon: const Icon(
                         Icons.send,
-                        color: Colors.white,
+                        color:
+                            Colors.white,
                       ),
-                      label: const Text(
-                        'Submit for Admin Approval',
-                        style: TextStyle(
+                      label:
+                          Text(
+                        _status ==
+                                'pending_approval'
+                            ? 'Waiting for Admin Approval'
+                            : 'Submit for Admin Approval',
+                        style:
+                            const TextStyle(
                           fontSize: 16,
                           fontWeight:
                               FontWeight.bold,
@@ -1073,10 +1364,11 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
                   const SizedBox(height: 24),
 
                   const Text(
-                    '* सभी required documents जरूरी हैं।',
+                    'Security: Admin approval के बिना Courier account active नहीं होगा और कोई order/task assign नहीं किया जा सकेगा।',
                     style: TextStyle(
-                      color: Colors.red,
-                      fontSize: 13,
+                      color: Colors.grey,
+                      fontSize: 12,
+                      height: 1.4,
                     ),
                   ),
 
@@ -1088,23 +1380,32 @@ class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
             if (_uploading)
               Container(
                 color: Colors.black
-                    .withValues(alpha: 0.35),
-                child: const Center(
+                    .withValues(
+                  alpha: 0.35,
+                ),
+                child:
+                    const Center(
                   child: Card(
                     child: Padding(
                       padding:
-                          EdgeInsets.all(24),
+                          EdgeInsets.all(
+                        24,
+                      ),
                       child: Column(
                         mainAxisSize:
                             MainAxisSize.min,
                         children: [
                           CircularProgressIndicator(),
-                          SizedBox(height: 16),
+                          SizedBox(
+                            height: 16,
+                          ),
                           Text(
                             'Document upload हो रहा है...',
-                            style: TextStyle(
+                            style:
+                                TextStyle(
                               fontWeight:
-                                  FontWeight.w600,
+                                  FontWeight
+                                      .w600,
                             ),
                           ),
                         ],
