@@ -27,8 +27,10 @@ class _LoginPageState extends State<LoginPage> {
   int? resendToken;
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore =
-      FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  static const Color primary = Color(0xFF5B35D5);
+  static const Color primaryDark = Color(0xFF4323A8);
 
   @override
   void dispose() {
@@ -39,22 +41,9 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  // ============================================================
-  // STATUS NORMALIZER
-  // ============================================================
-
   String normalizeStatus(dynamic value) {
-    return value
-            ?.toString()
-            .trim()
-            .toLowerCase()
-            .replaceAll(' ', '_') ??
-        '';
+    return value?.toString().trim().toLowerCase().replaceAll(' ', '_') ?? '';
   }
-
-  // ============================================================
-  // MESSAGE
-  // ============================================================
 
   void showMessage(
     String message, {
@@ -64,21 +53,24 @@ class _LoginPageState extends State<LoginPage> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
+        content: Text(
+          message,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         duration: const Duration(seconds: 4),
-        backgroundColor:
-            isError ? Colors.red : null,
+        backgroundColor: isError ? Colors.red.shade600 : null,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
       ),
     );
   }
 
-  // ============================================================
-  // OPEN COURIER DOCUMENT PAGE
-  // ============================================================
-
-  Future<void> openCourierDocuments(
-    String uid,
-  ) async {
+  Future<void> openCourierDocuments(String uid) async {
     if (!mounted) return;
 
     await Navigator.push(
@@ -91,13 +83,6 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // ============================================================
-  // RECOVER COURIER PROFILE
-  //
-  // Auth account मौजूद है लेकिन couriers/{uid} missing है,
-  // तो users/{uid} से courier profile restore की जाएगी.
-  // ============================================================
-
   Future<Map<String, dynamic>?> recoverCourierProfile(
     User user,
     Map<String, dynamic> userData,
@@ -106,87 +91,60 @@ class _LoginPageState extends State<LoginPage> {
       final courierRef =
           _firestore.collection('couriers').doc(user.uid);
 
-      final courierSnapshot =
-          await courierRef.get();
+      final courierSnapshot = await courierRef.get();
 
-      // Existing courier document
       if (courierSnapshot.exists) {
         return courierSnapshot.data();
       }
 
-      // ----------------------------------------------------------
-      // DATA RECOVERY
-      // ----------------------------------------------------------
-
       String name =
-          userData['name']
-                  ?.toString()
-                  .trim() ??
-              '';
+          userData['name']?.toString().trim() ?? '';
 
       String phone =
-          userData['phone']
-                  ?.toString()
-                  .trim() ??
-              '';
+          userData['phone']?.toString().trim() ?? '';
 
       String email =
-          userData['email']
-                  ?.toString()
-                  .trim() ??
-              '';
+          userData['email']?.toString().trim() ?? '';
 
       if (name.isEmpty) {
-        name =
-            (user.displayName ?? '').trim();
+        name = (user.displayName ?? '').trim();
       }
 
       if (phone.isEmpty) {
-        phone =
-            (user.phoneNumber ?? '')
-                .replaceFirst('+91', '')
-                .trim();
+        phone = (user.phoneNumber ?? '')
+            .replaceFirst('+91', '')
+            .trim();
       }
 
       if (email.isEmpty) {
-        email =
-            (user.email ?? '').trim();
+        email = (user.email ?? '').trim();
       }
 
-      final existingStatus =
-          normalizeStatus(
+      final existingStatus = normalizeStatus(
         userData['status'] ??
             userData['registrationStatus'],
       );
 
-      final status =
-          existingStatus.isEmpty
-              ? 'pending_documents'
-              : existingStatus;
+      final status = existingStatus.isEmpty
+          ? 'pending_documents'
+          : existingStatus;
 
-      final courierData =
-          <String, dynamic>{
+      final courierData = <String, dynamic>{
         'uid': user.uid,
         'name': name,
         'phone': phone,
         'email': email,
         'role': 'courier',
         'status': status,
-        'registrationStatus':
-            status,
-        'active':
-            userData['active'] == true,
+        'registrationStatus': status,
+        'active': userData['active'] == true,
         'documentsSubmitted':
-            userData['documentsSubmitted'] ==
-                true,
+            userData['documentsSubmitted'] == true,
         'approvedByAdmin':
-            userData['approvedByAdmin'] ==
-                true,
+            userData['approvedByAdmin'] == true,
         'documents': {},
-        'createdAt':
-            FieldValue.serverTimestamp(),
-        'updatedAt':
-            FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
       };
 
       await courierRef.set(
@@ -206,94 +164,52 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // ============================================================
-  // COURIER LOGIN ROUTING
-  //
-  // RETURN VALUE:
-  //
-  // true  = courier flow handled, normal login continue नहीं करना
-  //
-  // false = fully approved courier, caller Courier Panel flow
-  //         continue कर सकता है.
-  // ============================================================
-
-  Future<bool> handleCourierAfterLogin(
-    User user,
-  ) async {
+  Future<bool> handleCourierAfterLogin(User user) async {
     try {
-      // ----------------------------------------------------------
-      // USERS PROFILE
-      // ----------------------------------------------------------
-
       final userRef =
           _firestore.collection('users').doc(user.uid);
 
-      final userSnapshot =
-          await userRef.get();
+      final userSnapshot = await userRef.get();
 
-      Map<String, dynamic> userData =
-          {};
+      Map<String, dynamic> userData = {};
 
       if (userSnapshot.exists) {
-        userData =
-            userSnapshot.data() ?? {};
+        userData = userSnapshot.data() ?? {};
       }
 
       final userRole =
-          userData['role']
-                  ?.toString()
-                  .trim()
-                  .toLowerCase() ??
-              '';
+          userData['role']?.toString().trim().toLowerCase() ?? '';
 
-      // Not a courier
       if (userRole != 'courier') {
         return false;
       }
 
-      // ----------------------------------------------------------
-      // COURIER PROFILE
-      // ----------------------------------------------------------
-
       Map<String, dynamic>? courierData;
 
-      final courierSnapshot =
-          await _firestore
-              .collection('couriers')
-              .doc(user.uid)
-              .get();
+      final courierSnapshot = await _firestore
+          .collection('couriers')
+          .doc(user.uid)
+          .get();
 
       if (courierSnapshot.exists) {
-        courierData =
-            courierSnapshot.data();
+        courierData = courierSnapshot.data();
       } else {
-        courierData =
-            await recoverCourierProfile(
+        courierData = await recoverCourierProfile(
           user,
           userData,
         );
       }
 
-      // ----------------------------------------------------------
-      // PROFILE NOT FOUND
-      // ----------------------------------------------------------
-
       if (courierData == null) {
         showMessage(
-          'Courier profile nahi mil rahi. '
-          'Please admin se contact karein.',
+          'Courier profile nahi mil rahi. Please admin se contact karein.',
           isError: true,
         );
 
         return true;
       }
 
-      // ----------------------------------------------------------
-      // DATA
-      // ----------------------------------------------------------
-
-      final status =
-          normalizeStatus(
+      final status = normalizeStatus(
         courierData['status'] ??
             courierData['registrationStatus'] ??
             userData['status'] ??
@@ -302,54 +218,34 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       final documentsSubmitted =
-          courierData['documentsSubmitted'] ==
-              true;
+          courierData['documentsSubmitted'] == true;
 
       final active =
           courierData['active'] == true;
 
       final approvedByAdmin =
-          courierData['approvedByAdmin'] ==
-              true;
-
-      // ==========================================================
-      // 1. DOCUMENTS NOT COMPLETE
-      // ==========================================================
+          courierData['approvedByAdmin'] == true;
 
       if (status == 'pending_documents' ||
           !documentsSubmitted) {
         showMessage(
-          'Registration complete hai. '
-          'Ab required documents complete karein.',
+          'Registration complete hai. Ab required documents complete karein.',
         );
 
-        await openCourierDocuments(
-          user.uid,
-        );
+        await openCourierDocuments(user.uid);
 
         return true;
       }
-
-      // ==========================================================
-      // 2. APPROVAL PENDING
-      // ==========================================================
 
       if (status == 'pending_approval') {
         showMessage(
-          'Documents submit ho gaye hain. '
-          'Admin approval ka wait karein.',
+          'Documents submit ho gaye hain. Admin approval ka wait karein.',
         );
 
-        await openCourierDocuments(
-          user.uid,
-        );
+        await openCourierDocuments(user.uid);
 
         return true;
       }
-
-      // ==========================================================
-      // 3. REJECTED
-      // ==========================================================
 
       if (status == 'rejected') {
         final reason =
@@ -365,24 +261,15 @@ class _LoginPageState extends State<LoginPage> {
           );
         } else {
           showMessage(
-            'Documents reject hue hain. '
-            'Documents check karke dobara submit karein.',
+            'Documents reject hue hain. Documents check karke dobara submit karein.',
             isError: true,
           );
         }
 
-        await openCourierDocuments(
-          user.uid,
-        );
+        await openCourierDocuments(user.uid);
 
         return true;
       }
-
-      // ==========================================================
-      // 4. FULLY APPROVED
-      //
-      // ONLY THIS CONDITION ALLOWS COURIER PANEL
-      // ==========================================================
 
       if (status == 'approved' &&
           active &&
@@ -390,34 +277,22 @@ class _LoginPageState extends State<LoginPage> {
         return false;
       }
 
-      // ==========================================================
-      // 5. APPROVED BUT NOT ACTIVE
-      // ==========================================================
-
       if (status == 'approved') {
         showMessage(
           'Courier approved hai, lekin account abhi active nahi hai.',
           isError: true,
         );
 
-        await openCourierDocuments(
-          user.uid,
-        );
+        await openCourierDocuments(user.uid);
 
         return true;
       }
-
-      // ==========================================================
-      // 6. UNKNOWN STATUS
-      // ==========================================================
 
       showMessage(
         'Courier account verification pending hai.',
       );
 
-      await openCourierDocuments(
-        user.uid,
-      );
+      await openCourierDocuments(user.uid);
 
       return true;
     } catch (e) {
@@ -428,21 +303,13 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       showMessage(
-        'Courier account verify nahi ho paya. '
-        'Please try again.',
+        'Courier account verify nahi ho paya. Please try again.',
         isError: true,
       );
 
       return true;
     }
   }
-
-  // ============================================================
-  // SAVE USER PROFILE
-  //
-  // Existing courier/vendor/customer profile ko overwrite नहीं
-  // किया जाएगा.
-  // ============================================================
 
   Future<void> saveUserProfile(
     User user, {
@@ -452,12 +319,7 @@ class _LoginPageState extends State<LoginPage> {
       final userRef =
           _firestore.collection('users').doc(user.uid);
 
-      final snapshot =
-          await userRef.get();
-
-      // ----------------------------------------------------------
-      // NEW USER
-      // ----------------------------------------------------------
+      final snapshot = await userRef.get();
 
       if (!snapshot.exists) {
         await userRef.set({
@@ -466,27 +328,19 @@ class _LoginPageState extends State<LoginPage> {
           'phone': user.phoneNumber ?? '',
           'role': 'customer',
           'status': 'approved',
-          'registrationStatus':
-              'approved',
+          'registrationStatus': 'approved',
           'active': true,
-          'createdAt':
-              FieldValue.serverTimestamp(),
+          'createdAt': FieldValue.serverTimestamp(),
           'loginType': loginType,
         });
 
         return;
       }
 
-      // ----------------------------------------------------------
-      // EXISTING USER
-      // Do not change role/status.
-      // ----------------------------------------------------------
-
       await userRef.set(
         {
           'uid': user.uid,
-          'updatedAt':
-              FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
           'loginType': loginType,
         },
         SetOptions(merge: true),
@@ -500,19 +354,11 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // ============================================================
-  // EMAIL LOGIN
-  // ============================================================
-
   Future<void> loginWithEmail() async {
-    final email =
-        emailController.text.trim();
+    final email = emailController.text.trim();
+    final password = passwordController.text.trim();
 
-    final password =
-        passwordController.text.trim();
-
-    if (email.isEmpty ||
-        password.isEmpty) {
+    if (email.isEmpty || password.isEmpty) {
       showMessage(
         'Email aur password enter karein.',
         isError: true,
@@ -533,8 +379,7 @@ class _LoginPageState extends State<LoginPage> {
         password: password,
       );
 
-      final user =
-          credential.user;
+      final user = credential.user;
 
       if (user == null) {
         showMessage(
@@ -544,57 +389,30 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      // ----------------------------------------------------------
-      // USER PROFILE
-      // ----------------------------------------------------------
+      final userSnapshot = await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .get();
 
-      final userSnapshot =
-          await _firestore
-              .collection('users')
-              .doc(user.uid)
-              .get();
-
-      final userData =
-          userSnapshot.data() ?? {};
+      final userData = userSnapshot.data() ?? {};
 
       final role =
-          userData['role']
-                  ?.toString()
-                  .trim()
-                  .toLowerCase() ??
-              '';
-
-      // ==========================================================
-      // COURIER
-      // ==========================================================
+          userData['role']?.toString().trim().toLowerCase() ?? '';
 
       if (role == 'courier') {
         final handled =
-            await handleCourierAfterLogin(
-          user,
-        );
+            await handleCourierAfterLogin(user);
 
         if (handled) {
           return;
         }
 
-        // --------------------------------------------------------
-        // Fully approved + active courier
-        // --------------------------------------------------------
-
         if (!mounted) return;
 
-        Navigator.pop(
-          context,
-          true,
-        );
+        Navigator.pop(context, true);
 
         return;
       }
-
-      // ==========================================================
-      // CUSTOMER / VENDOR / OTHER
-      // ==========================================================
 
       await saveUserProfile(
         user,
@@ -603,44 +421,34 @@ class _LoginPageState extends State<LoginPage> {
 
       if (!mounted) return;
 
-      Navigator.pop(
-        context,
-        true,
-      );
+      Navigator.pop(context, true);
     } on FirebaseAuthException catch (e) {
-      String message =
-          'Login failed.';
+      String message = 'Login failed.';
 
       switch (e.code) {
         case 'user-not-found':
-          message =
-              'Is email se account nahi mila.';
+          message = 'Is email se account nahi mila.';
           break;
 
         case 'wrong-password':
-          message =
-              'Password galat hai.';
+          message = 'Password galat hai.';
           break;
 
         case 'invalid-credential':
-          message =
-              'Email ya password galat hai.';
+          message = 'Email ya password galat hai.';
           break;
 
         case 'invalid-email':
-          message =
-              'Invalid email address.';
+          message = 'Invalid email address.';
           break;
 
         case 'user-disabled':
-          message =
-              'Ye account disabled hai.';
+          message = 'Ye account disabled hai.';
           break;
 
         case 'too-many-requests':
           message =
-              'Bahut attempts ho gaye. '
-              'Thodi der baad try karein.';
+              'Bahut attempts ho gaye. Thodi der baad try karein.';
           break;
 
         case 'operation-not-allowed':
@@ -649,8 +457,7 @@ class _LoginPageState extends State<LoginPage> {
           break;
 
         case 'network-request-failed':
-          message =
-              'Internet connection check karein.';
+          message = 'Internet connection check karein.';
           break;
       }
 
@@ -678,16 +485,10 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // ============================================================
-  // SEND FIREBASE OTP
-  // ============================================================
-
   Future<void> sendOtp() async {
-    final mobile =
-        mobileController.text.trim();
+    final mobile = mobileController.text.trim();
 
-    if (mobile.isEmpty ||
-        mobile.length != 10) {
+    if (mobile.isEmpty || mobile.length != 10) {
       showMessage(
         '10 digit mobile number enter karein.',
         isError: true,
@@ -696,10 +497,6 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     FocusScope.of(context).unfocus();
-
-    // ----------------------------------------------------------
-    // TEST NUMBERS
-    // ----------------------------------------------------------
 
     if (mobile == '9111111111' ||
         mobile == '9666666666') {
@@ -727,13 +524,11 @@ class _LoginPageState extends State<LoginPage> {
             (PhoneAuthCredential credential) async {
           try {
             final result =
-                await _auth
-                    .signInWithCredential(
+                await _auth.signInWithCredential(
               credential,
             );
 
-            final user =
-                result.user;
+            final user = result.user;
 
             if (user != null) {
               await saveMobileAndFinish(
@@ -764,8 +559,7 @@ class _LoginPageState extends State<LoginPage> {
           }
 
           showMessage(
-            e.message ??
-                'OTP send nahi ho paya.',
+            e.message ?? 'OTP send nahi ho paya.',
             isError: true,
           );
         },
@@ -799,8 +593,7 @@ class _LoginPageState extends State<LoginPage> {
           }
         },
 
-        forceResendingToken:
-            resendToken,
+        forceResendingToken: resendToken,
       );
     } catch (e) {
       if (mounted) {
@@ -822,16 +615,10 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // ============================================================
-  // VERIFY FIREBASE OTP
-  // ============================================================
-
   Future<void> verifyFirebaseOtp() async {
-    final otp =
-        otpController.text.trim();
+    final otp = otpController.text.trim();
 
-    if (otp.isEmpty ||
-        otp.length != 6) {
+    if (otp.isEmpty || otp.length != 6) {
       showMessage(
         '6 digit OTP enter karein.',
         isError: true,
@@ -857,8 +644,7 @@ class _LoginPageState extends State<LoginPage> {
     try {
       final credential =
           PhoneAuthProvider.credential(
-        verificationId:
-            verificationId!,
+        verificationId: verificationId!,
         smsCode: otp,
       );
 
@@ -867,8 +653,7 @@ class _LoginPageState extends State<LoginPage> {
         credential,
       );
 
-      final user =
-          result.user;
+      final user = result.user;
 
       if (user == null) {
         showMessage(
@@ -886,19 +671,14 @@ class _LoginPageState extends State<LoginPage> {
       String message =
           'OTP verification failed.';
 
-      if (e.code ==
-          'invalid-verification-code') {
-        message =
-            'OTP galat hai.';
-      } else if (e.code ==
-          'session-expired') {
+      if (e.code == 'invalid-verification-code') {
+        message = 'OTP galat hai.';
+      } else if (e.code == 'session-expired') {
         message =
             'OTP expire ho gaya. Dobara OTP send karein.';
-      } else if (e.code ==
-          'invalid-verification-id') {
+      } else if (e.code == 'invalid-verification-id') {
         message =
-            'Verification session invalid hai. '
-            'Dobara OTP send karein.';
+            'Verification session invalid hai. Dobara OTP send karein.';
       }
 
       showMessage(
@@ -925,16 +705,9 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // ============================================================
-  // TEST OTP
-  // ============================================================
-
   Future<void> verifyTestOtp() async {
-    final mobile =
-        mobileController.text.trim();
-
-    final otp =
-        otpController.text.trim();
+    final mobile = mobileController.text.trim();
+    final otp = otpController.text.trim();
 
     String? expectedOtp;
 
@@ -965,29 +738,25 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      final email =
-          '$mobile@preesho.test';
+      final email = '$mobile@preesho.test';
 
       UserCredential credential;
 
       try {
         credential =
-            await _auth
-                .signInWithEmailAndPassword(
+            await _auth.signInWithEmailAndPassword(
           email: email,
           password: expectedOtp,
         );
       } on FirebaseAuthException {
         credential =
-            await _auth
-                .createUserWithEmailAndPassword(
+            await _auth.createUserWithEmailAndPassword(
           email: email,
           password: expectedOtp,
         );
       }
 
-      final user =
-          credential.user;
+      final user = credential.user;
 
       if (user == null) {
         showMessage(
@@ -1021,13 +790,8 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // ============================================================
-  // MOBILE LOGIN
-  // ============================================================
-
   Future<void> loginWithOtp() async {
-    final mobile =
-        mobileController.text.trim();
+    final mobile = mobileController.text.trim();
 
     if (mobile == '9111111111' ||
         mobile == '9666666666') {
@@ -1038,17 +802,11 @@ class _LoginPageState extends State<LoginPage> {
     await verifyFirebaseOtp();
   }
 
-  // ============================================================
-  // SAVE MOBILE USER
-  // ============================================================
-
   Future<void> saveMobileAndFinish(
     String mobile, {
     User? existingUser,
   }) async {
-    final user =
-        existingUser ??
-            _auth.currentUser;
+    final user = existingUser ?? _auth.currentUser;
 
     if (user == null) {
       showMessage(
@@ -1060,16 +818,9 @@ class _LoginPageState extends State<LoginPage> {
 
     try {
       final userRef =
-          _firestore
-              .collection('users')
-              .doc(user.uid);
+          _firestore.collection('users').doc(user.uid);
 
-      final snapshot =
-          await userRef.get();
-
-      // ==========================================================
-      // EXISTING PROFILE
-      // ==========================================================
+      final snapshot = await userRef.get();
 
       if (snapshot.exists) {
         final existingData =
@@ -1082,74 +833,48 @@ class _LoginPageState extends State<LoginPage> {
                     .toLowerCase() ??
                 '';
 
-        // --------------------------------------------------------
-        // COURIER
-        // --------------------------------------------------------
-
         if (role == 'courier') {
           final handled =
-              await handleCourierAfterLogin(
-            user,
-          );
+              await handleCourierAfterLogin(user);
 
           if (handled) {
             return;
           }
 
-          // Fully approved courier
           if (!mounted) return;
 
-          Navigator.pop(
-            context,
-            true,
-          );
+          Navigator.pop(context, true);
 
           return;
         }
-
-        // --------------------------------------------------------
-        // EXISTING CUSTOMER / VENDOR
-        // --------------------------------------------------------
 
         await userRef.set(
           {
             'uid': user.uid,
             'phone': mobile,
             'email': user.email ?? '',
-            'updatedAt':
-                FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
             'loginType': 'mobile',
           },
-          SetOptions(
-            merge: true,
-          ),
+          SetOptions(merge: true),
         );
       } else {
-        // ========================================================
-        // NEW CUSTOMER
-        // ========================================================
-
         await userRef.set({
           'uid': user.uid,
           'phone': mobile,
           'email': user.email ?? '',
           'role': 'customer',
           'status': 'approved',
-          'registrationStatus':
-              'approved',
+          'registrationStatus': 'approved',
           'active': true,
-          'createdAt':
-              FieldValue.serverTimestamp(),
+          'createdAt': FieldValue.serverTimestamp(),
           'loginType': 'mobile',
         });
       }
 
       if (!mounted) return;
 
-      Navigator.pop(
-        context,
-        true,
-      );
+      Navigator.pop(context, true);
     } catch (e) {
       if (kDebugMode) {
         debugPrint(
@@ -1158,379 +883,560 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       showMessage(
-        'Profile save nahi ho payi. '
-        'Please try again.',
+        'Profile save nahi ho payi. Please try again.',
         isError: true,
       );
     }
   }
 
-  // ============================================================
-  // FORGOT PASSWORD
-  // ============================================================
-
   void openForgotPassword() {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            const ForgotPasswordPage(),
+        builder: (_) => const ForgotPasswordPage(),
       ),
     );
   }
 
-  // ============================================================
-  // BUILD
-  // ============================================================
-
-  @override
-  Widget build(
-    BuildContext context,
-  ) {
-    return Scaffold(
-      appBar: AppBar(
-        title:
-            const Text('Login'),
+  InputDecoration _inputDecoration({
+    required String label,
+    required IconData icon,
+    Widget? suffixIcon,
+    String? prefixText,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(
+        icon,
+        color: primary,
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding:
-              const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(
-                height: 20,
+      prefixText: prefixText,
+      suffixIcon: suffixIcon,
+      filled: true,
+      fillColor: Colors.grey.shade50,
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 17,
+      ),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(
+          color: Colors.grey.shade200,
+        ),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(
+          color: Colors.grey.shade200,
+        ),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: const BorderSide(
+          color: primary,
+          width: 1.7,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLogo() {
+    return Container(
+      height: 82,
+      width: 82,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [
+            primary,
+            primaryDark,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(25),
+        boxShadow: [
+          BoxShadow(
+            color: primary.withOpacity(.25),
+            blurRadius: 25,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: const Icon(
+        Icons.shopping_bag_rounded,
+        color: Colors.white,
+        size: 43,
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Column(
+      children: [
+        _buildLogo(),
+        const SizedBox(height: 22),
+        const Text(
+          'Welcome to Preesho',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -.6,
+          ),
+        ),
+        const SizedBox(height: 7),
+        Text(
+          'Login karke shopping start karein',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 14,
+            color: Colors.grey.shade600,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmailLogin() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Email Login',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        TextField(
+          controller: emailController,
+          keyboardType: TextInputType.emailAddress,
+          textInputAction: TextInputAction.next,
+          decoration: _inputDecoration(
+            label: 'Email Address',
+            icon: Icons.email_outlined,
+          ),
+        ),
+
+        const SizedBox(height: 13),
+
+        TextField(
+          controller: passwordController,
+          obscureText: obscurePassword,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) {
+            if (!isLoading) {
+              loginWithEmail();
+            }
+          },
+          decoration: _inputDecoration(
+            label: 'Password',
+            icon: Icons.lock_outline_rounded,
+            suffixIcon: IconButton(
+              onPressed: () {
+                setState(() {
+                  obscurePassword = !obscurePassword;
+                });
+              },
+              icon: Icon(
+                obscurePassword
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
               ),
+            ),
+          ),
+        ),
 
-              const Text(
-                'Welcome to Preesho',
-                textAlign:
-                    TextAlign.center,
-                style: TextStyle(
-                  fontSize: 26,
-                  fontWeight:
-                      FontWeight.bold,
-                ),
+        const SizedBox(height: 4),
+
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed:
+                isLoading ? null : openForgotPassword,
+            child: const Text(
+              'Forgot Password?',
+              style: TextStyle(
+                color: primary,
+                fontWeight: FontWeight.w800,
               ),
+            ),
+          ),
+        ),
 
-              const SizedBox(
-                height: 30,
-              ),
+        const SizedBox(height: 5),
 
-              // ==================================================
-              // EMAIL
-              // ==================================================
+        _primaryButton(
+          text: 'Login with Email',
+          icon: Icons.login_rounded,
+          onPressed:
+              isLoading ? null : loginWithEmail,
+        ),
+      ],
+    );
+  }
 
-              TextField(
-                controller:
-                    emailController,
-                keyboardType:
-                    TextInputType.emailAddress,
-                decoration:
-                    const InputDecoration(
-                  labelText:
-                      'Email',
-                  prefixIcon:
-                      Icon(
-                    Icons.email_outlined,
-                  ),
-                  border:
-                      OutlineInputBorder(),
-                ),
-              ),
+  Widget _buildDivider() {
+    return Row(
+      children: [
+        Expanded(
+          child: Divider(
+            color: Colors.grey.shade300,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 14,
+          ),
+          child: Text(
+            'OR',
+            style: TextStyle(
+              color: Colors.grey.shade500,
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Divider(
+            color: Colors.grey.shade300,
+          ),
+        ),
+      ],
+    );
+  }
 
-              const SizedBox(
-                height: 15,
-              ),
+  Widget _buildMobileLogin() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Mobile Login',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 6),
 
-              // ==================================================
-              // PASSWORD
-              // ==================================================
+        Text(
+          otpSent
+              ? 'OTP aapke mobile number par bheja gaya hai.'
+              : 'Mobile number se quick login karein.',
+          style: TextStyle(
+            color: Colors.grey.shade600,
+            fontSize: 13,
+          ),
+        ),
 
-              TextField(
-                controller:
-                    passwordController,
-                obscureText:
-                    obscurePassword,
-                decoration:
-                    InputDecoration(
-                  labelText:
-                      'Password',
-                  prefixIcon:
-                      const Icon(
-                    Icons.lock_outline,
-                  ),
-                  border:
-                      const OutlineInputBorder(),
-                  suffixIcon:
-                      IconButton(
-                    icon:
-                        Icon(
-                      obscurePassword
-                          ? Icons
-                              .visibility_off
-                          : Icons.visibility,
-                    ),
-                    onPressed: () {
+        const SizedBox(height: 14),
+
+        TextField(
+          controller: mobileController,
+          keyboardType: TextInputType.phone,
+          maxLength: 10,
+          enabled: !otpSent && !isLoading,
+          decoration: _inputDecoration(
+            label: 'Mobile Number',
+            icon: Icons.phone_android_rounded,
+            prefixText: '+91 ',
+          ).copyWith(
+            counterText: '',
+          ),
+        ),
+
+        if (!otpSent) ...[
+          const SizedBox(height: 14),
+
+          _primaryButton(
+            text: 'Send OTP',
+            icon: Icons.sms_outlined,
+            onPressed:
+                isLoading ? null : sendOtp,
+          ),
+        ],
+
+        if (otpSent) ...[
+          const SizedBox(height: 14),
+
+          TextField(
+            controller: otpController,
+            keyboardType: TextInputType.number,
+            maxLength: 6,
+            decoration: _inputDecoration(
+              label: 'Enter 6 Digit OTP',
+              icon: Icons.password_rounded,
+            ).copyWith(
+              counterText: '',
+            ),
+          ),
+
+          const SizedBox(height: 14),
+
+          _primaryButton(
+            text: 'Verify OTP',
+            icon: Icons.verified_rounded,
+            onPressed:
+                isLoading ? null : loginWithOtp,
+          ),
+
+          const SizedBox(height: 5),
+
+          SizedBox(
+            width: double.infinity,
+            child: TextButton.icon(
+              onPressed: isLoading
+                  ? null
+                  : () {
                       setState(() {
-                        obscurePassword =
-                            !obscurePassword;
+                        otpSent = false;
+                        verificationId = null;
+                        resendToken = null;
+                        otpController.clear();
                       });
                     },
+              icon: const Icon(
+                Icons.edit_outlined,
+                size: 18,
+              ),
+              label: const Text(
+                'Change Mobile Number',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _primaryButton({
+    required String text,
+    required IconData icon,
+    required VoidCallback? onPressed,
+  }) {
+    final disabled = onPressed == null;
+
+    return SizedBox(
+      width: double.infinity,
+      height: 55,
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: isLoading && onPressed == null
+            ? const SizedBox(
+                height: 21,
+                width: 21,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: Colors.white,
+                ),
+              )
+            : Icon(icon),
+        label: Text(
+          isLoading && onPressed == null
+              ? 'Please wait...'
+              : text,
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor:
+              disabled ? Colors.grey.shade400 : primary,
+          foregroundColor: Colors.white,
+          elevation: disabled ? 0 : 3,
+          shadowColor: primary.withOpacity(.25),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(17),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSecurityCard() {
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.green.shade50,
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(
+          color: Colors.green.shade100,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            height: 42,
+            width: 42,
+            decoration: BoxDecoration(
+              color: Colors.green.shade100,
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Icon(
+              Icons.verified_user_outlined,
+              color: Colors.green.shade700,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Secure Login',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13,
                   ),
                 ),
-              ),
-
-              const SizedBox(
-                height: 10,
-              ),
-
-              Align(
-                alignment:
-                    Alignment.centerRight,
-                child:
-                    TextButton(
-                  onPressed:
-                      isLoading
-                          ? null
-                          : openForgotPassword,
-                  child:
-                      const Text(
-                    'Forgot Password?',
-                  ),
-                ),
-              ),
-
-              const SizedBox(
-                height: 5,
-              ),
-
-              // ==================================================
-              // EMAIL LOGIN
-              // ==================================================
-
-              SizedBox(
-                height: 50,
-                child:
-                    ElevatedButton(
-                  onPressed:
-                      isLoading
-                          ? null
-                          : loginWithEmail,
-                  child:
-                      isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child:
-                                  CircularProgressIndicator(
-                                strokeWidth:
-                                    2,
-                              ),
-                            )
-                          : const Text(
-                              'Login with Email',
-                            ),
-                ),
-              ),
-
-              const SizedBox(
-                height: 25,
-              ),
-
-              const Row(
-                children: [
-                  Expanded(
-                    child:
-                        Divider(),
-                  ),
-                  Padding(
-                    padding:
-                        EdgeInsets.symmetric(
-                      horizontal: 10,
-                    ),
-                    child:
-                        Text('OR'),
-                  ),
-                  Expanded(
-                    child:
-                        Divider(),
-                  ),
-                ],
-              ),
-
-              const SizedBox(
-                height: 25,
-              ),
-
-              // ==================================================
-              // MOBILE
-              // ==================================================
-
-              TextField(
-                controller:
-                    mobileController,
-                keyboardType:
-                    TextInputType.phone,
-                maxLength: 10,
-                decoration:
-                    const InputDecoration(
-                  labelText:
-                      'Mobile Number',
-                  prefixText:
-                      '+91 ',
-                  prefixIcon:
-                      Icon(
-                    Icons.phone_android,
-                  ),
-                  border:
-                      OutlineInputBorder(),
-                  counterText:
-                      '',
-                ),
-              ),
-
-              const SizedBox(
-                height: 15,
-              ),
-
-              // ==================================================
-              // SEND OTP
-              // ==================================================
-
-              if (!otpSent)
-                SizedBox(
-                  height: 50,
-                  child:
-                      ElevatedButton(
-                    onPressed:
-                        isLoading
-                            ? null
-                            : sendOtp,
-                    child:
-                        const Text(
-                      'Send OTP',
-                    ),
-                  ),
-                ),
-
-              // ==================================================
-              // OTP
-              // ==================================================
-
-              if (otpSent) ...[
-                const SizedBox(
-                  height: 5,
-                ),
-
-                TextField(
-                  controller:
-                      otpController,
-                  keyboardType:
-                      TextInputType.number,
-                  maxLength: 6,
-                  decoration:
-                      const InputDecoration(
-                    labelText:
-                        'Enter OTP',
-                    prefixIcon:
-                        Icon(
-                      Icons.password,
-                    ),
-                    border:
-                        OutlineInputBorder(),
-                    counterText:
-                        '',
-                  ),
-                ),
-
-                const SizedBox(
-                  height: 15,
-                ),
-
-                SizedBox(
-                  height: 50,
-                  child:
-                      ElevatedButton(
-                    onPressed:
-                        isLoading
-                            ? null
-                            : loginWithOtp,
-                    child:
-                        isLoading
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child:
-                                    CircularProgressIndicator(
-                                  strokeWidth:
-                                      2,
-                                ),
-                              )
-                            : const Text(
-                                'Verify OTP',
-                              ),
-                  ),
-                ),
-
-                const SizedBox(
-                  height: 8,
-                ),
-
-                TextButton(
-                  onPressed:
-                      isLoading
-                          ? null
-                          : () {
-                              setState(() {
-                                otpSent =
-                                    false;
-                                verificationId =
-                                    null;
-                                resendToken =
-                                    null;
-                                otpController
-                                    .clear();
-                              });
-                            },
-                  child:
-                      const Text(
-                    'Change Mobile Number',
+                const SizedBox(height: 3),
+                Text(
+                  'Aapki login details secure rakhi jaati hain.',
+                  style: TextStyle(
+                    color: Colors.green.shade800,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-              const SizedBox(
-                height: 25,
+  Widget _buildTestInfo() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.orange.shade100,
+        ),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.developer_mode_rounded,
+                size: 19,
+                color: Colors.orange.shade800,
               ),
+              const SizedBox(width: 8),
+              Text(
+                'Developer Test Login',
+                style: TextStyle(
+                  color: Colors.orange.shade900,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Courier: 9111111111  •  OTP: 911111\n'
+            'Vendor: 9666666666  •  OTP: 966666',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.orange.shade900,
+              fontSize: 11,
+              height: 1.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-              // ==================================================
-              // TEST LOGIN
-              // ==================================================
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7F7FA),
 
-              const Text(
-                'Test Courier: 9111111111 / OTP 911111',
-                textAlign:
-                    TextAlign.center,
-                style:
-                    TextStyle(
-                  fontSize: 12,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: IconButton(
+          onPressed: () => Navigator.pop(context),
+          icon: const Icon(
+            Icons.arrow_back_rounded,
+          ),
+        ),
+      ),
+
+      body: SafeArea(
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(
+            18,
+            5,
+            18,
+            35,
+          ),
+          child: Column(
+            children: [
+              _buildHeader(),
+
+              const SizedBox(height: 30),
+
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(25),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(.055),
+                      blurRadius: 25,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    _buildEmailLogin(),
+
+                    const SizedBox(height: 25),
+
+                    _buildDivider(),
+
+                    const SizedBox(height: 25),
+
+                    _buildMobileLogin(),
+                  ],
                 ),
               ),
 
-              const SizedBox(
-                height: 5,
-              ),
+              const SizedBox(height: 16),
 
-              const Text(
-                'Test Vendor: 9666666666 / OTP 966666',
-                textAlign:
-                    TextAlign.center,
-                style:
-                    TextStyle(
-                  fontSize: 12,
+              _buildSecurityCard(),
+
+              const SizedBox(height: 16),
+
+              _buildTestInfo(),
+
+              const SizedBox(height: 15),
+
+              Text(
+                'By continuing, you agree to Preesho terms & privacy policy.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.grey.shade500,
+                  fontSize: 10,
+                  height: 1.4,
                 ),
               ),
             ],
