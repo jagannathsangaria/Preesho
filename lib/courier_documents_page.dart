@@ -51,7 +51,6 @@ class _CourierDocumentsPageState
 
   String _registrationType = '';
   String _registrationNo = '';
-
   String _rejectionReason = '';
 
   final Map<String, Map<String, dynamic>> _documents = {};
@@ -72,14 +71,113 @@ class _CourierDocumentsPageState
     'addressProof',
   ];
 
+  late final TextEditingController _registrationController;
+
+  static const Color primary = Color(0xFF5B35D5);
+  static const Color primaryDark = Color(0xFF4323A8);
+
   @override
   void initState() {
     super.initState();
+
+    _registrationController =
+        TextEditingController();
 
     _uid = widget.courierUid ??
         _auth.currentUser?.uid;
 
     _loadCourierData();
+  }
+
+  @override
+  void dispose() {
+    _registrationController.dispose();
+    super.dispose();
+  }
+
+  // ============================================================
+  // HELPERS
+  // ============================================================
+
+  String _clean(dynamic value) {
+    return value?.toString().trim() ?? '';
+  }
+
+  bool _isTrue(dynamic value) {
+    if (value is bool) {
+      return value;
+    }
+
+    return _clean(value).toLowerCase() == 'true';
+  }
+
+  String _normalizeStatus(dynamic value) {
+    return _clean(value)
+        .toLowerCase()
+        .replaceAll(' ', '_');
+  }
+
+  void _showMessage(
+    String message, {
+    bool isError = false,
+  }) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        backgroundColor:
+            isError
+                ? Colors.red.shade600
+                : Colors.green.shade600,
+        behavior:
+            SnackBarBehavior.floating,
+        margin:
+            const EdgeInsets.all(16),
+        shape:
+            RoundedRectangleBorder(
+          borderRadius:
+              BorderRadius.circular(14),
+        ),
+        duration:
+            const Duration(seconds: 4),
+      ),
+    );
+  }
+
+  String _firebaseErrorMessage(
+    FirebaseException e,
+  ) {
+    switch (e.code) {
+      case 'permission-denied':
+        return 'Permission denied. Firebase Rules check karein.';
+
+      case 'unauthenticated':
+        return 'Login session expire ho gaya. Dobara login karein.';
+
+      case 'object-not-found':
+        return 'File nahi mili.';
+
+      case 'canceled':
+        return 'Upload cancel ho gaya.';
+
+      case 'network-request-failed':
+        return 'Internet connection check karein.';
+
+      case 'quota-exceeded':
+        return 'Firebase Storage quota exceed ho gaya.';
+
+      case 'retry-limit-exceeded':
+        return 'Upload baar-baar fail hua. Dobara try karein.';
+
+      default:
+        return 'Firebase error: ${e.message ?? e.code}';
+    }
   }
 
   // ============================================================
@@ -98,10 +196,14 @@ class _CourierDocumentsPageState
 
     try {
       final courierRef =
-          _firestore.collection('couriers').doc(_uid);
+          _firestore
+              .collection('couriers')
+              .doc(_uid);
 
       final userRef =
-          _firestore.collection('users').doc(_uid);
+          _firestore
+              .collection('users')
+              .doc(_uid);
 
       final courierSnapshot =
           await courierRef.get();
@@ -109,13 +211,9 @@ class _CourierDocumentsPageState
       Map<String, dynamic> data = {};
 
       if (courierSnapshot.exists) {
-        data = courierSnapshot.data() ?? {};
+        data =
+            courierSnapshot.data() ?? {};
       } else {
-        // --------------------------------------------------------
-        // COURIER DOCUMENT MISSING
-        // Recover profile from users collection.
-        // --------------------------------------------------------
-
         final userSnapshot =
             await userRef.get();
 
@@ -123,40 +221,69 @@ class _CourierDocumentsPageState
             userSnapshot.data() ?? {};
 
         final role =
-            userData['role']
-                    ?.toString()
-                    .toLowerCase()
-                    .trim() ??
-                '';
+            _clean(
+              userData['role'],
+            ).toLowerCase();
 
         if (role == 'courier') {
+          final name =
+              _clean(
+                userData['name'],
+              ).isNotEmpty
+                  ? _clean(
+                      userData['name'],
+                    )
+                  : _auth.currentUser
+                          ?.displayName ??
+                      '';
+
+          final phone =
+              _clean(
+                userData['phone'],
+              ).isNotEmpty
+                  ? _clean(
+                      userData['phone'],
+                    )
+                  : _clean(
+                      userData['mobile'],
+                    );
+
+          final email =
+              _clean(
+                userData['email'],
+              ).isNotEmpty
+                  ? _clean(
+                      userData['email'],
+                    )
+                  : _auth.currentUser
+                          ?.email ??
+                      '';
+
           data = {
             'uid': _uid,
             'role': 'courier',
-            'name':
-                userData['name'] ??
-                    _auth.currentUser?.displayName ??
-                    '',
-            'phone':
-                userData['phone'] ??
-                    _auth.currentUser?.phoneNumber ??
-                    '',
-            'email':
-                userData['email'] ??
-                    _auth.currentUser?.email ??
-                    '',
+            'name': name,
+            'displayName': name,
+            'phone': phone,
+            'mobile': phone,
+            'email': email,
             'status':
                 userData['status'] ??
                     'pending_documents',
             'registrationStatus':
-                userData['registrationStatus'] ??
+                userData[
+                        'registrationStatus'] ??
                     'pending_documents',
             'active':
                 userData['active'] == true,
             'documentsSubmitted':
-                userData['documentsSubmitted'] == true,
+                userData[
+                        'documentsSubmitted'] ==
+                    true,
             'approvedByAdmin':
-                userData['approvedByAdmin'] == true,
+                userData[
+                        'approvedByAdmin'] ==
+                    true,
             'documents': {},
           };
 
@@ -168,32 +295,33 @@ class _CourierDocumentsPageState
               'updatedAt':
                   FieldValue.serverTimestamp(),
             },
-            SetOptions(merge: true),
+            SetOptions(
+              merge: true,
+            ),
           );
         }
       }
 
-      // ----------------------------------------------------------
-      // BASIC INFORMATION
-      // ----------------------------------------------------------
-
       _courierName =
-          data['name']
-                  ?.toString()
-                  .trim() ??
-              '';
+          _clean(data['name']);
+
+      if (_courierName.isEmpty) {
+        _courierName =
+            _clean(
+              data['displayName'],
+            );
+      }
 
       _courierPhone =
-          data['phone']
-                  ?.toString()
-                  .trim() ??
-              '';
+          _clean(data['phone']);
+
+      if (_courierPhone.isEmpty) {
+        _courierPhone =
+            _clean(data['mobile']);
+      }
 
       _courierEmail =
-          data['email']
-                  ?.toString()
-                  .trim() ??
-              '';
+          _clean(data['email']);
 
       _status =
           _normalizeStatus(
@@ -203,35 +331,35 @@ class _CourierDocumentsPageState
       );
 
       _documentsSubmitted =
-          data['documentsSubmitted'] == true;
+          _isTrue(
+        data['documentsSubmitted'],
+      );
 
       _active =
-          data['active'] == true;
+          _isTrue(data['active']);
 
       _approvedByAdmin =
-          data['approvedByAdmin'] == true;
+          _isTrue(
+        data['approvedByAdmin'],
+      );
 
       _registrationType =
-          data['registrationType']
-                  ?.toString()
-                  .trim() ??
-              '';
+          _clean(
+        data['registrationType'],
+      );
 
       _registrationNo =
-          data['registrationNo']
-                  ?.toString()
-                  .trim() ??
-              '';
+          _clean(
+        data['registrationNo'],
+      );
 
       _rejectionReason =
-          data['rejectionReason']
-                  ?.toString()
-                  .trim() ??
-              '';
+          _clean(
+        data['rejectionReason'],
+      );
 
-      // ----------------------------------------------------------
-      // DOCUMENTS
-      // ----------------------------------------------------------
+      _registrationController.text =
+          _registrationNo;
 
       _documents.clear();
 
@@ -272,17 +400,8 @@ class _CourierDocumentsPageState
     }
   }
 
-  String _normalizeStatus(dynamic value) {
-    return value
-        ?.toString()
-        .toLowerCase()
-        .trim()
-        .replaceAll(' ', '_') ??
-        '';
-  }
-
   // ============================================================
-  // CHECK IF EDITING IS ALLOWED
+  // STATUS
   // ============================================================
 
   bool get _isPendingApproval =>
@@ -306,7 +425,7 @@ class _CourierDocumentsPageState
   }
 
   // ============================================================
-  // STATUS HEADER
+  // STATUS CARD
   // ============================================================
 
   Widget _buildStatusHeader() {
@@ -315,40 +434,40 @@ class _CourierDocumentsPageState
     IconData icon;
     Color color;
 
-    if (_status == 'pending_documents' ||
+    if (_status ==
+            'pending_documents' ||
         !_documentsSubmitted) {
       title =
-          'Documents Pending for Upload';
+          'Documents Pending';
 
       message =
-          'Aapka Courier registration successful hai. '
-          'Sabhi required documents upload karke Admin approval ke liye submit karein.';
+          'Registration successful hai. Sabhi required documents upload karke Admin approval ke liye submit karein.';
 
       icon =
-          Icons.upload_file;
+          Icons.cloud_upload_rounded;
 
       color =
           Colors.orange;
-    } else if (_status == 'pending_approval') {
+    } else if (_status ==
+        'pending_approval') {
       title =
           'Admin Approval Pending';
 
       message =
-          'Aapke documents Admin approval ke liye submit ho chuke hain. '
-          'Approval milne tak orders receive nahi honge.';
+          'Aapke documents Admin approval ke liye submit ho chuke hain. Approval ke baad account active hoga.';
 
       icon =
-          Icons.hourglass_top;
+          Icons.hourglass_top_rounded;
 
       color =
           Colors.orange;
-    } else if (_status == 'rejected') {
+    } else if (_status ==
+        'rejected') {
       title =
           'Documents Rejected';
 
       message =
-          'Admin ne documents reject kiye hain. '
-          'Required documents ko replace karke dobara submit karein.';
+          'Admin ne documents reject kiye hain. Rejected documents ko replace karke dobara submit karein.';
 
       icon =
           Icons.cancel_outlined;
@@ -363,7 +482,7 @@ class _CourierDocumentsPageState
           'Aapka Courier account Admin dwara approved aur active hai.';
 
       icon =
-          Icons.check_circle;
+          Icons.verified_rounded;
 
       color =
           Colors.green;
@@ -375,158 +494,198 @@ class _CourierDocumentsPageState
           'Aapka Courier application verification mein hai.';
 
       icon =
-          Icons.info_outline;
+          Icons.info_outline_rounded;
 
       color =
           Colors.blue;
     }
 
-    return Card(
-      elevation: 3,
-      child: Container(
-        width: double.infinity,
-        padding:
-            const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          borderRadius:
-              BorderRadius.circular(12),
-          border: Border.all(
-            color:
-                color.withValues(
-              alpha: 0.35,
+    return Container(
+      width: double.infinity,
+      padding:
+          const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            color.withOpacity(.12),
+            Colors.white,
+          ],
+          begin:
+              Alignment.topLeft,
+          end:
+              Alignment.bottomRight,
+        ),
+        borderRadius:
+            BorderRadius.circular(22),
+        border: Border.all(
+          color:
+              color.withOpacity(.25),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Container(
+            height: 55,
+            width: 55,
+            decoration: BoxDecoration(
+              color:
+                  color.withOpacity(.13),
+              shape:
+                  BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              color: color,
+              size: 29,
             ),
           ),
-        ),
-        child: Row(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color:
-                    color.withValues(
-                  alpha: 0.12,
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 18,
+                    fontWeight:
+                        FontWeight.w900,
+                  ),
                 ),
-                shape:
-                    BoxShape.circle,
-              ),
-              child: Icon(
-                icon,
-                color: color,
-                size: 28,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 19,
-                      fontWeight:
-                          FontWeight.bold,
-                      color: color,
-                    ),
+                const SizedBox(height: 7),
+                Text(
+                  message,
+                  style: TextStyle(
+                    color:
+                        Colors.grey.shade700,
+                    fontSize: 12,
+                    height: 1.45,
+                    fontWeight:
+                        FontWeight.w600,
                   ),
-                  const SizedBox(height: 7),
-                  Text(
-                    message,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      height: 1.45,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   // ============================================================
-  // PROFILE CARD
+  // PROFILE
   // ============================================================
 
   Widget _buildCourierProfileCard() {
     final firstLetter =
         _courierName.isNotEmpty
-            ? _courierName[0].toUpperCase()
+            ? _courierName[0]
+                .toUpperCase()
             : 'C';
 
-    return Card(
-      elevation: 2,
-      child: Padding(
-        padding:
-            const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 29,
+    return Container(
+      padding:
+          const EdgeInsets.all(17),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius:
+            BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color:
+                Colors.black.withOpacity(.05),
+            blurRadius: 20,
+            offset:
+                const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            height: 62,
+            width: 62,
+            decoration: BoxDecoration(
+              gradient:
+                  const LinearGradient(
+                colors: [
+                  primary,
+                  primaryDark,
+                ],
+              ),
+              shape:
+                  BoxShape.circle,
+            ),
+            child: Center(
               child: Text(
                 firstLetter,
-                style: const TextStyle(
-                  fontSize: 24,
+                style:
+                    const TextStyle(
+                  color: Colors.white,
+                  fontSize: 25,
                   fontWeight:
-                      FontWeight.bold,
+                      FontWeight.w900,
                 ),
               ),
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _courierName.isEmpty
-                        ? 'Courier'
-                        : _courierName,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight:
-                          FontWeight.bold,
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _courierName.isEmpty
+                      ? 'Courier'
+                      : _courierName,
+                  style:
+                      const TextStyle(
+                    fontSize: 17,
+                    fontWeight:
+                        FontWeight.w900,
+                  ),
+                ),
+                if (_courierPhone
+                    .isNotEmpty)
+                  Padding(
+                    padding:
+                        const EdgeInsets.only(
+                      top: 5,
+                    ),
+                    child: Text(
+                      _courierPhone,
+                      style: TextStyle(
+                        color:
+                            Colors.grey.shade600,
+                        fontSize: 12,
+                      ),
                     ),
                   ),
-                  if (_courierPhone.isNotEmpty)
-                    Padding(
-                      padding:
-                          const EdgeInsets.only(
-                        top: 4,
-                      ),
-                      child: Text(
-                        _courierPhone,
-                        style:
-                            const TextStyle(
-                          color: Colors.grey,
-                        ),
+                if (_courierEmail
+                    .isNotEmpty)
+                  Padding(
+                    padding:
+                        const EdgeInsets.only(
+                      top: 3,
+                    ),
+                    child: Text(
+                      _courierEmail,
+                      style: TextStyle(
+                        color:
+                            Colors.grey.shade600,
+                        fontSize: 11,
                       ),
                     ),
-                  if (_courierEmail.isNotEmpty)
-                    Padding(
-                      padding:
-                          const EdgeInsets.only(
-                        top: 2,
-                      ),
-                      child: Text(
-                        _courierEmail,
-                        style:
-                            const TextStyle(
-                          color: Colors.grey,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
+                  ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -538,135 +697,232 @@ class _CourierDocumentsPageState
   Widget _buildRegistrationDetails() {
     final editable =
         _canEditDocuments &&
-        !_savingDetails;
+            !_savingDetails;
 
-    return Card(
-      elevation: 2,
-      child: Padding(
-        padding:
-            const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Vehicle Registration Details',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight:
-                    FontWeight.bold,
+    return Container(
+      width: double.infinity,
+      padding:
+          const EdgeInsets.all(17),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius:
+            BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color:
+                Colors.black.withOpacity(.045),
+            blurRadius: 20,
+            offset:
+                const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                height: 42,
+                width: 42,
+                decoration: BoxDecoration(
+                  color:
+                      primary.withOpacity(.10),
+                  borderRadius:
+                      BorderRadius.circular(13),
+                ),
+                child: const Icon(
+                  Icons
+                      .directions_car_outlined,
+                  color: primary,
+                ),
+              ),
+              const SizedBox(width: 11),
+              const Expanded(
+                child: Text(
+                  'Vehicle Registration',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight:
+                        FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 18),
+
+          DropdownButtonFormField<String>(
+            value:
+                _registrationType.isEmpty
+                    ? null
+                    : _registrationType,
+            decoration:
+                InputDecoration(
+              labelText:
+                  'Registration Type',
+              prefixIcon:
+                  const Icon(
+                Icons.badge_outlined,
+                color: primary,
+              ),
+              filled: true,
+              fillColor:
+                  Colors.grey.shade50,
+              border:
+                  OutlineInputBorder(
+                borderRadius:
+                    BorderRadius.circular(15),
+                borderSide:
+                    BorderSide(
+                  color:
+                      Colors.grey.shade200,
+                ),
+              ),
+              enabledBorder:
+                  OutlineInputBorder(
+                borderRadius:
+                    BorderRadius.circular(15),
+                borderSide:
+                    BorderSide(
+                  color:
+                      Colors.grey.shade200,
+                ),
               ),
             ),
-            const SizedBox(height: 14),
+            items: const [
+              DropdownMenuItem(
+                value: 'Private',
+                child:
+                    Text('Private'),
+              ),
+              DropdownMenuItem(
+                value: 'Commercial',
+                child:
+                    Text('Commercial'),
+              ),
+              DropdownMenuItem(
+                value: 'Other',
+                child:
+                    Text('Other'),
+              ),
+            ],
+            onChanged:
+                editable
+                    ? (value) {
+                        setState(() {
+                          _registrationType =
+                              value ?? '';
+                        });
+                      }
+                    : null,
+          ),
 
-            DropdownButtonFormField<String>(
-              value: _registrationType.isEmpty
-                  ? null
-                  : _registrationType,
-              decoration:
-                  const InputDecoration(
-                labelText:
-                    'Registration Type',
-                border:
-                    OutlineInputBorder(),
-                prefixIcon:
-                    Icon(
-                  Icons.badge_outlined,
+          const SizedBox(height: 13),
+
+          TextField(
+            controller:
+                _registrationController,
+            enabled: editable,
+            textCapitalization:
+                TextCapitalization.characters,
+            decoration:
+                InputDecoration(
+              labelText:
+                  'Registration Number',
+              hintText:
+                  'Example: RJ01AB1234',
+              prefixIcon:
+                  const Icon(
+                Icons
+                    .confirmation_number_outlined,
+                color: primary,
+              ),
+              filled: true,
+              fillColor:
+                  Colors.grey.shade50,
+              border:
+                  OutlineInputBorder(
+                borderRadius:
+                    BorderRadius.circular(15),
+                borderSide:
+                    BorderSide(
+                  color:
+                      Colors.grey.shade200,
                 ),
               ),
-              items: const [
-                DropdownMenuItem(
-                  value: 'Private',
-                  child:
-                      Text('Private'),
+              enabledBorder:
+                  OutlineInputBorder(
+                borderRadius:
+                    BorderRadius.circular(15),
+                borderSide:
+                    BorderSide(
+                  color:
+                      Colors.grey.shade200,
                 ),
-                DropdownMenuItem(
-                  value: 'Commercial',
-                  child:
-                      Text('Commercial'),
-                ),
-                DropdownMenuItem(
-                  value: 'Other',
-                  child:
-                      Text('Other'),
-                ),
-              ],
-              onChanged:
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 13),
+
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: OutlinedButton.icon(
+              onPressed:
                   editable
-                      ? (value) {
-                          setState(() {
-                            _registrationType =
-                                value ?? '';
-                          });
-                        }
+                      ? _saveRegistrationDetails
                       : null,
-            ),
-
-            const SizedBox(height: 14),
-
-            TextFormField(
-              initialValue:
-                  _registrationNo,
-              enabled: editable,
-              textCapitalization:
-                  TextCapitalization.characters,
-              decoration:
-                  const InputDecoration(
-                labelText:
-                    'Registration No.',
-                hintText:
-                    'Example: RJ01AB1234',
-                border:
-                    OutlineInputBorder(),
-                prefixIcon:
-                    Icon(
-                  Icons.confirmation_number_outlined,
-                ),
-              ),
-              onChanged: (value) {
-                _registrationNo =
-                    value.trim();
-              },
-            ),
-
-            const SizedBox(height: 12),
-
-            SizedBox(
-              width: double.infinity,
-              child:
-                  OutlinedButton.icon(
-                onPressed:
-                    editable
-                        ? _saveRegistrationDetails
-                        : null,
-                icon:
-                    _savingDetails
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child:
-                                CircularProgressIndicator(
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : const Icon(
-                            Icons.save_outlined,
-                          ),
-                label: Text(
+              icon:
                   _savingDetails
-                      ? 'Saving...'
-                      : 'Save Registration Details',
+                      ? const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child:
+                              CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Icon(
+                          Icons
+                              .save_outlined,
+                        ),
+              label: Text(
+                _savingDetails
+                    ? 'Saving...'
+                    : 'Save Registration Details',
+                style:
+                    const TextStyle(
+                  fontWeight:
+                      FontWeight.w800,
+                ),
+              ),
+              style:
+                  OutlinedButton.styleFrom(
+                foregroundColor:
+                    primary,
+                side:
+                    const BorderSide(
+                  color: primary,
+                ),
+                shape:
+                    RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.circular(15),
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   // ============================================================
-  // SAVE REGISTRATION DETAILS
+  // SAVE REGISTRATION
   // ============================================================
 
   Future<void> _saveRegistrationDetails() async {
@@ -676,7 +932,9 @@ class _CourierDocumentsPageState
         _registrationType.trim();
 
     final number =
-        _registrationNo.trim();
+        _registrationController.text
+            .trim()
+            .toUpperCase();
 
     if (type.isEmpty) {
       _showMessage(
@@ -688,25 +946,17 @@ class _CourierDocumentsPageState
 
     if (number.isEmpty) {
       _showMessage(
-        'Registration No. enter karein.',
+        'Registration Number enter karein.',
         isError: true,
       );
       return;
     }
 
-    if (mounted) {
-      setState(() {
-        _savingDetails = true;
-      });
-    }
+    setState(() {
+      _savingDetails = true;
+    });
 
     try {
-      final courierRef =
-          _firestore.collection('couriers').doc(_uid);
-
-      final userRef =
-          _firestore.collection('users').doc(_uid);
-
       final updateData = {
         'registrationType': type,
         'registrationNo': number,
@@ -718,20 +968,27 @@ class _CourierDocumentsPageState
           _firestore.batch();
 
       batch.set(
-        courierRef,
+        _firestore
+            .collection('couriers')
+            .doc(_uid),
         updateData,
-        SetOptions(merge: true),
+        SetOptions(
+          merge: true,
+        ),
       );
 
       batch.set(
-        userRef,
+        _firestore
+            .collection('users')
+            .doc(_uid),
         updateData,
-        SetOptions(merge: true),
+        SetOptions(
+          merge: true,
+        ),
       );
 
       await batch.commit();
 
-      _registrationType = type;
       _registrationNo = number;
 
       _showMessage(
@@ -757,7 +1014,7 @@ class _CourierDocumentsPageState
   }
 
   // ============================================================
-  // PICK & UPLOAD DOCUMENT
+  // PICK & UPLOAD
   // ============================================================
 
   Future<void> _pickAndUploadDocument(
@@ -831,19 +1088,17 @@ class _CourierDocumentsPageState
           'courier_documents/$_uid/$fileName';
 
       final storageRef =
-          _storage.ref().child(
-                storagePath,
-              );
+          _storage
+              .ref()
+              .child(storagePath);
 
       final metadata =
           SettableMetadata(
         contentType:
             'image/jpeg',
         customMetadata: {
-          'courierUid':
-              _uid!,
-          'documentType':
-              key,
+          'courierUid': _uid!,
+          'documentType': key,
         },
       );
 
@@ -853,7 +1108,8 @@ class _CourierDocumentsPageState
       );
 
       final downloadUrl =
-          await storageRef.getDownloadURL();
+          await storageRef
+              .getDownloadURL();
 
       if (downloadUrl.trim().isEmpty) {
         throw Exception(
@@ -864,16 +1120,11 @@ class _CourierDocumentsPageState
       final oldDocument =
           _documents[key];
 
-      // ----------------------------------------------------------
-      // NEW DOCUMENT
-      // ----------------------------------------------------------
-
       final documentData = {
         'status': 'pending',
         'url': downloadUrl,
         'fileName': fileName,
-        'storagePath':
-            storagePath,
+        'storagePath': storagePath,
         'uploadedAt':
             FieldValue.serverTimestamp(),
         'updatedAt':
@@ -881,65 +1132,55 @@ class _CourierDocumentsPageState
         'rejectionReason': '',
       };
 
-      final courierRef =
-          _firestore.collection('couriers').doc(_uid);
-
-      final userRef =
-          _firestore.collection('users').doc(_uid);
-
       final batch =
           _firestore.batch();
 
       batch.set(
-        courierRef,
+        _firestore
+            .collection('couriers')
+            .doc(_uid),
         {
           'documents.$key':
               documentData,
           'updatedAt':
               FieldValue.serverTimestamp(),
         },
-        SetOptions(merge: true),
+        SetOptions(
+          merge: true,
+        ),
       );
 
-      // ----------------------------------------------------------
-      // If courier was previously rejected, keep user status
-      // consistent. Final status becomes pending_approval only
-      // after pressing Submit.
-      // ----------------------------------------------------------
-
       batch.set(
-        userRef,
+        _firestore
+            .collection('users')
+            .doc(_uid),
         {
           'role': 'courier',
           'updatedAt':
               FieldValue.serverTimestamp(),
         },
-        SetOptions(merge: true),
+        SetOptions(
+          merge: true,
+        ),
       );
 
       await batch.commit();
 
-      // ----------------------------------------------------------
-      // DELETE OLD STORAGE FILE AFTER NEW FILE IS SAFE
-      // ----------------------------------------------------------
-
+      // Delete old storage file only after
+      // new upload is safely stored.
       if (oldDocument != null) {
         final oldPath =
-            oldDocument['storagePath']
-                ?.toString()
-                .trim();
+            _clean(
+          oldDocument['storagePath'],
+        );
 
-        if (oldPath != null &&
-            oldPath.isNotEmpty &&
+        if (oldPath.isNotEmpty &&
             oldPath != storagePath) {
           try {
             await _storage
                 .ref(oldPath)
                 .delete();
-          } catch (_) {
-            // Old file delete failure should not
-            // make the new upload fail.
-          }
+          } catch (_) {}
         }
       }
 
@@ -950,8 +1191,7 @@ class _CourierDocumentsPageState
           'status': 'pending',
           'url': downloadUrl,
           'fileName': fileName,
-          'storagePath':
-              storagePath,
+          'storagePath': storagePath,
           'uploadedAt':
               Timestamp.now(),
           'updatedAt':
@@ -959,8 +1199,12 @@ class _CourierDocumentsPageState
           'rejectionReason': '',
         };
 
-        if (_status == 'rejected') {
-          _documentsSubmitted = false;
+        if (_status ==
+            'rejected') {
+          _documentsSubmitted =
+              false;
+          _status =
+              'pending_documents';
         }
       });
 
@@ -991,7 +1235,7 @@ class _CourierDocumentsPageState
   }
 
   // ============================================================
-  // DELETE DOCUMENT
+  // DELETE
   // ============================================================
 
   Future<void> _deleteDocument(
@@ -1015,11 +1259,20 @@ class _CourierDocumentsPageState
     final confirmed =
         await showDialog<bool>(
       context: context,
-      builder: (dialogContext) {
+      builder: (context) {
         return AlertDialog(
+          shape:
+              RoundedRectangleBorder(
+            borderRadius:
+                BorderRadius.circular(20),
+          ),
           title:
               const Text(
-            'Delete Document',
+            'Delete Document?',
+            style: TextStyle(
+              fontWeight:
+                  FontWeight.w900,
+            ),
           ),
           content:
               Text(
@@ -1029,24 +1282,24 @@ class _CourierDocumentsPageState
             TextButton(
               onPressed: () =>
                   Navigator.pop(
-                dialogContext,
+                context,
                 false,
               ),
               child:
                   const Text('Cancel'),
             ),
             ElevatedButton(
+              onPressed: () =>
+                  Navigator.pop(
+                context,
+                true,
+              ),
               style:
                   ElevatedButton.styleFrom(
                 backgroundColor:
                     Colors.red,
                 foregroundColor:
                     Colors.white,
-              ),
-              onPressed: () =>
-                  Navigator.pop(
-                dialogContext,
-                true,
               ),
               child:
                   const Text('Delete'),
@@ -1062,12 +1315,11 @@ class _CourierDocumentsPageState
 
     try {
       final storagePath =
-          document['storagePath']
-              ?.toString()
-              .trim();
+          _clean(
+        document['storagePath'],
+      );
 
-      if (storagePath != null &&
-          storagePath.isNotEmpty) {
+      if (storagePath.isNotEmpty) {
         try {
           await _storage
               .ref(storagePath)
@@ -1080,49 +1332,48 @@ class _CourierDocumentsPageState
         }
       }
 
-      final courierRef =
-          _firestore.collection('couriers').doc(_uid);
-
-      final userRef =
-          _firestore.collection('users').doc(_uid);
-
       final batch =
           _firestore.batch();
 
       batch.set(
-        courierRef,
+        _firestore
+            .collection('couriers')
+            .doc(_uid),
         {
           'documents.$key':
               FieldValue.delete(),
-          'documentsSubmitted':
-              false,
+          'documentsSubmitted': false,
           'status':
               'pending_documents',
           'registrationStatus':
               'pending_documents',
           'active': false,
-          'approvedByAdmin':
-              false,
+          'approvedByAdmin': false,
           'updatedAt':
               FieldValue.serverTimestamp(),
         },
-        SetOptions(merge: true),
+        SetOptions(
+          merge: true,
+        ),
       );
 
       batch.set(
-        userRef,
+        _firestore
+            .collection('users')
+            .doc(_uid),
         {
           'status':
               'pending_documents',
           'registrationStatus':
               'pending_documents',
           'active': false,
-          'approvedByAdmin':
-              false,
+          'approvedByAdmin': false,
           'updatedAt':
               FieldValue.serverTimestamp(),
         },
-        SetOptions(merge: true),
+        SetOptions(
+          merge: true,
+        ),
       );
 
       await batch.commit();
@@ -1157,7 +1408,7 @@ class _CourierDocumentsPageState
   }
 
   // ============================================================
-  // CHECK ALL REQUIRED DOCUMENTS
+  // CHECK ALL DOCUMENTS
   // ============================================================
 
   bool _allRequiredDocumentsUploaded() {
@@ -1171,10 +1422,9 @@ class _CourierDocumentsPageState
       }
 
       final url =
-          document['url']
-                  ?.toString()
-                  .trim() ??
-              '';
+          _clean(
+        document['url'],
+      );
 
       if (url.isEmpty) {
         return false;
@@ -1185,7 +1435,7 @@ class _CourierDocumentsPageState
   }
 
   // ============================================================
-  // SUBMIT FOR ADMIN APPROVAL
+  // SUBMIT
   // ============================================================
 
   Future<void> _submitForApproval() async {
@@ -1209,11 +1459,14 @@ class _CourierDocumentsPageState
       return;
     }
 
-    if (_registrationNo
-        .trim()
-        .isEmpty) {
+    final registrationNo =
+        _registrationController.text
+            .trim()
+            .toUpperCase();
+
+    if (registrationNo.isEmpty) {
       _showMessage(
-        'Registration No. enter karein.',
+        'Registration Number enter karein.',
         isError: true,
       );
       return;
@@ -1232,80 +1485,52 @@ class _CourierDocumentsPageState
         _uploading = true;
       });
 
-      final courierRef =
-          _firestore.collection('couriers').doc(_uid);
-
-      final userRef =
-          _firestore.collection('users').doc(_uid);
-
       final now =
           FieldValue.serverTimestamp();
 
       final batch =
           _firestore.batch();
 
-      // ----------------------------------------------------------
-      // COURIER
-      // ----------------------------------------------------------
+      final commonData = {
+        'uid': _uid,
+        'role': 'courier',
+        'name': _courierName,
+        'phone': _courierPhone,
+        'email': _courierEmail,
+        'registrationType':
+            _registrationType.trim(),
+        'registrationNo':
+            registrationNo,
+        'documentsSubmitted': true,
+        'status':
+            'pending_approval',
+        'registrationStatus':
+            'pending_approval',
+        'active': false,
+        'approvedByAdmin': false,
+        'rejectionReason': '',
+        'submittedAt': now,
+        'updatedAt': now,
+      };
 
       batch.set(
-        courierRef,
-        {
-          'uid': _uid,
-          'role': 'courier',
-          'name': _courierName,
-          'phone': _courierPhone,
-          'email': _courierEmail,
-          'registrationType':
-              _registrationType.trim(),
-          'registrationNo':
-              _registrationNo.trim(),
-          'documentsSubmitted':
-              true,
-          'status':
-              'pending_approval',
-          'registrationStatus':
-              'pending_approval',
-          'active': false,
-          'approvedByAdmin':
-              false,
-          'rejectionReason': '',
-          'submittedAt': now,
-          'updatedAt': now,
-        },
-        SetOptions(merge: true),
+        _firestore
+            .collection('couriers')
+            .doc(_uid),
+        commonData,
+        SetOptions(
+          merge: true,
+        ),
       );
 
-      // ----------------------------------------------------------
-      // USERS
-      // ----------------------------------------------------------
-
       batch.set(
-        userRef,
-        {
-          'uid': _uid,
-          'role': 'courier',
-          'name': _courierName,
-          'phone': _courierPhone,
-          'email': _courierEmail,
-          'registrationType':
-              _registrationType.trim(),
-          'registrationNo':
-              _registrationNo.trim(),
-          'documentsSubmitted':
-              true,
-          'status':
-              'pending_approval',
-          'registrationStatus':
-              'pending_approval',
-          'active': false,
-          'approvedByAdmin':
-              false,
-          'rejectionReason': '',
-          'submittedAt': now,
-          'updatedAt': now,
-        },
-        SetOptions(merge: true),
+        _firestore
+            .collection('users')
+            .doc(_uid),
+        commonData,
+        SetOptions(
+          merge: true,
+        ),
       );
 
       await batch.commit();
@@ -1326,37 +1551,50 @@ class _CourierDocumentsPageState
       await showDialog(
         context: context,
         barrierDismissible: false,
-        builder:
-            (dialogContext) {
+        builder: (dialogContext) {
           return AlertDialog(
-            title:
-                const Row(
+            shape:
+                RoundedRectangleBorder(
+              borderRadius:
+                  BorderRadius.circular(20),
+            ),
+            title: const Row(
               children: [
                 Icon(
                   Icons.check_circle,
-                  color:
-                      Colors.green,
+                  color: Colors.green,
                 ),
-                SizedBox(
-                  width: 10,
-                ),
+                SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     'Submitted Successfully',
+                    style: TextStyle(
+                      fontWeight:
+                          FontWeight.w900,
+                    ),
                   ),
                 ),
               ],
             ),
             content:
                 const Text(
-              'Aapke documents Admin approval ke liye bhej diye gaye hain.\n\n'
-              'Admin approval milne ke baad hi Courier account active hoga aur orders assign honge.',
+              'Aapke documents Admin approval ke liye bhej diye gaye hain.\n\nAdmin approval ke baad Courier account active hoga aur orders assign honge.',
+              style: TextStyle(
+                height: 1.45,
+              ),
             ),
             actions: [
               ElevatedButton(
                 onPressed: () =>
                     Navigator.pop(
                   dialogContext,
+                ),
+                style:
+                    ElevatedButton.styleFrom(
+                  backgroundColor:
+                      primary,
+                  foregroundColor:
+                      Colors.white,
                 ),
                 child:
                     const Text('OK'),
@@ -1401,11 +1639,9 @@ class _CourierDocumentsPageState
           _documents[key];
 
       if (document != null &&
-          (document['url']
-                  ?.toString()
-                  .trim()
-                  .isNotEmpty ??
-              false)) {
+          _clean(
+            document['url'],
+          ).isNotEmpty) {
         uploaded++;
       }
     }
@@ -1418,42 +1654,99 @@ class _CourierDocumentsPageState
             ? 0.0
             : uploaded / total;
 
-    return Card(
-      elevation: 2,
-      child: Padding(
-        padding:
-            const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Document Progress',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight:
-                    FontWeight.bold,
+    return Container(
+      width: double.infinity,
+      padding:
+          const EdgeInsets.all(17),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius:
+            BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color:
+                Colors.black.withOpacity(.045),
+            blurRadius: 20,
+            offset:
+                const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Document Progress',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight:
+                        FontWeight.w900,
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            LinearProgressIndicator(
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color:
+                      primary.withOpacity(.10),
+                  borderRadius:
+                      BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '$uploaded/$total',
+                  style:
+                      const TextStyle(
+                    color: primary,
+                    fontWeight:
+                        FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 14),
+
+          ClipRRect(
+            borderRadius:
+                BorderRadius.circular(20),
+            child:
+                LinearProgressIndicator(
               value: progress,
-              minHeight: 8,
-              borderRadius:
-                  BorderRadius.circular(
-                10,
+              minHeight: 9,
+              backgroundColor:
+                  Colors.grey.shade200,
+              valueColor:
+                  const AlwaysStoppedAnimation<
+                      Color>(
+                primary,
               ),
             ),
-            const SizedBox(height: 10),
-            Text(
-              '$uploaded / $total required documents uploaded',
-              style: TextStyle(
-                color:
-                    Colors.grey.shade700,
-              ),
+          ),
+
+          const SizedBox(height: 9),
+
+          Text(
+            uploaded == total
+                ? 'All required documents uploaded.'
+                : '$uploaded of $total required documents uploaded.',
+            style: TextStyle(
+              color:
+                  Colors.grey.shade600,
+              fontSize: 12,
+              fontWeight:
+                  FontWeight.w600,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1473,263 +1766,350 @@ class _CourierDocumentsPageState
 
     final isUploaded =
         document != null &&
-        (document['url']
-                ?.toString()
-                .trim()
-                .isNotEmpty ??
-            false);
+        _clean(
+          document['url'],
+        ).isNotEmpty;
 
     final status =
-        document?['status']
-                ?.toString()
-                .toLowerCase() ??
-            '';
+        _clean(
+          document?['status'],
+        ).toLowerCase();
 
     final rejectionReason =
-        document?['rejectionReason']
-                ?.toString()
-                .trim() ??
-            '';
+        _clean(
+          document?['rejectionReason'],
+        );
 
     final editable =
         _canEditDocuments;
 
-    return Card(
+    final statusColor =
+        _documentStatusColor(
+      status,
+    );
+
+    return Container(
+      width: double.infinity,
       margin:
           const EdgeInsets.only(
-        bottom: 12,
+        bottom: 13,
       ),
-      elevation: 2,
-      child: Padding(
-        padding:
-            const EdgeInsets.all(14),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration:
-                      BoxDecoration(
-                    color:
-                        isUploaded
-                            ? Colors.green
-                                .withValues(
-                                alpha: 0.10,
-                              )
-                            : Colors.grey
-                                .withValues(
-                                alpha: 0.10,
-                              ),
-                    borderRadius:
-                        BorderRadius.circular(
-                      12,
-                    ),
-                  ),
-                  child: Icon(
-                    isUploaded
-                        ? Icons.description
-                        : Icons.upload_file,
-                    color: isUploaded
-                        ? Colors.green
-                        : Colors.grey
-                            .shade700,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              title,
-                              style:
-                                  const TextStyle(
-                                fontSize: 16,
-                                fontWeight:
-                                    FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          const Text(
-                            ' *',
-                            style:
-                                TextStyle(
-                              color:
-                                  Colors.red,
-                              fontWeight:
-                                  FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      if (isUploaded)
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.circle,
-                              size: 9,
-                              color:
-                                  _documentStatusColor(
-                                status,
-                              ),
-                            ),
-                            const SizedBox(
-                              width: 6,
-                            ),
-                            Text(
-                              _documentStatusText(
-                                status,
-                              ),
-                              style:
-                                  TextStyle(
-                                color:
-                                    _documentStatusColor(
-                                  status,
-                                ),
-                                fontWeight:
-                                    FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        )
-                      else
-                        const Text(
-                          'Not uploaded',
-                          style:
-                              TextStyle(
-                            color:
-                                Colors.grey,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-
-            if (isUploaded) ...[
-              const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius:
-                    BorderRadius.circular(
-                  10,
-                ),
-                child: Image.network(
-                  document['url']
-                      .toString(),
-                  height: 190,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  loadingBuilder:
-                      (
-                    context,
-                    child,
-                    loadingProgress,
-                  ) {
-                    if (loadingProgress ==
-                        null) {
-                      return child;
-                    }
-
-                    return const SizedBox(
-                      height: 190,
-                      child: Center(
-                        child:
-                            CircularProgressIndicator(),
-                      ),
-                    );
-                  },
-                  errorBuilder:
-                      (
-                    context,
-                    error,
-                    stackTrace,
-                  ) {
-                    return Container(
-                      height: 190,
-                      alignment:
-                          Alignment.center,
-                      color:
-                          Colors.grey.shade200,
-                      child:
-                          const Text(
-                        'Document preview nahi ho paya.',
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-
-            if (rejectionReason
-                .isNotEmpty) ...[
-              const SizedBox(height: 10),
+      padding:
+          const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius:
+            BorderRadius.circular(20),
+        border: Border.all(
+          color:
+              isUploaded
+                  ? Colors.green
+                      .withOpacity(.18)
+                  : Colors.grey.shade200,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color:
+                Colors.black.withOpacity(.035),
+            blurRadius: 16,
+            offset:
+                const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
               Container(
-                width: double.infinity,
-                padding:
-                    const EdgeInsets.all(
-                  10,
-                ),
+                height: 52,
+                width: 52,
                 decoration:
                     BoxDecoration(
                   color:
-                      Colors.red.shade50,
+                      isUploaded
+                          ? Colors.green
+                              .withOpacity(.10)
+                          : primary
+                              .withOpacity(.08),
                   borderRadius:
-                      BorderRadius.circular(
-                    8,
-                  ),
+                      BorderRadius.circular(15),
                 ),
-                child: Text(
-                  'Rejection Reason:\n$rejectionReason',
-                  style:
-                      TextStyle(
-                    color:
-                        Colors.red.shade800,
-                    fontSize: 12,
-                  ),
+                child: Icon(
+                  isUploaded
+                      ? Icons
+                          .description_rounded
+                      : Icons
+                          .upload_file_rounded,
+                  color:
+                      isUploaded
+                          ? Colors.green
+                          : primary,
+                ),
+              ),
+
+              const SizedBox(width: 13),
+
+              Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            title,
+                            style:
+                                const TextStyle(
+                              fontSize: 15,
+                              fontWeight:
+                                  FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        const Text(
+                          ' *',
+                          style:
+                              TextStyle(
+                            color: Colors.red,
+                            fontWeight:
+                                FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 6),
+
+                    if (isUploaded)
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.circle,
+                            size: 8,
+                            color:
+                                statusColor,
+                          ),
+                          const SizedBox(
+                              width: 6),
+                          Text(
+                            _documentStatusText(
+                              status,
+                            ),
+                            style:
+                                TextStyle(
+                              color:
+                                  statusColor,
+                              fontSize: 11,
+                              fontWeight:
+                                  FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      )
+                    else
+                      Text(
+                        'Not uploaded',
+                        style: TextStyle(
+                          color:
+                              Colors.grey.shade600,
+                          fontSize: 11,
+                          fontWeight:
+                              FontWeight.w600,
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ],
+          ),
 
-            if (editable) ...[
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
+          if (isUploaded) ...[
+            const SizedBox(height: 13),
+
+            ClipRRect(
+              borderRadius:
+                  BorderRadius.circular(15),
+              child: Image.network(
+                document['url']
+                    .toString(),
+                height: 190,
+                width:
+                    double.infinity,
+                fit: BoxFit.cover,
+                loadingBuilder:
+                    (
+                  context,
+                  child,
+                  progress,
+                ) {
+                  if (progress == null) {
+                    return child;
+                  }
+
+                  return Container(
+                    height: 190,
+                    color:
+                        Colors.grey.shade100,
                     child:
-                        ElevatedButton.icon(
-                      onPressed:
-                          _uploading
-                              ? null
-                              : () =>
-                                  _pickAndUploadDocument(
-                                    key,
-                                  ),
-                      icon: Icon(
-                        isUploaded
-                            ? Icons.refresh
-                            : Icons.upload,
-                        size: 18,
+                        const Center(
+                      child:
+                          CircularProgressIndicator(
+                        strokeWidth: 2.5,
                       ),
-                      label: Text(
-                        isUploaded
-                            ? 'Replace'
-                            : 'Upload',
+                    ),
+                  );
+                },
+                errorBuilder:
+                    (
+                  context,
+                  error,
+                  stackTrace,
+                ) {
+                  return Container(
+                    height: 190,
+                    color:
+                        Colors.grey.shade100,
+                    child:
+                        Column(
+                      mainAxisAlignment:
+                          MainAxisAlignment
+                              .center,
+                      children: [
+                        Icon(
+                          Icons
+                              .broken_image_outlined,
+                          color:
+                              Colors.grey.shade500,
+                          size: 38,
+                        ),
+                        const SizedBox(
+                            height: 7),
+                        Text(
+                          'Preview nahi ho paya.',
+                          style:
+                              TextStyle(
+                            color:
+                                Colors.grey.shade600,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+
+          if (rejectionReason
+              .isNotEmpty) ...[
+            const SizedBox(height: 11),
+            Container(
+              width: double.infinity,
+              padding:
+                  const EdgeInsets.all(12),
+              decoration:
+                  BoxDecoration(
+                color:
+                    Colors.red.shade50,
+                borderRadius:
+                    BorderRadius.circular(13),
+              ),
+              child: Row(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons
+                        .error_outline_rounded,
+                    color:
+                        Colors.red.shade700,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Rejection Reason:\n$rejectionReason',
+                      style:
+                          TextStyle(
+                        color:
+                            Colors.red.shade800,
+                        fontSize: 11,
+                        height: 1.4,
+                        fontWeight:
+                            FontWeight.w600,
                       ),
                     ),
                   ),
-                  if (isUploaded) ...[
-                    const SizedBox(width: 8),
-                    IconButton(
-                      tooltip:
-                          'Delete',
+                ],
+              ),
+            ),
+          ],
+
+          if (editable) ...[
+            const SizedBox(height: 12),
+
+            Row(
+              children: [
+                Expanded(
+                  child:
+                      ElevatedButton.icon(
+                    onPressed:
+                        _uploading
+                            ? null
+                            : () =>
+                                _pickAndUploadDocument(
+                                  key,
+                                ),
+                    icon: Icon(
+                      isUploaded
+                          ? Icons
+                              .refresh_rounded
+                          : Icons
+                              .upload_rounded,
+                      size: 18,
+                    ),
+                    label: Text(
+                      isUploaded
+                          ? 'Replace'
+                          : 'Upload',
+                    ),
+                    style:
+                        ElevatedButton
+                            .styleFrom(
+                      backgroundColor:
+                          primary,
+                      foregroundColor:
+                          Colors.white,
+                      elevation: 0,
+                      shape:
+                          RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(
+                          13,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                if (isUploaded) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    height: 44,
+                    width: 44,
+                    decoration:
+                        BoxDecoration(
+                      color:
+                          Colors.red.shade50,
+                      borderRadius:
+                          BorderRadius.circular(
+                        13,
+                      ),
+                    ),
+                    child: IconButton(
                       onPressed:
                           _uploading
                               ? null
@@ -1739,17 +2119,18 @@ class _CourierDocumentsPageState
                                   ),
                       icon:
                           const Icon(
-                        Icons.delete_outline,
-                        color:
-                            Colors.red,
+                        Icons
+                            .delete_outline_rounded,
+                        color: Colors.red,
+                        size: 21,
                       ),
                     ),
-                  ],
+                  ),
                 ],
-              ),
-            ],
+              ],
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -1797,67 +2178,6 @@ class _CourierDocumentsPageState
   }
 
   // ============================================================
-  // FIREBASE ERROR
-  // ============================================================
-
-  String _firebaseErrorMessage(
-    FirebaseException e,
-  ) {
-    switch (e.code) {
-      case 'permission-denied':
-        return 'Permission denied. Firebase Rules check karein.';
-
-      case 'unauthenticated':
-        return 'Login session expire ho gaya. Dobara login karein.';
-
-      case 'object-not-found':
-        return 'File nahi mili.';
-
-      case 'canceled':
-        return 'Upload cancel ho gaya.';
-
-      case 'network-request-failed':
-        return 'Internet connection check karein.';
-
-      case 'quota-exceeded':
-        return 'Firebase Storage quota exceed ho gaya.';
-
-      case 'retry-limit-exceeded':
-        return 'Upload baar-baar fail hua. Dobara try karein.';
-
-      default:
-        return 'Firebase error: ${e.message ?? e.code}';
-    }
-  }
-
-  // ============================================================
-  // MESSAGE
-  // ============================================================
-
-  void _showMessage(
-    String message, {
-    bool isError = false,
-  }) {
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context)
-        .showSnackBar(
-      SnackBar(
-        content:
-            Text(message),
-        backgroundColor:
-            isError
-                ? Colors.red
-                : Colors.green,
-        duration:
-            const Duration(
-          seconds: 4,
-        ),
-      ),
-    );
-  }
-
-  // ============================================================
   // BUILD
   // ============================================================
 
@@ -1866,29 +2186,49 @@ class _CourierDocumentsPageState
     BuildContext context,
   ) {
     if (_loading) {
-      return const Scaffold(
-        body: Center(
+      return Scaffold(
+        backgroundColor:
+            const Color(0xFFF7F7FA),
+        body: const Center(
           child:
-              CircularProgressIndicator(),
+              CircularProgressIndicator(
+            color: primary,
+          ),
         ),
       );
     }
 
     if (_uid == null) {
       return Scaffold(
+        backgroundColor:
+            const Color(0xFFF7F7FA),
         appBar: AppBar(
           title:
               const Text(
             'Courier Documents',
           ),
         ),
-        body:
-            const Center(
-          child: Text(
-            'Courier account nahi mila.',
-            style:
-                TextStyle(
-              fontSize: 16,
+        body: Center(
+          child: Container(
+            margin:
+                const EdgeInsets.all(20),
+            padding:
+                const EdgeInsets.all(20),
+            decoration:
+                BoxDecoration(
+              color: Colors.white,
+              borderRadius:
+                  BorderRadius.circular(20),
+            ),
+            child: const Text(
+              'Courier account nahi mila.',
+              textAlign:
+                  TextAlign.center,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight:
+                    FontWeight.w700,
+              ),
             ),
           ),
         ),
@@ -1907,20 +2247,37 @@ class _CourierDocumentsPageState
         !_uploading;
 
     return Scaffold(
+      backgroundColor:
+          const Color(0xFFF7F7FA),
+
       appBar: AppBar(
+        backgroundColor:
+            Colors.white,
+        elevation: 0,
+        scrolledUnderElevation: 0,
         title:
             const Text(
-          'Courier Documents',
+          'Courier Verification',
+          style: TextStyle(
+            fontWeight:
+                FontWeight.w900,
+          ),
         ),
-        centerTitle: true,
+        centerTitle: false,
       ),
+
       body: SafeArea(
         child: Stack(
           children: [
             SingleChildScrollView(
+              physics:
+                  const BouncingScrollPhysics(),
               padding:
-                  const EdgeInsets.all(
+                  const EdgeInsets.fromLTRB(
                 16,
+                16,
+                16,
+                35,
               ),
               child: Column(
                 crossAxisAlignment:
@@ -1928,156 +2285,152 @@ class _CourierDocumentsPageState
                 children: [
                   _buildStatusHeader(),
 
-                  const SizedBox(
-                    height: 16,
-                  ),
+                  const SizedBox(height: 15),
 
                   _buildCourierProfileCard(),
-
-                  const SizedBox(
-                    height: 16,
-                  ),
-
-                  // ==================================================
-                  // REJECTION REASON
-                  // ==================================================
 
                   if (_status ==
                           'rejected' &&
                       _rejectionReason
-                          .trim()
-                          .isNotEmpty)
-                    Card(
-                      color:
-                          Colors.red.shade50,
-                      child:
-                          Padding(
-                        padding:
-                            const EdgeInsets.all(
-                          14,
+                          .isNotEmpty) ...[
+                    const SizedBox(
+                        height: 15),
+
+                    Container(
+                      width:
+                          double.infinity,
+                      padding:
+                          const EdgeInsets.all(
+                        15,
+                      ),
+                      decoration:
+                          BoxDecoration(
+                        color:
+                            Colors.red.shade50,
+                        borderRadius:
+                            BorderRadius.circular(
+                          18,
                         ),
-                        child:
-                            Row(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
-                          children: [
-                            const Icon(
-                              Icons.error_outline,
-                              color:
-                                  Colors.red,
-                            ),
-                            const SizedBox(
-                              width: 10,
-                            ),
-                            Expanded(
-                              child:
-                                  Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'Admin Rejection Reason',
-                                    style:
-                                        TextStyle(
-                                      fontWeight:
-                                          FontWeight.bold,
-                                      color:
-                                          Colors.red,
-                                    ),
-                                  ),
-                                  const SizedBox(
-                                    height: 5,
-                                  ),
-                                  Text(
-                                    _rejectionReason,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                        border:
+                            Border.all(
+                          color:
+                              Colors.red.shade100,
                         ),
                       ),
+                      child: Row(
+                        crossAxisAlignment:
+                            CrossAxisAlignment
+                                .start,
+                        children: [
+                          Icon(
+                            Icons
+                                .error_outline_rounded,
+                            color:
+                                Colors.red.shade700,
+                          ),
+                          const SizedBox(
+                              width: 10),
+                          Expanded(
+                            child:
+                                Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment
+                                      .start,
+                              children: [
+                                const Text(
+                                  'Admin Rejection Reason',
+                                  style:
+                                      TextStyle(
+                                    color:
+                                        Colors.red,
+                                    fontWeight:
+                                        FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(
+                                    height: 5),
+                                Text(
+                                  _rejectionReason,
+                                  style:
+                                      TextStyle(
+                                    color:
+                                        Colors.red.shade800,
+                                    fontSize:
+                                        12,
+                                    height:
+                                        1.4,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
+                  ],
 
-                  if (_status ==
-                          'rejected')
-                    const SizedBox(
-                      height: 12,
-                    ),
+                  const SizedBox(height: 15),
 
                   _buildProgressCard(),
 
-                  const SizedBox(
-                    height: 16,
-                  ),
+                  const SizedBox(height: 15),
 
                   _buildRegistrationDetails(),
 
-                  const SizedBox(
-                    height: 20,
-                  ),
+                  const SizedBox(height: 23),
 
                   const Text(
                     'Required Documents',
-                    style:
-                        TextStyle(
-                      fontSize: 19,
+                    style: TextStyle(
+                      fontSize: 20,
                       fontWeight:
-                          FontWeight.bold,
+                          FontWeight.w900,
                     ),
                   ),
 
-                  const SizedBox(
-                    height: 6,
-                  ),
+                  const SizedBox(height: 5),
 
-                  const Text(
-                    'Sabhi 5 documents upload karna zaroori hai.',
-                    style:
-                        TextStyle(
+                  Text(
+                    'Neeche diye gaye sabhi 5 documents upload karna zaroori hai.',
+                    style: TextStyle(
                       color:
-                          Colors.grey,
-                      fontSize: 13,
+                          Colors.grey.shade600,
+                      fontSize: 12,
+                      height: 1.4,
                     ),
                   ),
 
-                  const SizedBox(
-                    height: 12,
-                  ),
+                  const SizedBox(height: 13),
 
                   ..._requiredDocumentKeys
                       .map(
                     _buildDocumentCard,
                   ),
 
-                  const SizedBox(
-                    height: 8,
-                  ),
+                  const SizedBox(height: 5),
 
-                  // ==================================================
-                  // SUBMIT
-                  // ==================================================
-
+                  // Submit button
                   SizedBox(
                     width:
                         double.infinity,
-                    height: 52,
+                    height: 55,
                     child:
                         ElevatedButton.icon(
                       onPressed:
                           canSubmit
                               ? _submitForApproval
                               : null,
-                      icon:
-                          Icon(
+                      icon: Icon(
                         isPendingApproval
-                            ? Icons.hourglass_top
+                            ? Icons
+                                .hourglass_top_rounded
                             : isApproved
-                                ? Icons.check_circle
-                                : Icons.send,
+                                ? Icons
+                                    .verified_rounded
+                                : Icons
+                                    .send_rounded,
                       ),
-                      label:
-                          Text(
+                      label: Text(
                         isPendingApproval
                             ? 'Waiting for Admin Approval'
                             : isApproved
@@ -2085,104 +2438,158 @@ class _CourierDocumentsPageState
                                 : 'Submit for Admin Approval',
                         style:
                             const TextStyle(
-                          fontSize: 16,
+                          fontSize: 14,
                           fontWeight:
-                              FontWeight.bold,
+                              FontWeight.w900,
+                        ),
+                      ),
+                      style:
+                          ElevatedButton
+                              .styleFrom(
+                        backgroundColor:
+                            primary,
+                        foregroundColor:
+                            Colors.white,
+                        disabledBackgroundColor:
+                            Colors.grey.shade300,
+                        disabledForegroundColor:
+                            Colors.grey.shade600,
+                        elevation: 2,
+                        shape:
+                            RoundedRectangleBorder(
+                          borderRadius:
+                              BorderRadius.circular(
+                            17,
+                          ),
                         ),
                       ),
                     ),
                   ),
 
-                  const SizedBox(
-                    height: 20,
-                  ),
+                  const SizedBox(height: 17),
 
-                  // ==================================================
-                  // SECURITY INFORMATION
-                  // ==================================================
-
-                  Card(
-                    child:
-                        Padding(
-                      padding:
-                          const EdgeInsets.all(
-                        14,
+                  Container(
+                    width:
+                        double.infinity,
+                    padding:
+                        const EdgeInsets.all(
+                      15,
+                    ),
+                    decoration:
+                        BoxDecoration(
+                      color:
+                          Colors.blue.shade50,
+                      borderRadius:
+                          BorderRadius.circular(
+                        18,
                       ),
-                      child:
-                          Row(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                        children: [
-                          Icon(
-                            Icons
-                                .security,
-                            color:
-                                Colors.blue.shade700,
-                          ),
-                          const SizedBox(
-                            width: 10,
-                          ),
-                          const Expanded(
-                            child:
-                                Text(
-                              'Admin approval ke bina Courier account active nahi hoga aur koi order assign nahi kiya jayega.',
-                              style:
-                                  TextStyle(
-                                fontSize:
-                                    12,
-                                height:
-                                    1.4,
-                              ),
+                      border:
+                          Border.all(
+                        color:
+                            Colors.blue.shade100,
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment:
+                          CrossAxisAlignment
+                              .start,
+                      children: [
+                        Icon(
+                          Icons
+                              .security_rounded,
+                          color:
+                              Colors.blue.shade700,
+                        ),
+                        const SizedBox(
+                            width: 10),
+                        Expanded(
+                          child: Text(
+                            'Aapke documents Firebase Storage mein securely store honge. Admin approval ke bina Courier account active nahi hoga.',
+                            style:
+                                TextStyle(
+                              color:
+                                  Colors.blue.shade900,
+                              fontSize:
+                                  11,
+                              height:
+                                  1.45,
+                              fontWeight:
+                                  FontWeight.w600,
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
 
-                  const SizedBox(
-                    height: 30,
+                  const SizedBox(height: 20),
+
+                  Center(
+                    child: Text(
+                      'Preesho Courier Verification',
+                      style: TextStyle(
+                        color:
+                            Colors.grey.shade500,
+                        fontSize: 10,
+                        fontWeight:
+                            FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
 
-            // ========================================================
-            // UPLOAD / SUBMIT OVERLAY
-            // ========================================================
-
+            // Upload overlay
             if (_uploading)
-              Container(
-                color:
-                    Colors.black
-                        .withValues(
-                  alpha: 0.35,
-                ),
-                child:
-                    const Center(
-                  child:
-                      Card(
-                    child:
-                        Padding(
-                      padding:
-                          EdgeInsets.all(
-                        24,
+              Positioned.fill(
+                child: Container(
+                  color:
+                      Colors.black.withOpacity(
+                    .38,
+                  ),
+                  child: Center(
+                    child: Container(
+                      margin:
+                          const EdgeInsets.all(
+                        30,
                       ),
-                      child:
-                          Column(
+                      padding:
+                          const EdgeInsets.all(
+                        25,
+                      ),
+                      decoration:
+                          BoxDecoration(
+                        color: Colors.white,
+                        borderRadius:
+                            BorderRadius.circular(
+                          22,
+                        ),
+                      ),
+                      child: const Column(
                         mainAxisSize:
                             MainAxisSize.min,
                         children: [
-                          CircularProgressIndicator(),
-                          SizedBox(
-                            height: 16,
+                          CircularProgressIndicator(
+                            color: primary,
                           ),
+                          SizedBox(height: 17),
                           Text(
                             'Please wait...',
-                            style:
-                                TextStyle(
+                            style: TextStyle(
                               fontWeight:
-                                  FontWeight.w600,
+                                  FontWeight.w900,
+                            ),
+                          ),
+                          SizedBox(height: 5),
+                          Text(
+                            'Document process ho raha hai.',
+                            textAlign:
+                                TextAlign.center,
+                            style: TextStyle(
+                              color:
+                                  Colors.grey,
+                              fontSize: 11,
                             ),
                           ),
                         ],
