@@ -740,14 +740,20 @@ class _LoginPageState extends State<LoginPage> {
         // continue only if it is the current user.
         if (e.code ==
             'provider-already-linked') {
-          linkedCredential =
-              await user.reload().then(
-                (_) async => UserCredential(
-                  additionalUserInfo: null,
-                  credential: emailCredential,
-                  user: _auth.currentUser,
-                ),
-              );
+          try {
+  final linkedCredential = await user.linkWithCredential(
+    emailCredential,
+  );
+
+  user = linkedCredential.user ?? user;
+} on FirebaseAuthException catch (e) {
+  if (e.code == 'provider-already-linked') {
+    await user.reload();
+    user = _auth.currentUser ?? user;
+  } else {
+    rethrow;
+  }
+}
         } else {
           rethrow;
         }
