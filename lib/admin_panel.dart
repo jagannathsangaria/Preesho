@@ -32,6 +32,12 @@ class _AdminPanelState extends State<AdminPanel>
   final CollectionReference<Map<String, dynamic>> ordersRef =
       FirebaseFirestore.instance.collection('orders');
 
+  final CollectionReference<Map<String, dynamic>> vendorsRef =
+      FirebaseFirestore.instance.collection('vendors');
+
+  final CollectionReference<Map<String, dynamic>> couriersRef =
+      FirebaseFirestore.instance.collection('couriers');
+
   final FirebaseFunctions functions =
       FirebaseFunctions.instanceFor(region: 'asia-south1');
 
@@ -76,8 +82,9 @@ class _AdminPanelState extends State<AdminPanel>
   void initState() {
     super.initState();
 
+    // Dashboard + Products + Product List + Orders
     tabController = TabController(
-      length: 3,
+      length: 4,
       vsync: this,
     );
   }
@@ -127,7 +134,8 @@ class _AdminPanelState extends State<AdminPanel>
     final navigator = Navigator.of(context);
 
     if (navigator.canPop()) {
-      return true;
+      navigator.pop();
+      return false;
     }
 
     navigator.pushNamedAndRemoveUntil(
@@ -157,28 +165,38 @@ class _AdminPanelState extends State<AdminPanel>
 
     switch (status.toLowerCase()) {
       case 'placed':
+      case 'pending':
         return 'Placed';
+
       case 'confirmed':
         return 'Confirmed';
+
       case 'processing':
         return 'Processing';
+
       case 'packed':
         return 'Packed';
+
       case 'shipped':
         return 'Shipped';
+
       case 'picked by courier':
       case 'picked_by_courier':
       case 'picked':
         return 'Picked by Courier';
+
       case 'out for delivery':
       case 'out_for_delivery':
       case 'outfordelivery':
         return 'Out for Delivery';
+
       case 'delivered':
         return 'Delivered';
+
       case 'cancelled':
       case 'canceled':
         return 'Cancelled';
+
       default:
         return status;
     }
@@ -202,6 +220,15 @@ class _AdminPanelState extends State<AdminPanel>
     return '₹${parsed.toStringAsFixed(0)}';
   }
 
+  double numberValue(dynamic value) {
+    if (value is num) return value.toDouble();
+
+    return double.tryParse(
+          value?.toString().replaceAll(',', '').trim() ?? '',
+        ) ??
+        0;
+  }
+
   String formatDate(dynamic value) {
     DateTime? date;
 
@@ -209,6 +236,8 @@ class _AdminPanelState extends State<AdminPanel>
       date = value.toDate().toLocal();
     } else if (value is DateTime) {
       date = value.toLocal();
+    } else if (value is String) {
+      date = DateTime.tryParse(value)?.toLocal();
     }
 
     if (date == null) return '';
@@ -318,6 +347,608 @@ class _AdminPanelState extends State<AdminPanel>
   }
 
   // ============================================================
+  // DASHBOARD
+  // ============================================================
+
+  Widget dashboard() {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: ordersRef.snapshots(),
+      builder: (context, orderSnapshot) {
+        if (orderSnapshot.hasError) {
+          return _emptyState(
+            'Dashboard Error',
+            orderSnapshot.error.toString(),
+            Icons.error_outline,
+          );
+        }
+
+        if (orderSnapshot.connectionState ==
+            ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(),
+          );
+        }
+
+        final orderDocs = orderSnapshot.data?.docs ?? [];
+
+        int totalOrders = orderDocs.length;
+        int pendingOrders = 0;
+        int shippedOrders = 0;
+        int deliveredOrders = 0;
+        int cancelledOrders = 0;
+
+        double totalSales = 0;
+
+        for (final doc in orderDocs) {
+          final data = doc.data();
+
+          final status = normalizedOrderStatus(
+            data['orderStatus'] ?? data['status'],
+          );
+
+          if (status == 'Placed' ||
+              status == 'Confirmed' ||
+              status == 'Processing' ||
+              status == 'Packed') {
+            pendingOrders++;
+          }
+
+          if (status == 'Shipped' ||
+              status == 'Picked by Courier' ||
+              status == 'Out for Delivery') {
+            shippedOrders++;
+          }
+
+          if (status == 'Delivered') {
+            deliveredOrders++;
+          }
+
+          if (status == 'Cancelled') {
+            cancelledOrders++;
+          }
+
+          // Cancelled orders are not included in sales.
+          if (status != 'Cancelled') {
+            totalSales += numberValue(
+              data['totalAmount'] ?? data['total'],
+            );
+          }
+        }
+
+        return StreamBuilder<
+            QuerySnapshot<Map<String, dynamic>>>(
+          stream: productsRef.snapshots(),
+          builder: (context, productSnapshot) {
+            final productDocs =
+                productSnapshot.data?.docs ?? [];
+
+            final totalProducts = productDocs.length;
+
+            final activeProducts = productDocs.where(
+              (doc) {
+                final data = doc.data();
+                return data['active'] != false;
+              },
+            ).length;
+
+            return SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(
+                16,
+                12,
+                16,
+                35,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _dashboardWelcome(
+                    totalOrders,
+                    totalSales,
+                  ),
+
+                  const SizedBox(height: 15),
+
+                  GridView.count(
+                    crossAxisCount:
+                        MediaQuery.of(context).size.width > 700
+                            ? 4
+                            : 2,
+                    shrinkWrap: true,
+                    physics:
+                        const NeverScrollableScrollPhysics(),
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 1.42,
+                    children: [
+                      _dashboardCard(
+                        'Total Orders',
+                        totalOrders.toString(),
+                        Icons.receipt_long_outlined,
+                        primary,
+                      ),
+                      _dashboardCard(
+                        'Pending',
+                        pendingOrders.toString(),
+                        Icons.pending_actions_outlined,
+                        Colors.orange,
+                      ),
+                      _dashboardCard(
+                        'Shipped',
+                        shippedOrders.toString(),
+                        Icons.local_shipping_outlined,
+                        Colors.teal,
+                      ),
+                      _dashboardCard(
+                        'Delivered',
+                        deliveredOrders.toString(),
+                        Icons.done_all,
+                        Colors.green,
+                      ),
+                      _dashboardCard(
+                        'Cancelled',
+                        cancelledOrders.toString(),
+                        Icons.cancel_outlined,
+                        Colors.red,
+                      ),
+                      _dashboardCard(
+                        'Total Sales',
+                        money(totalSales),
+                        Icons.currency_rupee,
+                        Colors.indigo,
+                      ),
+                      _dashboardCard(
+                        'Products',
+                        totalProducts.toString(),
+                        Icons.inventory_2_outlined,
+                        Colors.deepPurple,
+                      ),
+                      _dashboardCard(
+                        'Active Products',
+                        activeProducts.toString(),
+                        Icons.check_circle_outline,
+                        Colors.green,
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 15),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _dashboardCollectionCount(
+                          title: 'Vendors',
+                          icon: Icons.storefront_outlined,
+                          stream: vendorsRef.snapshots(),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _dashboardCollectionCount(
+                          title: 'Couriers',
+                          icon: Icons.delivery_dining_outlined,
+                          stream: couriersRef.snapshots(),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  _dashboardSectionTitle(
+                    'Recent Orders',
+                    Icons.receipt_long_outlined,
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  if (orderDocs.isEmpty)
+                    _emptyState(
+                      'No Orders Yet',
+                      'Customer orders will appear here.',
+                      Icons.receipt_long_outlined,
+                    )
+                  else
+                    ..._recentOrderWidgets(orderDocs),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _dashboardWelcome(
+    int totalOrders,
+    double totalSales,
+  ) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [
+            primary,
+            primaryDark,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(25),
+        boxShadow: [
+          BoxShadow(
+            color: primary.withOpacity(.22),
+            blurRadius: 22,
+            offset: const Offset(0, 9),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            height: 58,
+            width: 58,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(.15),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: const Icon(
+              Icons.dashboard_outlined,
+              color: Colors.white,
+              size: 31,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Dashboard',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$totalOrders orders • ${money(totalSales)} sales',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _dashboardCard(
+    String title,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(.045),
+            blurRadius: 18,
+            offset: const Offset(0, 7),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                height: 38,
+                width: 38,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(.10),
+                  borderRadius:
+                      BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  icon,
+                  color: color,
+                  size: 20,
+                ),
+              ),
+              const Spacer(),
+            ],
+          ),
+          const Spacer(),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _dashboardCollectionCount({
+    required String title,
+    required IconData icon,
+    required Stream<QuerySnapshot<Map<String, dynamic>>> stream,
+  }) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: stream,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Container(
+            padding: const EdgeInsets.all(15),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  icon,
+                  color: primary,
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'Unavailable',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final count = snapshot.data?.docs.length ?? 0;
+
+        return Container(
+          padding: const EdgeInsets.all(15),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(.04),
+                blurRadius: 18,
+                offset: const Offset(0, 7),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                height: 43,
+                width: 43,
+                decoration: BoxDecoration(
+                  color: primary.withOpacity(.10),
+                  borderRadius:
+                      BorderRadius.circular(13),
+                ),
+                child: Icon(
+                  icon,
+                  color: primary,
+                ),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      count.toString(),
+                      style: const TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _dashboardSectionTitle(
+    String title,
+    IconData icon,
+  ) {
+    return Row(
+      children: [
+        Icon(
+          icon,
+          color: primary,
+          size: 21,
+        ),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _recentOrderWidgets(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    final sorted = [...docs];
+
+    sorted.sort((a, b) {
+      final aDate = _dateValue(a.data()['createdAt']);
+      final bDate = _dateValue(b.data()['createdAt']);
+
+      return bDate.compareTo(aDate);
+    });
+
+    final recent = sorted.take(5).toList();
+
+    return recent.map((doc) {
+      final data = doc.data();
+
+      final orderId =
+          data['orderId']?.toString().trim().isNotEmpty == true
+              ? data['orderId'].toString()
+              : doc.id;
+
+      final customer =
+          data['customerName']?.toString().trim().isNotEmpty == true
+              ? data['customerName'].toString()
+              : 'Customer';
+
+      final status = normalizedOrderStatus(
+        data['orderStatus'] ?? data['status'],
+      );
+
+      final amount = numberValue(
+        data['totalAmount'] ?? data['total'],
+      );
+
+      return Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(13),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(.035),
+              blurRadius: 15,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              height: 43,
+              width: 43,
+              decoration: BoxDecoration(
+                color: statusColor(status).withOpacity(.10),
+                borderRadius: BorderRadius.circular(13),
+              ),
+              child: Icon(
+                statusIcon(status),
+                color: statusColor(status),
+              ),
+            ),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Order #$orderId',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    customer,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  money(amount),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                _statusBadge(
+                  status,
+                  statusColor(status),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }).toList();
+  }
+
+  DateTime _dateValue(dynamic value) {
+    if (value is Timestamp) {
+      return value.toDate();
+    }
+
+    if (value is DateTime) {
+      return value;
+    }
+
+    if (value is String) {
+      return DateTime.tryParse(value) ??
+          DateTime.fromMillisecondsSinceEpoch(0);
+    }
+
+    return DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  // ============================================================
   // PRODUCT SAVE
   // ============================================================
 
@@ -420,9 +1051,11 @@ class _AdminPanelState extends State<AdminPanel>
     warrantyController.clear();
     highlightsController.clear();
 
-    setState(() {
-      active = true;
-    });
+    if (mounted) {
+      setState(() {
+        active = true;
+      });
+    }
   }
 
   // ============================================================
@@ -490,19 +1123,14 @@ class _AdminPanelState extends State<AdminPanel>
     Map<String, dynamic> data,
   ) {
     nameController.text = data['name']?.toString() ?? '';
-
     categoryController.text =
         data['category']?.toString() ?? '';
-
     priceController.text =
         data['price']?.toString() ?? '';
-
     mrpController.text =
         data['mrp']?.toString() ?? '';
-
     discountController.text =
         data['discount']?.toString() ?? '';
-
     stockController.text =
         data['stock']?.toString() ?? '';
 
@@ -518,28 +1146,20 @@ class _AdminPanelState extends State<AdminPanel>
 
     descriptionController.text =
         data['description']?.toString() ?? '';
-
     remarkController.text =
         data['remark']?.toString() ?? '';
-
     brandController.text =
         data['brand']?.toString() ?? '';
-
     materialController.text =
         data['material']?.toString() ?? '';
-
     colorController.text =
         data['color']?.toString() ?? '';
-
     sizeController.text =
         data['size']?.toString() ?? '';
-
     weightController.text =
         data['weight']?.toString() ?? '';
-
     warrantyController.text =
         data['warranty']?.toString() ?? '';
-
     highlightsController.text =
         data['highlights']?.toString() ?? '';
 
@@ -919,8 +1539,7 @@ class _AdminPanelState extends State<AdminPanel>
     String newStatus,
   ) async {
     try {
-      final user =
-          FirebaseAuth.instance.currentUser;
+      final user = FirebaseAuth.instance.currentUser;
 
       if (user == null) {
         showMessage(
@@ -949,13 +1568,10 @@ class _AdminPanelState extends State<AdminPanel>
             throw Exception('Order not found.');
           }
 
-          final data =
-              snapshot.data() ?? {};
+          final data = snapshot.data() ?? {};
 
-          final oldStatus =
-              normalizedOrderStatus(
-            data['orderStatus'] ??
-                data['status'],
+          final oldStatus = normalizedOrderStatus(
+            data['orderStatus'] ?? data['status'],
           );
 
           final history =
@@ -1008,20 +1624,11 @@ class _AdminPanelState extends State<AdminPanel>
   Future<void> showShipmentDialog(
     String orderId,
   ) async {
-    final partnerController =
-        TextEditingController();
-
-    final trackingController =
-        TextEditingController();
-
-    final trackingUrlController =
-        TextEditingController();
-
-    final courierNameController =
-        TextEditingController();
-
-    final courierPhoneController =
-        TextEditingController();
+    final partnerController = TextEditingController();
+    final trackingController = TextEditingController();
+    final trackingUrlController = TextEditingController();
+    final courierNameController = TextEditingController();
+    final courierPhoneController = TextEditingController();
 
     bool submitting = false;
 
@@ -1084,9 +1691,7 @@ class _AdminPanelState extends State<AdminPanel>
                   onPressed: submitting
                       ? null
                       : () {
-                          Navigator.pop(
-                            dialogContext,
-                          );
+                          Navigator.pop(dialogContext);
                         },
                   child: const Text('Cancel'),
                 ),
@@ -1180,22 +1785,16 @@ class _AdminPanelState extends State<AdminPanel>
                                 transaction.update(
                                   orderRef,
                                   {
-                                    'orderStatus':
-                                        'Shipped',
-                                    'status':
-                                        'Shipped',
-                                    'previousStatus':
-                                        'Packed',
+                                    'orderStatus': 'Shipped',
+                                    'status': 'Shipped',
+                                    'previousStatus': 'Packed',
                                     'updatedAt':
                                         FieldValue.serverTimestamp(),
-                                    'updatedBy':
-                                        user.uid,
+                                    'updatedBy': user.uid,
                                     'shippedAt':
                                         FieldValue.serverTimestamp(),
-                                    'courierPartner':
-                                        partner,
-                                    'trackingNumber':
-                                        tracking,
+                                    'courierPartner': partner,
+                                    'trackingNumber': tracking,
                                     'trackingUrl':
                                         trackingUrlController
                                             .text
@@ -1208,21 +1807,16 @@ class _AdminPanelState extends State<AdminPanel>
                                         courierPhoneController
                                             .text
                                             .trim(),
-                                    'trackingStatus':
-                                        'Shipped',
-                                    'shippedBy':
-                                        user.uid,
-                                    'statusHistory':
-                                        history,
+                                    'trackingStatus': 'Shipped',
+                                    'shippedBy': user.uid,
+                                    'statusHistory': history,
                                   },
                                 );
                               },
                             );
 
                             if (dialogContext.mounted) {
-                              Navigator.pop(
-                                dialogContext,
-                              );
+                              Navigator.pop(dialogContext);
                             }
 
                             showMessage(
@@ -1282,11 +1876,9 @@ class _AdminPanelState extends State<AdminPanel>
     String courierId,
   ) async {
     try {
-      final admin =
-          FirebaseAuth.instance.currentUser;
+      final admin = FirebaseAuth.instance.currentUser;
 
-      if (admin == null ||
-          admin.uid != adminUid) {
+      if (admin == null || admin.uid != adminUid) {
         showMessage(
           'Only Admin can assign courier.',
           error: true,
@@ -1330,8 +1922,7 @@ class _AdminPanelState extends State<AdminPanel>
         return;
       }
 
-      final orderRef =
-          ordersRef.doc(orderId);
+      final orderRef = ordersRef.doc(orderId);
 
       await _firestore.runTransaction(
         (transaction) async {
@@ -1508,16 +2099,13 @@ class _AdminPanelState extends State<AdminPanel>
                     trailing: Icon(
                       selected
                           ? Icons.check_circle
-                          : Icons
-                              .radio_button_unchecked,
+                          : Icons.radio_button_unchecked,
                       color: selected
                           ? Colors.green
                           : Colors.grey,
                     ),
                     onTap: () async {
-                      Navigator.pop(
-                        dialogContext,
-                      );
+                      Navigator.pop(dialogContext);
 
                       await assignCourier(
                         orderId,
@@ -1546,8 +2134,7 @@ class _AdminPanelState extends State<AdminPanel>
   Future<void> confirmCancellation(
     String orderId,
   ) async {
-    final confirm =
-        await showDialog<bool>(
+    final confirm = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
@@ -1586,9 +2173,7 @@ class _AdminPanelState extends State<AdminPanel>
 
     try {
       final callable =
-          functions.httpsCallable(
-        'cancelOrder',
-      );
+          functions.httpsCallable('cancelOrder');
 
       await callable.call({
         'orderId': orderId,
@@ -2075,7 +2660,7 @@ class _AdminPanelState extends State<AdminPanel>
                       Text(
                         'Stock: $stock',
                         style: TextStyle(
-                          color: stock > 0
+                          color: stock is num && stock > 0
                               ? Colors.green.shade700
                               : Colors.red.shade700,
                           fontWeight:
@@ -2359,8 +2944,7 @@ class _AdminPanelState extends State<AdminPanel>
                         );
                       },
                       icon: const Icon(
-                        Icons
-                            .delivery_dining_outlined,
+                        Icons.delivery_dining_outlined,
                         size: 19,
                       ),
                       label: Text(
@@ -2760,8 +3344,6 @@ class _AdminPanelState extends State<AdminPanel>
           backgroundColor: background,
           elevation: 0,
           scrolledUnderElevation: 0,
-
-          // NEW: Always visible Back button.
           leading: IconButton(
             tooltip: 'Back',
             onPressed: _goBack,
@@ -2769,7 +3351,6 @@ class _AdminPanelState extends State<AdminPanel>
               Icons.arrow_back_ios_new,
             ),
           ),
-
           title: const Text(
             'Admin Panel',
             style: TextStyle(
@@ -2833,12 +3414,20 @@ class _AdminPanelState extends State<AdminPanel>
               ),
               child: TabBar(
                 controller: tabController,
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
                 labelColor: primary,
                 unselectedLabelColor:
                     Colors.grey.shade600,
                 indicatorColor: primary,
                 indicatorWeight: 3,
                 tabs: const [
+                  Tab(
+                    icon: Icon(
+                      Icons.dashboard_outlined,
+                    ),
+                    text: 'Dashboard',
+                  ),
                   Tab(
                     icon:
                         Icon(Icons.add_box_outlined),
@@ -2866,6 +3455,14 @@ class _AdminPanelState extends State<AdminPanel>
               child: TabBarView(
                 controller: tabController,
                 children: [
+                  // ==================================================
+                  // DASHBOARD TAB
+                  // ==================================================
+                  dashboard(),
+
+                  // ==================================================
+                  // PRODUCTS TAB
+                  // ==================================================
                   SingleChildScrollView(
                     physics:
                         const BouncingScrollPhysics(),
@@ -3045,8 +3642,14 @@ class _AdminPanelState extends State<AdminPanel>
                     ),
                   ),
 
+                  // ==================================================
+                  // PRODUCT LIST TAB
+                  // ==================================================
                   productList(),
 
+                  // ==================================================
+                  // ORDERS TAB
+                  // ==================================================
                   orderList(),
                 ],
               ),
