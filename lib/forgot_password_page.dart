@@ -5,11 +5,13 @@ class ForgotPasswordPage extends StatefulWidget {
   const ForgotPasswordPage({super.key});
 
   @override
-  State<ForgotPasswordPage> createState() => _ForgotPasswordPageState();
+  State<ForgotPasswordPage> createState() =>
+      _ForgotPasswordPageState();
 }
 
 class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
-  final TextEditingController emailController = TextEditingController();
+  final TextEditingController emailController =
+      TextEditingController();
 
   bool isLoading = false;
 
@@ -22,6 +24,48 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     emailController.dispose();
     super.dispose();
   }
+
+  // ============================================================
+  // BACK NAVIGATION
+  // ============================================================
+
+  void _goBack() {
+    if (isLoading) return;
+
+    final navigator = Navigator.of(context);
+
+    if (navigator.canPop()) {
+      navigator.pop();
+    } else {
+      navigator.pushNamedAndRemoveUntil(
+        '/',
+        (route) => false,
+      );
+    }
+  }
+
+  Future<bool> _handleBack() async {
+    if (isLoading) {
+      return false;
+    }
+
+    final navigator = Navigator.of(context);
+
+    if (navigator.canPop()) {
+      return true;
+    }
+
+    navigator.pushNamedAndRemoveUntil(
+      '/',
+      (route) => false,
+    );
+
+    return false;
+  }
+
+  // ============================================================
+  // MESSAGE
+  // ============================================================
 
   void showMessage(
     String message, {
@@ -54,7 +98,9 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
             ],
           ),
           backgroundColor:
-              isError ? Colors.red.shade600 : Colors.green.shade600,
+              isError
+                  ? Colors.red.shade600
+                  : Colors.green.shade600,
           behavior: SnackBarBehavior.floating,
           margin: const EdgeInsets.all(16),
           shape: RoundedRectangleBorder(
@@ -63,6 +109,10 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
         ),
       );
   }
+
+  // ============================================================
+  // SEND RESET LINK
+  // ============================================================
 
   Future<void> sendResetLink() async {
     final email = emailController.text.trim();
@@ -110,17 +160,20 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
 
       if (!mounted) return;
 
-      Navigator.pop(context);
+      _goBack();
     } on FirebaseAuthException catch (e) {
-      String message = 'Password reset request failed.';
+      String message =
+          'Password reset request failed.';
 
       switch (e.code) {
         case 'invalid-email':
-          message = 'Email address valid nahi hai.';
+          message =
+              'Email address valid nahi hai.';
           break;
 
         case 'user-not-found':
-          message = 'Is email se koi account nahi mila.';
+          message =
+              'Is email se koi account nahi mila.';
           break;
 
         case 'too-many-requests':
@@ -129,11 +182,13 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
           break;
 
         case 'network-request-failed':
-          message = 'Internet connection check karein.';
+          message =
+              'Internet connection check karein.';
           break;
 
         case 'user-disabled':
-          message = 'Ye account disabled hai.';
+          message =
+              'Ye account disabled hai.';
           break;
       }
 
@@ -155,6 +210,10 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     }
   }
 
+  // ============================================================
+  // INPUT DECORATION
+  // ============================================================
+
   InputDecoration inputDecoration() {
     return InputDecoration(
       labelText: 'Email Address',
@@ -173,7 +232,8 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       ),
       filled: true,
       fillColor: const Color(0xFFF9F9FC),
-      contentPadding: const EdgeInsets.symmetric(
+      contentPadding:
+          const EdgeInsets.symmetric(
         horizontal: 15,
         vertical: 17,
       ),
@@ -207,6 +267,10 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     );
   }
 
+  // ============================================================
+  // TOP ICON
+  // ============================================================
+
   Widget buildTopIcon() {
     return Container(
       height: 94,
@@ -237,6 +301,10 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     );
   }
 
+  // ============================================================
+  // HOW IT WORKS STEP
+  // ============================================================
+
   Widget buildStep(
     int number,
     IconData icon,
@@ -244,14 +312,16 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     String subtitle,
   ) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
       children: [
         Container(
           height: 38,
           width: 38,
           decoration: BoxDecoration(
             color: primary.withOpacity(.09),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius:
+                BorderRadius.circular(12),
           ),
           child: Center(
             child: Icon(
@@ -264,7 +334,8 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
         const SizedBox(width: 12),
         Expanded(
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
             children: [
               Text(
                 '$number. $title',
@@ -289,352 +360,449 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     );
   }
 
+  // ============================================================
+  // BUILD
+  // ============================================================
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: background,
+    return WillPopScope(
+      onWillPop: _handleBack,
+      child: Scaffold(
+        backgroundColor: background,
 
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        leading: IconButton(
-          onPressed: isLoading
-              ? null
-              : () {
-                  Navigator.pop(context);
-                },
-          icon: const Icon(
-            Icons.arrow_back_rounded,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          leading: IconButton(
+            onPressed: isLoading
+                ? null
+                : _goBack,
+            icon: const Icon(
+              Icons.arrow_back_rounded,
+            ),
           ),
         ),
-      ),
 
-      body: SafeArea(
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(
-            20,
-            18,
-            20,
-            35,
-          ),
-          child: Column(
-            children: [
-              buildTopIcon(),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            physics:
+                const BouncingScrollPhysics(),
+            padding:
+                const EdgeInsets.fromLTRB(
+              20,
+              18,
+              20,
+              35,
+            ),
+            child: Column(
+              children: [
+                // ==================================================
+                // TOP ICON
+                // ==================================================
 
-              const SizedBox(height: 24),
+                buildTopIcon(),
 
-              const Text(
-                'Forgot Password?',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -.7,
-                ),
-              ),
+                const SizedBox(height: 24),
 
-              const SizedBox(height: 9),
+                // ==================================================
+                // TITLE
+                // ==================================================
 
-              Text(
-                'Don\'t worry! We\'ll help you reset your\nPreesho account password.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 13,
-                  height: 1.55,
-                ),
-              ),
-
-              const SizedBox(height: 30),
-
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(26),
-                  border: Border.all(
-                    color: Colors.grey.shade100,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(.055),
-                      blurRadius: 28,
-                      offset: const Offset(0, 12),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          height: 40,
-                          width: 40,
-                          decoration: BoxDecoration(
-                            color: primary.withOpacity(.09),
-                            borderRadius: BorderRadius.circular(13),
-                          ),
-                          child: const Icon(
-                            Icons.password_rounded,
-                            color: primary,
-                            size: 21,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Text(
-                            'Reset your password',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 9),
-
-                    Text(
-                      'Enter the email address linked to your Preesho account.',
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 12,
-                        height: 1.45,
-                      ),
-                    ),
-
-                    const SizedBox(height: 21),
-
-                    TextField(
-                      controller: emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      textInputAction: TextInputAction.done,
-                      enabled: !isLoading,
-                      autocorrect: false,
-                      onSubmitted: (_) {
-                        if (!isLoading) {
-                          sendResetLink();
-                        }
-                      },
-                      decoration: inputDecoration(),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    SizedBox(
-                      width: double.infinity,
-                      height: 56,
-                      child: ElevatedButton(
-                        onPressed: isLoading
-                            ? null
-                            : sendResetLink,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: primary,
-                          foregroundColor: Colors.white,
-                          disabledBackgroundColor:
-                              primary.withOpacity(.55),
-                          elevation: 4,
-                          shadowColor: primary.withOpacity(.25),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(17),
-                          ),
-                        ),
-                        child: isLoading
-                            ? const Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.center,
-                                children: [
-                                  SizedBox(
-                                    height: 21,
-                                    width: 21,
-                                    child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                      strokeWidth: 2.5,
-                                    ),
-                                  ),
-                                  SizedBox(width: 12),
-                                  Text(
-                                    'Sending...',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                ],
-                              )
-                            : const Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.mark_email_read_outlined,
-                                    size: 21,
-                                  ),
-                                  SizedBox(width: 9),
-                                  Text(
-                                    'Send Reset Link',
-                                    style: TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 18),
-
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(17),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: Colors.green.shade100,
+                const Text(
+                  'Forgot Password?',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -.7,
                   ),
                 ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      height: 44,
-                      width: 44,
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade100,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Icon(
-                        Icons.verified_user_outlined,
-                        color: Colors.green.shade700,
-                        size: 22,
-                      ),
+
+                const SizedBox(height: 9),
+
+                Text(
+                  'Don\'t worry! We\'ll help you reset your\nPreesho account password.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 13,
+                    height: 1.55,
+                  ),
+                ),
+
+                const SizedBox(height: 30),
+
+                // ==================================================
+                // RESET CARD
+                // ==================================================
+
+                Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius:
+                        BorderRadius.circular(26),
+                    border: Border.all(
+                      color: Colors.grey.shade100,
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black
+                            .withOpacity(.055),
+                        blurRadius: 28,
+                        offset:
+                            const Offset(0, 12),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      Row(
                         children: [
-                          const Text(
-                            'Your account is secure',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w900,
+                          Container(
+                            height: 40,
+                            width: 40,
+                            decoration:
+                                BoxDecoration(
+                              color: primary
+                                  .withOpacity(.09),
+                              borderRadius:
+                                  BorderRadius
+                                      .circular(
+                                13,
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.password_rounded,
+                              color: primary,
+                              size: 21,
                             ),
                           ),
-                          const SizedBox(height: 5),
-                          Text(
-                            'Reset link only registered email address par send hoga.',
-                            style: TextStyle(
-                              color: Colors.green.shade800,
-                              fontSize: 11.5,
-                              height: 1.45,
-                              fontWeight: FontWeight.w600,
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Text(
+                              'Reset your password',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight:
+                                    FontWeight.w900,
+                              ),
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
-                ),
-              ),
 
-              const SizedBox(height: 20),
+                      const SizedBox(height: 9),
 
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: Colors.grey.shade100,
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'How it works',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
+                      Text(
+                        'Enter the email address linked to your Preesho account.',
+                        style: TextStyle(
+                          color:
+                              Colors.grey.shade600,
+                          fontSize: 12,
+                          height: 1.45,
+                        ),
                       ),
-                    ),
 
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 21),
 
-                    buildStep(
-                      1,
-                      Icons.email_outlined,
-                      'Enter your email',
-                      'Use the email registered with your Preesho account.',
-                    ),
+                      TextField(
+                        controller:
+                            emailController,
+                        keyboardType:
+                            TextInputType
+                                .emailAddress,
+                        textInputAction:
+                            TextInputAction.done,
+                        enabled: !isLoading,
+                        autocorrect: false,
+                        onSubmitted: (_) {
+                          if (!isLoading) {
+                            sendResetLink();
+                          }
+                        },
+                        decoration:
+                            inputDecoration(),
+                      ),
 
-                    const SizedBox(height: 15),
+                      const SizedBox(height: 20),
 
-                    buildStep(
-                      2,
-                      Icons.mark_email_read_outlined,
-                      'Check your inbox',
-                      'Firebase will send a secure password reset email.',
-                    ),
-
-                    const SizedBox(height: 15),
-
-                    buildStep(
-                      3,
-                      Icons.lock_open_rounded,
-                      'Create a new password',
-                      'Open the email link and choose your new password.',
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              TextButton.icon(
-                onPressed: isLoading
-                    ? null
-                    : () {
-                        Navigator.pop(context);
-                      },
-                icon: const Icon(
-                  Icons.arrow_back_rounded,
-                  size: 18,
-                ),
-                label: const Text(
-                  'Back to Login',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
+                      SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: ElevatedButton(
+                          onPressed: isLoading
+                              ? null
+                              : sendResetLink,
+                          style:
+                              ElevatedButton.styleFrom(
+                            backgroundColor:
+                                primary,
+                            foregroundColor:
+                                Colors.white,
+                            disabledBackgroundColor:
+                                primary
+                                    .withOpacity(.55),
+                            elevation: 4,
+                            shadowColor: primary
+                                .withOpacity(.25),
+                            shape:
+                                RoundedRectangleBorder(
+                              borderRadius:
+                                  BorderRadius
+                                      .circular(
+                                17,
+                              ),
+                            ),
+                          ),
+                          child: isLoading
+                              ? const Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment
+                                          .center,
+                                  children: [
+                                    SizedBox(
+                                      height: 21,
+                                      width: 21,
+                                      child:
+                                          CircularProgressIndicator(
+                                        color:
+                                            Colors.white,
+                                        strokeWidth:
+                                            2.5,
+                                      ),
+                                    ),
+                                    SizedBox(
+                                        width: 12),
+                                    Text(
+                                      'Sending...',
+                                      style:
+                                          TextStyle(
+                                        fontSize:
+                                            14,
+                                        fontWeight:
+                                            FontWeight
+                                                .w900,
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : const Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment
+                                          .center,
+                                  children: [
+                                    Icon(
+                                      Icons
+                                          .mark_email_read_outlined,
+                                      size: 21,
+                                    ),
+                                    SizedBox(
+                                        width: 9),
+                                    Text(
+                                      'Send Reset Link',
+                                      style:
+                                          TextStyle(
+                                        fontSize:
+                                            15,
+                                        fontWeight:
+                                            FontWeight
+                                                .w900,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                style: TextButton.styleFrom(
-                  foregroundColor: primary,
-                ),
-              ),
 
-              const SizedBox(height: 4),
+                const SizedBox(height: 18),
 
-              Text(
-                'Preesho • Secure Account Recovery',
-                style: TextStyle(
-                  color: Colors.grey.shade500,
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w600,
+                // ==================================================
+                // SECURITY CARD
+                // ==================================================
+
+                Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.all(17),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius:
+                        BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.green.shade100,
+                    ),
+                  ),
+                  child: Row(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        height: 44,
+                        width: 44,
+                        decoration:
+                            BoxDecoration(
+                          color:
+                              Colors.green.shade100,
+                          borderRadius:
+                              BorderRadius.circular(
+                            14,
+                          ),
+                        ),
+                        child: Icon(
+                          Icons
+                              .verified_user_outlined,
+                          color:
+                              Colors.green.shade700,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment
+                                  .start,
+                          children: [
+                            const Text(
+                              'Your account is secure',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight:
+                                    FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              'Reset link only registered email address par send hoga.',
+                              style: TextStyle(
+                                color: Colors
+                                    .green.shade800,
+                                fontSize: 11.5,
+                                height: 1.45,
+                                fontWeight:
+                                    FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+
+                const SizedBox(height: 20),
+
+                // ==================================================
+                // HOW IT WORKS
+                // ==================================================
+
+                Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius:
+                        BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.grey.shade100,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'How it works',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight:
+                              FontWeight.w900,
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      buildStep(
+                        1,
+                        Icons.email_outlined,
+                        'Enter your email',
+                        'Use the email registered with your Preesho account.',
+                      ),
+
+                      const SizedBox(height: 15),
+
+                      buildStep(
+                        2,
+                        Icons
+                            .mark_email_read_outlined,
+                        'Check your inbox',
+                        'Firebase will send a secure password reset email.',
+                      ),
+
+                      const SizedBox(height: 15),
+
+                      buildStep(
+                        3,
+                        Icons.lock_open_rounded,
+                        'Create a new password',
+                        'Open the email link and choose your new password.',
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // ==================================================
+                // BACK TO LOGIN
+                // ==================================================
+
+                TextButton.icon(
+                  onPressed: isLoading
+                      ? null
+                      : _goBack,
+                  icon: const Icon(
+                    Icons.arrow_back_rounded,
+                    size: 18,
+                  ),
+                  label: const Text(
+                    'Back to Login',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: primary,
+                  ),
+                ),
+
+                const SizedBox(height: 4),
+
+                // ==================================================
+                // FOOTER
+                // ==================================================
+
+                Text(
+                  'Preesho • Secure Account Recovery',
+                  style: TextStyle(
+                    color: Colors.grey.shade500,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
