@@ -107,6 +107,38 @@ class _AdminPanelState extends State<AdminPanel>
   }
 
   // ============================================================
+  // BACK / HOME NAVIGATION
+  // ============================================================
+
+  void _goBack() {
+    final navigator = Navigator.of(context);
+
+    if (navigator.canPop()) {
+      navigator.pop();
+    } else {
+      navigator.pushNamedAndRemoveUntil(
+        '/',
+        (route) => false,
+      );
+    }
+  }
+
+  Future<bool> _handleSystemBack() async {
+    final navigator = Navigator.of(context);
+
+    if (navigator.canPop()) {
+      return true;
+    }
+
+    navigator.pushNamedAndRemoveUntil(
+      '/',
+      (route) => false,
+    );
+
+    return false;
+  }
+
+  // ============================================================
   // HELPERS
   // ============================================================
 
@@ -458,14 +490,19 @@ class _AdminPanelState extends State<AdminPanel>
     Map<String, dynamic> data,
   ) {
     nameController.text = data['name']?.toString() ?? '';
+
     categoryController.text =
         data['category']?.toString() ?? '';
+
     priceController.text =
         data['price']?.toString() ?? '';
+
     mrpController.text =
         data['mrp']?.toString() ?? '';
+
     discountController.text =
         data['discount']?.toString() ?? '';
+
     stockController.text =
         data['stock']?.toString() ?? '';
 
@@ -481,20 +518,28 @@ class _AdminPanelState extends State<AdminPanel>
 
     descriptionController.text =
         data['description']?.toString() ?? '';
+
     remarkController.text =
         data['remark']?.toString() ?? '';
+
     brandController.text =
         data['brand']?.toString() ?? '';
+
     materialController.text =
         data['material']?.toString() ?? '';
+
     colorController.text =
         data['color']?.toString() ?? '';
+
     sizeController.text =
         data['size']?.toString() ?? '';
+
     weightController.text =
         data['weight']?.toString() ?? '';
+
     warrantyController.text =
         data['warranty']?.toString() ?? '';
+
     highlightsController.text =
         data['highlights']?.toString() ?? '';
 
@@ -2707,294 +2752,307 @@ class _AdminPanelState extends State<AdminPanel>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: background,
-      appBar: AppBar(
+    return WillPopScope(
+      onWillPop: _handleSystemBack,
+      child: Scaffold(
         backgroundColor: background,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        title: const Text(
-          'Admin Panel',
-          style: TextStyle(
-            fontWeight: FontWeight.w900,
+        appBar: AppBar(
+          backgroundColor: background,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+
+          // NEW: Always visible Back button.
+          leading: IconButton(
+            tooltip: 'Back',
+            onPressed: _goBack,
+            icon: const Icon(
+              Icons.arrow_back_ios_new,
+            ),
           ),
+
+          title: const Text(
+            'Admin Panel',
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          actions: [
+            IconButton(
+              tooltip: 'Vendor Management',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        const VendorManagementPage(),
+                  ),
+                );
+              },
+              icon: const Icon(
+                Icons.storefront_outlined,
+              ),
+            ),
+            IconButton(
+              tooltip: 'Courier Management',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        const CourierManagementPage(),
+                  ),
+                );
+              },
+              icon: const Icon(
+                Icons.local_shipping_outlined,
+              ),
+            ),
+          ],
         ),
-        actions: [
-          IconButton(
-            tooltip: 'Vendor Management',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) =>
-                      const VendorManagementPage(),
-                ),
-              );
-            },
-            icon: const Icon(
-              Icons.storefront_outlined,
-            ),
-          ),
-          IconButton(
-            tooltip: 'Courier Management',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) =>
-                      const CourierManagementPage(),
-                ),
-              );
-            },
-            icon: const Icon(
-              Icons.local_shipping_outlined,
-            ),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          _adminHeader(),
+        body: Column(
+          children: [
+            _adminHeader(),
 
-          const SizedBox(height: 8),
+            const SizedBox(height: 8),
 
-          Container(
-            margin: const EdgeInsets.symmetric(
-              horizontal: 16,
-            ),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius:
-                  BorderRadius.circular(17),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(.035),
-                  blurRadius: 15,
-                  offset: const Offset(0, 5),
-                ),
-              ],
-            ),
-            child: TabBar(
-              controller: tabController,
-              labelColor: primary,
-              unselectedLabelColor:
-                  Colors.grey.shade600,
-              indicatorColor: primary,
-              indicatorWeight: 3,
-              tabs: const [
-                Tab(
-                  icon:
-                      Icon(Icons.add_box_outlined),
-                  text: 'Products',
-                ),
-                Tab(
-                  icon: Icon(
-                    Icons.inventory_2_outlined,
+            Container(
+              margin: const EdgeInsets.symmetric(
+                horizontal: 16,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius:
+                    BorderRadius.circular(17),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(.035),
+                    blurRadius: 15,
+                    offset: const Offset(0, 5),
                   ),
-                  text: 'Product List',
-                ),
-                Tab(
-                  icon: Icon(
-                    Icons.receipt_long_outlined,
+                ],
+              ),
+              child: TabBar(
+                controller: tabController,
+                labelColor: primary,
+                unselectedLabelColor:
+                    Colors.grey.shade600,
+                indicatorColor: primary,
+                indicatorWeight: 3,
+                tabs: const [
+                  Tab(
+                    icon:
+                        Icon(Icons.add_box_outlined),
+                    text: 'Products',
                   ),
-                  text: 'Orders',
-                ),
-              ],
+                  Tab(
+                    icon: Icon(
+                      Icons.inventory_2_outlined,
+                    ),
+                    text: 'Product List',
+                  ),
+                  Tab(
+                    icon: Icon(
+                      Icons.receipt_long_outlined,
+                    ),
+                    text: 'Orders',
+                  ),
+                ],
+              ),
             ),
-          ),
 
-          const SizedBox(height: 8),
+            const SizedBox(height: 8),
 
-          Expanded(
-            child: TabBarView(
-              controller: tabController,
-              children: [
-                SingleChildScrollView(
-                  physics:
-                      const BouncingScrollPhysics(),
-                  padding:
-                      const EdgeInsets.fromLTRB(
-                    16,
-                    10,
-                    16,
-                    30,
-                  ),
-                  child: Column(
-                    children: [
-                      Container(
-                        padding:
-                            const EdgeInsets.all(17),
-                        decoration:
-                            BoxDecoration(
-                          color: Colors.white,
-                          borderRadius:
-                              BorderRadius.circular(
-                            23,
+            Expanded(
+              child: TabBarView(
+                controller: tabController,
+                children: [
+                  SingleChildScrollView(
+                    physics:
+                        const BouncingScrollPhysics(),
+                    padding:
+                        const EdgeInsets.fromLTRB(
+                      16,
+                      10,
+                      16,
+                      30,
+                    ),
+                    child: Column(
+                      children: [
+                        Container(
+                          padding:
+                              const EdgeInsets.all(17),
+                          decoration:
+                              BoxDecoration(
+                            color: Colors.white,
+                            borderRadius:
+                                BorderRadius.circular(
+                              23,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black
+                                    .withOpacity(.045),
+                                blurRadius: 20,
+                                offset:
+                                    const Offset(
+                                  0,
+                                  8,
+                                ),
+                              ),
+                            ],
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black
-                                  .withOpacity(.045),
-                              blurRadius: 20,
-                              offset:
-                                  const Offset(
-                                0,
-                                8,
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Add New Product',
+                                style: TextStyle(
+                                  fontSize: 19,
+                                  fontWeight:
+                                      FontWeight.w900,
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Add New Product',
-                              style: TextStyle(
-                                fontSize: 19,
-                                fontWeight:
-                                    FontWeight.w900,
+                              const SizedBox(height: 4),
+                              Text(
+                                'Add product details for your Preesho catalogue.',
+                                style: TextStyle(
+                                  color: Colors
+                                      .grey.shade600,
+                                  fontSize: 11,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Add product details for your Preesho catalogue.',
-                              style: TextStyle(
-                                color: Colors
-                                    .grey.shade600,
-                                fontSize: 11,
-                              ),
-                            ),
-                            const SizedBox(height: 18),
-                            productForm(),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 15),
-
-                      Container(
-                        padding:
-                            const EdgeInsets.all(17),
-                        decoration:
-                            BoxDecoration(
-                          color: Colors.white,
-                          borderRadius:
-                              BorderRadius.circular(
-                            23,
+                              const SizedBox(height: 18),
+                              productForm(),
+                            ],
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black
-                                  .withOpacity(.045),
-                              blurRadius: 20,
-                              offset:
-                                  const Offset(
-                                0,
-                                8,
-                              ),
-                            ),
-                          ],
                         ),
-                        child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Bulk Products',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight:
-                                    FontWeight.w900,
-                              ),
+
+                        const SizedBox(height: 15),
+
+                        Container(
+                          padding:
+                              const EdgeInsets.all(17),
+                          decoration:
+                              BoxDecoration(
+                            color: Colors.white,
+                            borderRadius:
+                                BorderRadius.circular(
+                              23,
                             ),
-                            const SizedBox(height: 5),
-                            Text(
-                              'Upload multiple products using Excel.',
-                              style: TextStyle(
-                                color: Colors
-                                    .grey.shade600,
-                                fontSize: 11,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black
+                                    .withOpacity(.045),
+                                blurRadius: 20,
+                                offset:
+                                    const Offset(
+                                  0,
+                                  8,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 15),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child:
-                                      OutlinedButton.icon(
-                                    onPressed:
-                                        uploadingExcel
-                                            ? null
-                                            : uploadExcel,
-                                    icon:
-                                        uploadingExcel
-                                            ? const SizedBox(
-                                                width: 18,
-                                                height: 18,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                  strokeWidth:
-                                                      2,
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Bulk Products',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight:
+                                      FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              Text(
+                                'Upload multiple products using Excel.',
+                                style: TextStyle(
+                                  color: Colors
+                                      .grey.shade600,
+                                  fontSize: 11,
+                                ),
+                              ),
+                              const SizedBox(height: 15),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child:
+                                        OutlinedButton.icon(
+                                      onPressed:
+                                          uploadingExcel
+                                              ? null
+                                              : uploadExcel,
+                                      icon:
+                                          uploadingExcel
+                                              ? const SizedBox(
+                                                  width: 18,
+                                                  height: 18,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                    strokeWidth:
+                                                        2,
+                                                  ),
+                                                )
+                                              : const Icon(
+                                                  Icons
+                                                      .upload_file_outlined,
                                                 ),
-                                              )
-                                            : const Icon(
-                                                Icons
-                                                    .upload_file_outlined,
-                                              ),
-                                    label: Text(
-                                      uploadingExcel
-                                          ? 'Uploading'
-                                          : 'Upload Excel',
+                                      label: Text(
+                                        uploadingExcel
+                                            ? 'Uploading'
+                                            : 'Upload Excel',
+                                      ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(
-                                  width: 10,
-                                ),
-                                Expanded(
-                                  child:
-                                      OutlinedButton.icon(
-                                    onPressed:
-                                        downloadingTemplate
-                                            ? null
-                                            : downloadTemplate,
-                                    icon:
-                                        downloadingTemplate
-                                            ? const SizedBox(
-                                                width: 18,
-                                                height: 18,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                  strokeWidth:
-                                                      2,
+                                  const SizedBox(
+                                    width: 10,
+                                  ),
+                                  Expanded(
+                                    child:
+                                        OutlinedButton.icon(
+                                      onPressed:
+                                          downloadingTemplate
+                                              ? null
+                                              : downloadTemplate,
+                                      icon:
+                                          downloadingTemplate
+                                              ? const SizedBox(
+                                                  width: 18,
+                                                  height: 18,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                    strokeWidth:
+                                                        2,
+                                                  ),
+                                                )
+                                              : const Icon(
+                                                  Icons
+                                                      .download_outlined,
                                                 ),
-                                              )
-                                            : const Icon(
-                                                Icons
-                                                    .download_outlined,
-                                              ),
-                                    label: const Text(
-                                      'Template',
+                                      label: const Text(
+                                        'Template',
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
-                            ),
-                          ],
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
 
-                productList(),
+                  productList(),
 
-                orderList(),
-              ],
+                  orderList(),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
