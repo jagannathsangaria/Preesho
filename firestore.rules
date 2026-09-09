@@ -174,7 +174,59 @@ service cloud.firestore {
 
 
       // ------------------------------------------------------------
-      // OWNER UPDATE
+      // COURIER OWNER UPDATE
+      //
+      // Allows Courier Documents Page to synchronize:
+      // documentsSubmitted
+      // status
+      // registrationStatus
+      // documentsSubmittedAt
+      // rejectionReason
+      // updatedAt
+      //
+      // Security:
+      // role cannot change
+      // active must remain false
+      // approvedByAdmin must remain false
+      // status can only move through registration flow
+      // ------------------------------------------------------------
+
+      allow update: if isOwner(userId)
+        && resource.data.role == "courier"
+        && request.resource.data.role == "courier"
+        && request.resource.data.active == false
+        && request.resource.data.approvedByAdmin == false
+        && request.resource.data.diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            'documentsSubmitted',
+            'status',
+            'registrationStatus',
+            'documentsSubmittedAt',
+            'rejectionReason',
+            'updatedAt'
+          ])
+        && request.resource.data.registrationStatus
+            == request.resource.data.status
+        && (
+          request.resource.data.status == resource.data.status
+          ||
+          (
+            resource.data.status == "pending_documents"
+            && request.resource.data.status == "pending_approval"
+            && request.resource.data.documentsSubmitted == true
+          )
+          ||
+          (
+            resource.data.status == "rejected"
+            && request.resource.data.status == "pending_approval"
+            && request.resource.data.documentsSubmitted == true
+          )
+        );
+
+
+      // ------------------------------------------------------------
+      // NORMAL OWNER UPDATE
       // ------------------------------------------------------------
 
       allow update: if isOwner(userId)
@@ -323,6 +375,9 @@ service cloud.firestore {
 
       // ------------------------------------------------------------
       // COURIER DOCUMENT UPDATES
+      //
+      // Courier can save document numbers/details only.
+      // No document photos/files are required.
       // ------------------------------------------------------------
 
       allow update: if isOwner(courierId)
@@ -336,12 +391,20 @@ service cloud.firestore {
           .affectedKeys()
           .hasOnly([
             'documents',
+            'panNumber',
+            'aadhaarNumber',
+            'drivingLicenceNumber',
+            'vehicleRcNumber',
+            'addressProofNumber',
             'documentsSubmitted',
             'updatedAt',
             'status',
-            'registrationType',
-            'registrationNo'
+            'registrationStatus',
+            'rejectionReason',
+            'documentsSubmittedAt'
           ])
+        && request.resource.data.registrationStatus
+            == request.resource.data.status
         && (
           request.resource.data.status == resource.data.status
           ||
