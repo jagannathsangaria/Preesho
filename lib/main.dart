@@ -1298,6 +1298,7 @@ class _ModernProductCard extends StatelessWidget {
             const SizedBox(height: 8),
             SizedBox(width: double.infinity, height: 36, child: quantity == 0 ? OutlinedButton.icon(onPressed: product.stock <= 0 ? null : () async { final added = await CartController.addProduct(product); if (added) { onCartChanged(); if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Added to cart'), duration: Duration(seconds: 1))); } }, icon: const Icon(Icons.add_shopping_cart_rounded, size: 16), label: const Text('Add to Cart', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)), style: OutlinedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)))) : Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [IconButton(onPressed: () async { await CartController.decreaseQuantity(product.id); onCartChanged(); }, icon: const Icon(Icons.remove_circle_outline_rounded, size: 20)), Text('$quantity', style: const TextStyle(fontWeight: FontWeight.w900)), IconButton(onPressed: quantity >= product.stock ? null : () async { await CartController.increaseQuantity(product.id); onCartChanged(); }, icon: const Icon(Icons.add_circle_outline_rounded, size: 20))])),
           ]),
+            ),
         ]),
       ),
     );
