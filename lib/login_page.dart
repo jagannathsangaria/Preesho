@@ -24,22 +24,17 @@ class _LoginPageState extends State<LoginPage> {
       TextEditingController();
 
   // Registration controllers
-  final TextEditingController mobileController =
-      TextEditingController();
-  final TextEditingController otpController =
-      TextEditingController();
-  final TextEditingController nameController =
-      TextEditingController();
+  final TextEditingController mobileController = TextEditingController();
+  final TextEditingController otpController = TextEditingController();
+  final TextEditingController nameController = TextEditingController();
   final TextEditingController registerEmailController =
       TextEditingController();
   final TextEditingController registerPasswordController =
       TextEditingController();
   final TextEditingController confirmPasswordController =
       TextEditingController();
-  final TextEditingController addressController =
-      TextEditingController();
-  final TextEditingController pinCodeController =
-      TextEditingController();
+  final TextEditingController addressController = TextEditingController();
+  final TextEditingController pinCodeController = TextEditingController();
 
   bool isLogin = true;
   bool otpSent = false;
@@ -57,7 +52,6 @@ class _LoginPageState extends State<LoginPage> {
   void dispose() {
     loginEmailController.dispose();
     loginPasswordController.dispose();
-
     mobileController.dispose();
     otpController.dispose();
     nameController.dispose();
@@ -70,9 +64,9 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  // ============================================================
-  // COMMON MESSAGE
-  // ============================================================
+  // ------------------------------------------------------------
+  // MESSAGE
+  // ------------------------------------------------------------
 
   void _showMessage(
     String message, {
@@ -91,21 +85,37 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // ============================================================
-  // LOGIN
-  // ============================================================
+  // ------------------------------------------------------------
+  // EMAIL LOGIN
+  // ------------------------------------------------------------
 
   Future<void> login() async {
     final email = loginEmailController.text.trim();
     final password = loginPasswordController.text;
 
     if (email.isEmpty) {
-      _showMessage("Please enter your email.", error: true);
+      _showMessage(
+        'Please enter your email.',
+        error: true,
+      );
+      return;
+    }
+
+    if (!RegExp(
+      r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+    ).hasMatch(email)) {
+      _showMessage(
+        'Please enter a valid email address.',
+        error: true,
+      );
       return;
     }
 
     if (password.isEmpty) {
-      _showMessage("Please enter your password.", error: true);
+      _showMessage(
+        'Please enter your password.',
+        error: true,
+      );
       return;
     }
 
@@ -114,8 +124,7 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      final credential =
-          await _auth.signInWithEmailAndPassword(
+      final credential = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
@@ -124,50 +133,53 @@ class _LoginPageState extends State<LoginPage> {
 
       if (user == null) {
         _showMessage(
-          "Login failed. Please try again.",
+          'Login failed. Please try again.',
           error: true,
         );
         return;
       }
 
       await _handleUserLogin(user);
-
     } on FirebaseAuthException catch (e) {
       String message;
 
       switch (e.code) {
         case 'invalid-email':
-          message = "Invalid email address.";
+          message = 'Invalid email address.';
           break;
 
         case 'user-not-found':
-          message = "No account found with this email.";
+          message = 'No account found with this email.';
           break;
 
         case 'wrong-password':
         case 'invalid-credential':
-          message = "Incorrect email or password.";
+          message = 'Incorrect email or password.';
           break;
 
         case 'user-disabled':
-          message = "This account has been disabled.";
+          message = 'This account has been disabled.';
           break;
 
         case 'too-many-requests':
-          message =
-              "Too many attempts. Please try again later.";
+          message = 'Too many attempts. Please try again later.';
+          break;
+
+        case 'network-request-failed':
+          message = 'Network error. Please check your internet connection.';
           break;
 
         default:
-          message =
-              e.message ?? "Login failed. Please try again.";
+          message = e.message ?? 'Login failed. Please try again.';
       }
 
-      _showMessage(message, error: true);
-
-    } catch (e) {
       _showMessage(
-        "Something went wrong. Please try again.",
+        message,
+        error: true,
+      );
+    } catch (_) {
+      _showMessage(
+        'Something went wrong. Please try again.',
         error: true,
       );
     } finally {
@@ -179,40 +191,28 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // ============================================================
-  // HANDLE USER LOGIN / COURIER LOGIN
-  // ============================================================
+  // ------------------------------------------------------------
+  // HANDLE USER LOGIN
+  // ------------------------------------------------------------
 
   Future<void> _handleUserLogin(User user) async {
     try {
-      DocumentSnapshot<Map<String, dynamic>> userDoc =
-          await _firestore
-              .collection('users')
-              .doc(user.uid)
-              .get();
+      final userDoc = await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .get();
 
-      String? role;
+      final data = userDoc.data();
 
-      if (userDoc.exists) {
-        final data = userDoc.data();
-
-        if (data != null) {
-          role = data['role']?.toString().toLowerCase();
-        }
-      }
-
-      // --------------------------------------------------------
-      // COURIER
-      // --------------------------------------------------------
+      final role = data?['role']
+          ?.toString()
+          .toLowerCase()
+          .trim();
 
       if (role == 'courier') {
         await _handleCourierLogin(user.uid);
         return;
       }
-
-      // --------------------------------------------------------
-      // CUSTOMER
-      // --------------------------------------------------------
 
       if (!mounted) return;
 
@@ -220,34 +220,43 @@ class _LoginPageState extends State<LoginPage> {
         context,
         '/',
       );
-
-    } catch (e) {
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        _showMessage(
+          'Account details permission denied. Please check Firestore rules.',
+          error: true,
+        );
+      } else {
+        _showMessage(
+          'Unable to load account details.',
+          error: true,
+        );
+      }
+    } catch (_) {
       _showMessage(
-        "Unable to load account details.",
+        'Unable to load account details.',
         error: true,
       );
     }
   }
 
-  // ============================================================
+  // ------------------------------------------------------------
   // COURIER LOGIN
-  // ============================================================
+  // ------------------------------------------------------------
 
   Future<void> _handleCourierLogin(String uid) async {
     try {
-      DocumentSnapshot<Map<String, dynamic>> courierDoc =
-          await _firestore
-              .collection('couriers')
-              .doc(uid)
-              .get();
-
       Map<String, dynamic>? data;
+
+      final courierDoc = await _firestore
+          .collection('couriers')
+          .doc(uid)
+          .get();
 
       if (courierDoc.exists) {
         data = courierDoc.data();
       }
 
-      // Fallback to users collection
       if (data == null) {
         final userDoc = await _firestore
             .collection('users')
@@ -259,18 +268,15 @@ class _LoginPageState extends State<LoginPage> {
         }
       }
 
-      final String status =
-          (data?['status'] ??
-                  data?['approvalStatus'] ??
-                  data?['registrationStatus'] ??
-                  '')
-              .toString()
-              .toLowerCase()
-              .trim();
+      final status = (
+        data?['status'] ??
+        data?['approvalStatus'] ??
+        data?['registrationStatus'] ??
+        ''
+      ).toString().toLowerCase().trim();
 
       if (!mounted) return;
 
-      // Approved courier
       if (status == 'approved' ||
           status == 'active' ||
           status == 'verified') {
@@ -283,25 +289,9 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      // Pending documents / approval
-      if (status == 'pending_documents' ||
-          status == 'pending-approval' ||
-          status == 'pending_approval' ||
-          status == 'pending' ||
-          status.isEmpty) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const CourierDocumentsPage(),
-          ),
-        );
-        return;
-      }
-
-      // Rejected
       if (status == 'rejected') {
         _showMessage(
-          "Your courier application has been rejected.",
+          'Your courier application has been rejected.',
           error: true,
         );
         return;
@@ -313,85 +303,115 @@ class _LoginPageState extends State<LoginPage> {
           builder: (_) => const CourierDocumentsPage(),
         ),
       );
-
-    } catch (e) {
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        _showMessage(
+          'Firestore permission denied while loading courier account.',
+          error: true,
+        );
+      } else {
+        _showMessage(
+          'Unable to load courier account.',
+          error: true,
+        );
+      }
+    } catch (_) {
       _showMessage(
-        "Unable to load courier account.",
+        'Unable to load courier account.',
         error: true,
       );
     }
   }
 
-  // ============================================================
+  // ------------------------------------------------------------
   // SEND OTP
-  // ============================================================
+  // ------------------------------------------------------------
 
-  Future<void> sendOtp({bool resend = false}) async {
-    final mobile =
-        mobileController.text.trim().replaceAll(' ', '');
+  Future<void> sendOtp({
+    bool resend = false,
+  }) async {
+    final mobile = mobileController.text
+        .trim()
+        .replaceAll(' ', '')
+        .replaceAll('-', '');
 
-    if (mobile.length != 10) {
+    if (!RegExp(r'^\d{10}$').hasMatch(mobile)) {
       _showMessage(
-        "Please enter a valid 10-digit mobile number.",
+        'Please enter a valid 10-digit mobile number.',
         error: true,
       );
       return;
     }
 
+    FocusScope.of(context).unfocus();
+
     setState(() {
       isLoading = true;
     });
 
-    final String phoneNumber = '+91$mobile';
-
     try {
       await _auth.verifyPhoneNumber(
-        phoneNumber: phoneNumber,
+        phoneNumber: '+91$mobile',
 
-        timeout: const Duration(seconds: 60),
+        timeout: const Duration(
+          seconds: 60,
+        ),
 
         verificationCompleted:
             (PhoneAuthCredential credential) async {
-          // Android automatic verification.
           try {
-            await _completePhoneVerification(credential);
-          } catch (_) {}
+            await _completePhoneVerification(
+              credential,
+              autoVerified: true,
+            );
+          } catch (_) {
+            // Automatic verification failure is handled by manual OTP.
+          }
         },
 
-        verificationFailed: (FirebaseAuthException e) {
-          if (!mounted) return;
-
-          setState(() {
-            isLoading = false;
-          });
+        verificationFailed:
+            (FirebaseAuthException e) {
+          if (mounted) {
+            setState(() {
+              isLoading = false;
+            });
+          }
 
           String message;
 
           switch (e.code) {
             case 'invalid-phone-number':
-              message =
-                  "Invalid mobile number.";
+              message = 'Invalid mobile number.';
               break;
 
             case 'too-many-requests':
               message =
-                  "Too many OTP requests. Please try later.";
+                  'Too many OTP requests. Please try again later.';
               break;
 
             case 'quota-exceeded':
               message =
-                  "Firebase SMS quota exceeded.";
+                  'Firebase SMS quota exceeded. Please try later.';
               break;
 
             case 'app-not-authorized':
               message =
-                  "This app is not authorized for Firebase Phone Authentication.";
+                  'This app is not authorized for Firebase Phone Authentication.';
+              break;
+
+            case 'captcha-check-failed':
+              message =
+                  'Security verification failed. Please try again.';
+              break;
+
+            case 'network-request-failed':
+              message =
+                  'Network error. Please check your internet connection.';
               break;
 
             default:
               message =
-                  e.message ??
-                      "OTP could not be sent.";
+                  e.message ?? 'OTP could not be sent.';
           }
 
           _showMessage(
@@ -400,18 +420,15 @@ class _LoginPageState extends State<LoginPage> {
           );
         },
 
-        codeSent:
-            (String verificationIdValue,
-                int? resendTokenValue) {
+        codeSent: (
+          String id,
+          int? token,
+        ) {
           if (!mounted) return;
 
           setState(() {
-            verificationId =
-                verificationIdValue;
-
-            resendToken =
-                resendTokenValue;
-
+            verificationId = id;
+            resendToken = token;
             otpSent = true;
             otpVerified = false;
             isLoading = false;
@@ -419,15 +436,15 @@ class _LoginPageState extends State<LoginPage> {
 
           _showMessage(
             resend
-                ? "OTP resent successfully."
-                : "OTP sent to your mobile number.",
+                ? 'OTP resent successfully.'
+                : 'OTP sent to your mobile number.',
           );
         },
 
-        codeAutoRetrievalTimeout:
-            (String verificationIdValue) {
-          verificationId =
-              verificationIdValue;
+        codeAutoRetrievalTimeout: (
+          String id,
+        ) {
+          verificationId = id;
 
           if (mounted) {
             setState(() {
@@ -439,7 +456,7 @@ class _LoginPageState extends State<LoginPage> {
         forceResendingToken:
             resend ? resendToken : null,
       );
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         setState(() {
           isLoading = false;
@@ -447,42 +464,44 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       _showMessage(
-        "Unable to send OTP. Please try again.",
+        'Unable to send OTP. Please try again.',
         error: true,
       );
     }
   }
 
-  // ============================================================
+  // ------------------------------------------------------------
   // VERIFY OTP
-  // ============================================================
+  // ------------------------------------------------------------
 
   Future<void> verifyOtp() async {
     final otp = otpController.text.trim();
 
-    if (verificationId == null) {
+    if (verificationId == null ||
+        verificationId!.isEmpty) {
       _showMessage(
-        "Please request OTP first.",
+        'Please request OTP first.',
         error: true,
       );
       return;
     }
 
-    if (otp.length != 6) {
+    if (!RegExp(r'^\d{6}$').hasMatch(otp)) {
       _showMessage(
-        "Please enter the 6-digit OTP.",
+        'Please enter the 6-digit OTP.',
         error: true,
       );
       return;
     }
+
+    FocusScope.of(context).unfocus();
 
     setState(() {
       isLoading = true;
     });
 
     try {
-      final PhoneAuthCredential credential =
-          PhoneAuthProvider.credential(
+      final credential = PhoneAuthProvider.credential(
         verificationId: verificationId!,
         smsCode: otp,
       );
@@ -490,7 +509,6 @@ class _LoginPageState extends State<LoginPage> {
       await _completePhoneVerification(
         credential,
       );
-
     } on FirebaseAuthException catch (e) {
       if (mounted) {
         setState(() {
@@ -503,31 +521,34 @@ class _LoginPageState extends State<LoginPage> {
       switch (e.code) {
         case 'invalid-verification-code':
           message =
-              "Incorrect OTP. Please check and try again.";
+              'Incorrect OTP. Please check and try again.';
           break;
 
         case 'session-expired':
           message =
-              "OTP expired. Please request a new OTP.";
+              'OTP expired. Please request a new OTP.';
           break;
 
         case 'credential-already-in-use':
           message =
-              "This mobile number is already registered.";
+              'This mobile number is already registered with another account.';
+          break;
+
+        case 'invalid-verification-id':
+          message =
+              'OTP session expired. Please request a new OTP.';
           break;
 
         default:
           message =
-              e.message ??
-                  "OTP verification failed.";
+              e.message ?? 'OTP verification failed.';
       }
 
       _showMessage(
         message,
         error: true,
       );
-
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         setState(() {
           isLoading = false;
@@ -535,37 +556,46 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       _showMessage(
-        "OTP verification failed.",
+        'OTP verification failed. Please try again.',
         error: true,
       );
     }
   }
 
-  // ============================================================
+  // ------------------------------------------------------------
   // COMPLETE PHONE VERIFICATION
-  // ============================================================
+  // ------------------------------------------------------------
 
   Future<void> _completePhoneVerification(
-    PhoneAuthCredential credential,
-  ) async {
+    PhoneAuthCredential credential, {
+    bool autoVerified = false,
+  }) async {
     try {
-      UserCredential result;
+      User? user = _auth.currentUser;
 
-      final currentUser = _auth.currentUser;
-
-      // If no user exists, sign in using phone.
-      if (currentUser == null) {
-        result = await _auth.signInWithCredential(
+      if (user == null) {
+        final result =
+            await _auth.signInWithCredential(
           credential,
         );
+
+        user = result.user;
       } else {
-        // If user already exists, link phone.
-        result = await currentUser.linkWithCredential(
-          credential,
-        );
-      }
+        try {
+          final result =
+              await user.linkWithCredential(
+            credential,
+          );
 
-      final user = result.user;
+          user = result.user ?? user;
+        } on FirebaseAuthException catch (e) {
+          if (e.code == 'provider-already-linked') {
+            user = _auth.currentUser ?? user;
+          } else {
+            rethrow;
+          }
+        }
+      }
 
       if (user == null) {
         throw FirebaseAuthException(
@@ -578,13 +608,15 @@ class _LoginPageState extends State<LoginPage> {
 
       setState(() {
         otpVerified = true;
+        otpSent = true;
         isLoading = false;
       });
 
       _showMessage(
-        "Mobile number verified successfully.",
+        autoVerified
+            ? 'Mobile number verified automatically.'
+            : 'Mobile number verified successfully.',
       );
-
     } on FirebaseAuthException catch (e) {
       if (mounted) {
         setState(() {
@@ -592,20 +624,9 @@ class _LoginPageState extends State<LoginPage> {
         });
       }
 
-      if (e.code == 'provider-already-linked') {
-        setState(() {
-          otpVerified = true;
-        });
-
-        _showMessage(
-          "Mobile number is already verified.",
-        );
-        return;
-      }
-
       if (e.code == 'credential-already-in-use') {
         _showMessage(
-          "This mobile number is already registered with another account.",
+          'This mobile number is already registered with another account.',
           error: true,
         );
         return;
@@ -615,53 +636,45 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // ============================================================
-  // REGISTER CUSTOMER
-  // ============================================================
+  // ------------------------------------------------------------
+  // CUSTOMER REGISTRATION
+  // ------------------------------------------------------------
 
   Future<void> registerCustomer() async {
     if (!otpVerified) {
       _showMessage(
-        "Please verify your mobile number with OTP first.",
+        'Please verify your mobile number with OTP first.',
         error: true,
       );
       return;
     }
 
     final name = nameController.text.trim();
-    final email =
-        registerEmailController.text.trim();
-    final password =
-        registerPasswordController.text;
+    final email = registerEmailController.text.trim();
+    final password = registerPasswordController.text;
     final confirmPassword =
         confirmPasswordController.text;
-    final address =
-        addressController.text.trim();
-    final pinCode =
-        pinCodeController.text.trim();
+    final address = addressController.text.trim();
+    final pinCode = pinCodeController.text.trim();
+    final mobile = mobileController.text
+        .trim()
+        .replaceAll(' ', '')
+        .replaceAll('-', '');
 
-    final mobile =
-        mobileController.text.trim();
-
+    // Validation
     if (name.isEmpty) {
       _showMessage(
-        "Please enter your name.",
+        'Please enter your name.',
         error: true,
       );
       return;
     }
 
-    if (email.isEmpty) {
+    if (!RegExp(
+      r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+    ).hasMatch(email)) {
       _showMessage(
-        "Please enter your email.",
-        error: true,
-      );
-      return;
-    }
-
-    if (!email.contains('@')) {
-      _showMessage(
-        "Please enter a valid email.",
+        'Please enter a valid email.',
         error: true,
       );
       return;
@@ -669,7 +682,7 @@ class _LoginPageState extends State<LoginPage> {
 
     if (password.length < 6) {
       _showMessage(
-        "Password must be at least 6 characters.",
+        'Password must be at least 6 characters.',
         error: true,
       );
       return;
@@ -677,7 +690,7 @@ class _LoginPageState extends State<LoginPage> {
 
     if (password != confirmPassword) {
       _showMessage(
-        "Passwords do not match.",
+        'Passwords do not match.',
         error: true,
       );
       return;
@@ -685,42 +698,50 @@ class _LoginPageState extends State<LoginPage> {
 
     if (address.isEmpty) {
       _showMessage(
-        "Please enter your address.",
+        'Please enter your address.',
         error: true,
       );
       return;
     }
 
-    if (pinCode.length != 6) {
+    if (!RegExp(
+      r'^\d{6}$',
+    ).hasMatch(pinCode)) {
       _showMessage(
-        "Please enter a valid 6-digit PIN code.",
+        'Please enter a valid 6-digit PIN code.',
         error: true,
       );
       return;
     }
+
+    if (!RegExp(
+      r'^\d{10}$',
+    ).hasMatch(mobile)) {
+      _showMessage(
+        'Invalid mobile number.',
+        error: true,
+      );
+      return;
+    }
+
+    final currentUser = _auth.currentUser;
+
+    if (currentUser == null) {
+      _showMessage(
+        'Mobile verification session expired. Please verify OTP again.',
+        error: true,
+      );
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
 
     setState(() {
       isLoading = true;
     });
 
     try {
-      User? user = _auth.currentUser;
-
-      // --------------------------------------------------------
-      // SAFETY CHECK
-      // --------------------------------------------------------
-
-      if (user == null) {
-        throw FirebaseAuthException(
-          code: 'phone-session-missing',
-          message:
-              'Phone verification session is missing.',
-        );
-      }
-
-      // --------------------------------------------------------
-      // LINK EMAIL + PASSWORD TO SAME PHONE USER
-      // --------------------------------------------------------
+      User user = currentUser;
 
       final emailCredential =
           EmailAuthProvider.credential(
@@ -728,58 +749,25 @@ class _LoginPageState extends State<LoginPage> {
         password: password,
       );
 
-      UserCredential linkedCredential;
-
       try {
-        linkedCredential =
+        final linkedCredential =
             await user.linkWithCredential(
           emailCredential,
         );
-      } on FirebaseAuthException catch (e) {
-        // If email provider is already linked,
-        // continue only if it is the current user.
-        if (e.code ==
-            'provider-already-linked') {
-          try {
-  final linkedCredential = await user.linkWithCredential(
-    emailCredential,
-  );
 
-  user = linkedCredential.user ?? user;
-} on FirebaseAuthException catch (e) {
-  if (e.code == 'provider-already-linked') {
-    await user.reload();
-    user = _auth.currentUser ?? user;
-  } else {
-    rethrow;
-  }
-}
+        user = linkedCredential.user ?? user;
+      } on FirebaseAuthException catch (e) {
+        if (e.code == 'provider-already-linked') {
+          await user.reload();
+          user = _auth.currentUser ?? user;
         } else {
           rethrow;
         }
       }
 
-      user = linkedCredential.user ??
-          _auth.currentUser;
-
-      if (user == null) {
-        throw FirebaseAuthException(
-          code: 'user-null',
-          message:
-              'Unable to create account.',
-        );
-      }
-
-      // --------------------------------------------------------
-      // UPDATE DISPLAY NAME
-      // --------------------------------------------------------
-
       await user.updateDisplayName(name);
 
-      // --------------------------------------------------------
-      // FIRESTORE CUSTOMER DATA
-      // --------------------------------------------------------
-
+      // Save customer information in Firestore.
       await _firestore
           .collection('users')
           .doc(user.uid)
@@ -790,35 +778,31 @@ class _LoginPageState extends State<LoginPage> {
           'email': email,
           'mobile': mobile,
           'phone': '+91$mobile',
-
           'mobileVerified': true,
-
           'address': address,
           'pinCode': pinCode,
-
           'role': 'customer',
           'status': 'active',
           'active': true,
-
           'registrationComplete': true,
-
-          'createdAt':
-              FieldValue.serverTimestamp(),
-
-          'updatedAt':
-              FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'createdAt': FieldValue.serverTimestamp(),
         },
-        SetOptions(merge: true),
+        SetOptions(
+          merge: true,
+        ),
       );
 
       if (!mounted) return;
 
       _showMessage(
-        "Account created successfully.",
+        'Account created successfully.',
       );
 
       await Future.delayed(
-        const Duration(milliseconds: 700),
+        const Duration(
+          milliseconds: 700,
+        ),
       );
 
       if (!mounted) return;
@@ -827,50 +811,64 @@ class _LoginPageState extends State<LoginPage> {
         context,
         '/',
       );
-
     } on FirebaseAuthException catch (e) {
       String message;
 
       switch (e.code) {
         case 'email-already-in-use':
           message =
-              "This email is already registered.";
+              'This email is already registered.';
           break;
 
         case 'invalid-email':
           message =
-              "Please enter a valid email.";
+              'Please enter a valid email.';
           break;
 
         case 'weak-password':
           message =
-              "Password is too weak.";
-          break;
-
-        case 'provider-already-linked':
-          message =
-              "Email/password is already linked.";
+              'Password is too weak. Use at least 6 characters.';
           break;
 
         case 'credential-already-in-use':
           message =
-              "This email is already connected to another account.";
+              'This email is already connected to another account.';
+          break;
+
+        case 'requires-recent-login':
+          message =
+              'Please verify your mobile number again and retry.';
+          break;
+
+        case 'network-request-failed':
+          message =
+              'Network error. Please check your internet connection.';
           break;
 
         default:
           message =
-              e.message ??
-                  "Registration failed.";
+              e.message ?? 'Registration failed.';
       }
 
       _showMessage(
         message,
         error: true,
       );
-
-    } catch (e) {
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        _showMessage(
+          'Registration saved in Firebase Auth, but Firestore permission was denied. Please check Firestore rules.',
+          error: true,
+        );
+      } else {
+        _showMessage(
+          'Unable to save account details. Please try again.',
+          error: true,
+        );
+      }
+    } catch (_) {
       _showMessage(
-        "Registration failed. Please try again.",
+        'Registration failed. Please try again.',
         error: true,
       );
     } finally {
@@ -882,23 +880,22 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // ============================================================
+  // ------------------------------------------------------------
   // FORGOT PASSWORD
-  // ============================================================
+  // ------------------------------------------------------------
 
   void forgotPassword() {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            const ForgotPasswordPage(),
+        builder: (_) => const ForgotPasswordPage(),
       ),
     );
   }
 
-  // ============================================================
+  // ------------------------------------------------------------
   // SWITCH LOGIN / REGISTER
-  // ============================================================
+  // ------------------------------------------------------------
 
   void switchMode(bool loginMode) {
     setState(() {
@@ -907,32 +904,31 @@ class _LoginPageState extends State<LoginPage> {
       otpSent = false;
       otpVerified = false;
       verificationId = null;
+      resendToken = null;
+
       otpController.clear();
     });
   }
 
-  // ============================================================
-  // UI
-  // ============================================================
+  // ------------------------------------------------------------
+  // BUILD
+  // ------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor:
-          const Color(0xFFF7F8FA),
-
+      backgroundColor: const Color(0xFFF7F8FA),
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         title: const Text(
-          "Preesho",
+          'Preesho',
           style: TextStyle(
             fontWeight: FontWeight.bold,
           ),
         ),
       ),
-
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
@@ -940,11 +936,10 @@ class _LoginPageState extends State<LoginPage> {
             crossAxisAlignment:
                 CrossAxisAlignment.start,
             children: [
-
               const SizedBox(height: 15),
 
               const Text(
-                "Welcome to Preesho",
+                'Welcome to Preesho',
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
@@ -955,8 +950,8 @@ class _LoginPageState extends State<LoginPage> {
 
               Text(
                 isLogin
-                    ? "Login to continue shopping"
-                    : "Create your Preesho account",
+                    ? 'Login to continue shopping'
+                    : 'Create your Preesho account',
                 style: TextStyle(
                   fontSize: 15,
                   color: Colors.grey.shade600,
@@ -965,13 +960,8 @@ class _LoginPageState extends State<LoginPage> {
 
               const SizedBox(height: 25),
 
-              // ==================================================
-              // LOGIN / REGISTER SWITCH
-              // ==================================================
-
               Container(
-                padding:
-                    const EdgeInsets.all(4),
+                padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
                   color: Colors.grey.shade200,
                   borderRadius:
@@ -981,7 +971,7 @@ class _LoginPageState extends State<LoginPage> {
                   children: [
                     Expanded(
                       child: _modeButton(
-                        title: "Login",
+                        title: 'Login',
                         selected: isLogin,
                         onTap: () =>
                             switchMode(true),
@@ -989,7 +979,7 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                     Expanded(
                       child: _modeButton(
-                        title: "New User",
+                        title: 'New User',
                         selected: !isLogin,
                         onTap: () =>
                             switchMode(false),
@@ -1001,16 +991,8 @@ class _LoginPageState extends State<LoginPage> {
 
               const SizedBox(height: 25),
 
-              // ==================================================
-              // LOGIN
-              // ==================================================
-
               if (isLogin)
                 _buildLoginForm(),
-
-              // ==================================================
-              // REGISTER
-              // ==================================================
 
               if (!isLogin)
                 _buildRegisterForm(),
@@ -1019,7 +1001,7 @@ class _LoginPageState extends State<LoginPage> {
 
               Center(
                 child: Text(
-                  "© Preesho",
+                  '© Preesho',
                   style: TextStyle(
                     color: Colors.grey.shade500,
                     fontSize: 13,
@@ -1033,18 +1015,17 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // ============================================================
+  // ------------------------------------------------------------
   // LOGIN FORM
-  // ============================================================
+  // ------------------------------------------------------------
 
   Widget _buildLoginForm() {
     return Column(
       children: [
-
         _textField(
           controller: loginEmailController,
-          label: "Email",
-          hint: "Enter registered email",
+          label: 'Email',
+          hint: 'Enter registered email',
           icon: Icons.email_outlined,
           keyboardType:
               TextInputType.emailAddress,
@@ -1054,16 +1035,15 @@ class _LoginPageState extends State<LoginPage> {
 
         _textField(
           controller: loginPasswordController,
-          label: "Password",
-          hint: "Enter password",
+          label: 'Password',
+          hint: 'Enter password',
           icon: Icons.lock_outline,
           obscureText: obscureLoginPassword,
           suffixIcon: IconButton(
             icon: Icon(
               obscureLoginPassword
                   ? Icons.visibility_outlined
-                  : Icons
-                      .visibility_off_outlined,
+                  : Icons.visibility_off_outlined,
             ),
             onPressed: () {
               setState(() {
@@ -1079,9 +1059,10 @@ class _LoginPageState extends State<LoginPage> {
         Align(
           alignment: Alignment.centerRight,
           child: TextButton(
-            onPressed: forgotPassword,
+            onPressed:
+                isLoading ? null : forgotPassword,
             child: const Text(
-              "Forgot Password?",
+              'Forgot Password?',
             ),
           ),
         ),
@@ -1089,33 +1070,28 @@ class _LoginPageState extends State<LoginPage> {
         const SizedBox(height: 10),
 
         _primaryButton(
-          title: "Login",
-          onPressed: isLoading
-              ? null
-              : login,
+          title: 'Login',
+          onPressed:
+              isLoading ? null : login,
         ),
       ],
     );
   }
 
-  // ============================================================
+  // ------------------------------------------------------------
   // REGISTER FORM
-  // ============================================================
+  // ------------------------------------------------------------
 
   Widget _buildRegisterForm() {
     return Column(
       crossAxisAlignment:
           CrossAxisAlignment.start,
       children: [
-
-        // ------------------------------------------------------
         // MOBILE
-        // ------------------------------------------------------
-
         _textField(
           controller: mobileController,
-          label: "Mobile Number",
-          hint: "10-digit mobile number",
+          label: 'Mobile Number',
+          hint: '10-digit mobile number',
           icon: Icons.phone_outlined,
           keyboardType:
               TextInputType.phone,
@@ -1125,29 +1101,27 @@ class _LoginPageState extends State<LoginPage> {
 
         const SizedBox(height: 12),
 
+        // SEND / RESEND OTP
         if (!otpVerified)
           _primaryButton(
-            title: otpSent
-                ? "Resend OTP"
-                : "Send OTP",
-            onPressed: isLoading
-                ? null
-                : () => sendOtp(
-                      resend: otpSent,
-                    ),
+            title:
+                otpSent ? 'Resend OTP' : 'Send OTP',
+            onPressed:
+                isLoading
+                    ? null
+                    : () => sendOtp(
+                          resend: otpSent,
+                        ),
           ),
 
-        // ------------------------------------------------------
-        // OTP
-        // ------------------------------------------------------
-
+        // OTP SECTION
         if (otpSent && !otpVerified) ...[
           const SizedBox(height: 16),
 
           _textField(
             controller: otpController,
-            label: "OTP",
-            hint: "Enter 6-digit OTP",
+            label: 'OTP',
+            hint: 'Enter 6-digit OTP',
             icon: Icons.sms_outlined,
             keyboardType:
                 TextInputType.number,
@@ -1157,32 +1131,27 @@ class _LoginPageState extends State<LoginPage> {
           const SizedBox(height: 12),
 
           _primaryButton(
-            title: "Verify OTP",
-            onPressed: isLoading
-                ? null
-                : verifyOtp,
+            title: 'Verify OTP',
+            onPressed:
+                isLoading ? null : verifyOtp,
           ),
         ],
 
-        // ------------------------------------------------------
-        // VERIFIED
-        // ------------------------------------------------------
-
+        // VERIFIED MESSAGE
         if (otpVerified) ...[
           const SizedBox(height: 12),
 
           Container(
             width: double.infinity,
-            padding:
-                const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: Colors.green
-                  .withOpacity(0.10),
+              color:
+                  Colors.green.withOpacity(0.10),
               borderRadius:
                   BorderRadius.circular(12),
               border: Border.all(
-                color: Colors.green
-                    .withOpacity(0.35),
+                color:
+                    Colors.green.withOpacity(0.35),
               ),
             ),
             child: Row(
@@ -1194,9 +1163,10 @@ class _LoginPageState extends State<LoginPage> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    "Mobile number verified successfully",
+                    'Mobile number verified successfully',
                     style: TextStyle(
-                      color: Colors.green.shade700,
+                      color:
+                          Colors.green.shade700,
                       fontWeight:
                           FontWeight.w600,
                     ),
@@ -1208,28 +1178,22 @@ class _LoginPageState extends State<LoginPage> {
 
           const SizedBox(height: 22),
 
-          // ----------------------------------------------------
           // NAME
-          // ----------------------------------------------------
-
           _textField(
             controller: nameController,
-            label: "Name",
-            hint: "Enter your full name",
+            label: 'Name',
+            hint: 'Enter your full name',
             icon: Icons.person_outline,
           ),
 
           const SizedBox(height: 16),
 
-          // ----------------------------------------------------
           // EMAIL
-          // ----------------------------------------------------
-
           _textField(
             controller:
                 registerEmailController,
-            label: "Email ID",
-            hint: "Enter email address",
+            label: 'Email ID',
+            hint: 'Enter email address',
             icon: Icons.email_outlined,
             keyboardType:
                 TextInputType.emailAddress,
@@ -1237,23 +1201,19 @@ class _LoginPageState extends State<LoginPage> {
 
           const SizedBox(height: 16),
 
-          // ----------------------------------------------------
-          // PASSWORD DIRECTLY BELOW EMAIL
-          // ----------------------------------------------------
-
+          // PASSWORD BELOW EMAIL
           _textField(
             controller:
                 registerPasswordController,
-            label: "Password",
-            hint: "Create password",
+            label: 'Password',
+            hint: 'Create password',
             icon: Icons.lock_outline,
             obscureText:
                 obscureRegisterPassword,
             suffixIcon: IconButton(
               icon: Icon(
                 obscureRegisterPassword
-                    ? Icons
-                        .visibility_outlined
+                    ? Icons.visibility_outlined
                     : Icons
                         .visibility_off_outlined,
               ),
@@ -1268,23 +1228,19 @@ class _LoginPageState extends State<LoginPage> {
 
           const SizedBox(height: 16),
 
-          // ----------------------------------------------------
           // CONFIRM PASSWORD
-          // ----------------------------------------------------
-
           _textField(
             controller:
                 confirmPasswordController,
-            label: "Confirm Password",
-            hint: "Re-enter password",
+            label: 'Confirm Password',
+            hint: 'Re-enter password',
             icon: Icons.lock_reset_outlined,
             obscureText:
                 obscureConfirmPassword,
             suffixIcon: IconButton(
               icon: Icon(
                 obscureConfirmPassword
-                    ? Icons
-                        .visibility_outlined
+                    ? Icons.visibility_outlined
                     : Icons
                         .visibility_off_outlined,
               ),
@@ -1299,29 +1255,24 @@ class _LoginPageState extends State<LoginPage> {
 
           const SizedBox(height: 16),
 
-          // ----------------------------------------------------
           // ADDRESS
-          // ----------------------------------------------------
-
           _textField(
             controller: addressController,
-            label: "Address",
-            hint: "Enter complete address",
+            label: 'Address',
+            hint: 'Enter complete address',
             icon: Icons.home_outlined,
             maxLines: 3,
           ),
 
           const SizedBox(height: 16),
 
-          // ----------------------------------------------------
           // PIN CODE
-          // ----------------------------------------------------
-
           _textField(
             controller: pinCodeController,
-            label: "PIN Code",
-            hint: "6-digit PIN code",
-            icon: Icons.location_on_outlined,
+            label: 'PIN Code',
+            hint: '6-digit PIN code',
+            icon:
+                Icons.location_on_outlined,
             keyboardType:
                 TextInputType.number,
             maxLength: 6,
@@ -1329,24 +1280,22 @@ class _LoginPageState extends State<LoginPage> {
 
           const SizedBox(height: 22),
 
-          // ----------------------------------------------------
           // CREATE ACCOUNT
-          // ----------------------------------------------------
-
           _primaryButton(
-            title: "Create Account",
-            onPressed: isLoading
-                ? null
-                : registerCustomer,
+            title: 'Create Account',
+            onPressed:
+                isLoading
+                    ? null
+                    : registerCustomer,
           ),
         ],
       ],
     );
   }
 
-  // ============================================================
+  // ------------------------------------------------------------
   // MODE BUTTON
-  // ============================================================
+  // ------------------------------------------------------------
 
   Widget _modeButton({
     required String title,
@@ -1369,10 +1318,9 @@ class _LoginPageState extends State<LoginPage> {
           borderRadius:
               BorderRadius.circular(9),
           boxShadow: selected
-              ? [
+              ? const [
                   BoxShadow(
-                    color: Colors.black
-                        .withOpacity(0.06),
+                    color: Color(0x0F000000),
                     blurRadius: 5,
                   ),
                 ]
@@ -1382,7 +1330,8 @@ class _LoginPageState extends State<LoginPage> {
           child: Text(
             title,
             style: TextStyle(
-              fontWeight: FontWeight.w600,
+              fontWeight:
+                  FontWeight.w600,
               color: selected
                   ? Colors.black
                   : Colors.grey.shade600,
@@ -1393,9 +1342,9 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // ============================================================
+  // ------------------------------------------------------------
   // TEXT FIELD
-  // ============================================================
+  // ------------------------------------------------------------
 
   Widget _textField({
     required TextEditingController controller,
@@ -1417,7 +1366,7 @@ class _LoginPageState extends State<LoginPage> {
       maxLength: maxLength,
       maxLines: obscureText ? 1 : maxLines,
       decoration: InputDecoration(
-        counterText: "",
+        counterText: '',
         labelText: label,
         hintText: hint,
         prefixIcon: Icon(icon),
@@ -1426,11 +1375,14 @@ class _LoginPageState extends State<LoginPage> {
         fillColor: enabled
             ? Colors.white
             : Colors.grey.shade100,
+
         border: OutlineInputBorder(
           borderRadius:
               BorderRadius.circular(12),
-          borderSide: BorderSide.none,
+          borderSide:
+              BorderSide.none,
         ),
+
         enabledBorder:
             OutlineInputBorder(
           borderRadius:
@@ -1439,15 +1391,18 @@ class _LoginPageState extends State<LoginPage> {
             color: Colors.grey.shade300,
           ),
         ),
+
         focusedBorder:
             OutlineInputBorder(
           borderRadius:
               BorderRadius.circular(12),
-          borderSide: const BorderSide(
+          borderSide:
+              const BorderSide(
             color: Colors.blue,
             width: 1.5,
           ),
         ),
+
         disabledBorder:
             OutlineInputBorder(
           borderRadius:
@@ -1460,9 +1415,9 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // ============================================================
+  // ------------------------------------------------------------
   // PRIMARY BUTTON
-  // ============================================================
+  // ------------------------------------------------------------
 
   Widget _primaryButton({
     required String title,
@@ -1478,7 +1433,8 @@ class _LoginPageState extends State<LoginPage> {
           foregroundColor: Colors.white,
           disabledBackgroundColor:
               Colors.grey.shade400,
-          shape: RoundedRectangleBorder(
+          shape:
+              RoundedRectangleBorder(
             borderRadius:
                 BorderRadius.circular(12),
           ),
