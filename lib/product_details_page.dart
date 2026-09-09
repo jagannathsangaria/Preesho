@@ -15,7 +15,8 @@ class ProductDetailsPage extends StatefulWidget {
   });
 
   @override
-  State<ProductDetailsPage> createState() => _ProductDetailsPageState();
+  State<ProductDetailsPage> createState() =>
+      _ProductDetailsPageState();
 }
 
 class _ProductDetailsPageState extends State<ProductDetailsPage> {
@@ -45,21 +46,67 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
 
   bool get inStock => product.active && product.stock > 0;
 
-  bool get isLowStock => product.stock > 0 && product.stock <= 5;
+  bool get isLowStock =>
+      product.stock > 0 && product.stock <= 5;
 
-  CartItem? get cartItem => CartController.findItem(product.id);
+  CartItem? get cartItem =>
+      CartController.findItem(product.id);
 
   int get cartQuantity => cartItem?.quantity ?? 0;
+
+  // ============================================================
+  // BACK NAVIGATION
+  // ============================================================
+
+  void _goBack() {
+    final navigator = Navigator.of(context);
+
+    if (navigator.canPop()) {
+      navigator.pop();
+    } else {
+      navigator.pushNamedAndRemoveUntil(
+        '/',
+        (route) => false,
+      );
+    }
+  }
+
+  Future<bool> _handleBack() async {
+    final navigator = Navigator.of(context);
+
+    if (navigator.canPop()) {
+      return true;
+    }
+
+    navigator.pushNamedAndRemoveUntil(
+      '/',
+      (route) => false,
+    );
+
+    return false;
+  }
+
+  // ============================================================
+  // INIT
+  // ============================================================
 
   @override
   void initState() {
     super.initState();
 
-    final existing = CartController.findItem(product.id);
+    final existing =
+        CartController.findItem(product.id);
+
     if (existing != null && existing.quantity > 0) {
-      quantity = existing.quantity.clamp(1, product.stock);
+      quantity = existing.quantity
+          .clamp(1, product.stock)
+          .toInt();
     }
   }
+
+  // ============================================================
+  // ADD TO CART
+  // ============================================================
 
   Future<void> _addToCart() async {
     if (!inStock || addingToCart) return;
@@ -68,7 +115,8 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
       addingToCart = true;
     });
 
-    final success = await CartController.addProduct(
+    final success =
+        await CartController.addProduct(
       product,
       quantity: quantity,
     );
@@ -89,8 +137,8 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
-          content: Row(
-            children: const [
+          content: const Row(
+            children: [
               Icon(
                 Icons.check_circle_rounded,
                 color: Colors.white,
@@ -120,10 +168,15 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
     }
   }
 
+  // ============================================================
+  // BUY NOW
+  // ============================================================
+
   Future<void> _buyNow() async {
     if (!inStock) return;
 
-    final success = await CartController.addProduct(
+    final success =
+        await CartController.addProduct(
       product,
       quantity: quantity,
     );
@@ -151,6 +204,10 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
       ),
     );
   }
+
+  // ============================================================
+  // QUANTITY
+  // ============================================================
 
   Future<void> _increaseQuantity() async {
     if (!inStock) return;
@@ -181,6 +238,10 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
       quantity--;
     });
   }
+
+  // ============================================================
+  // PRODUCT IMAGE
+  // ============================================================
 
   Widget _buildProductImage() {
     final image = product.imageUrl.trim();
@@ -215,11 +276,13 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
                           color: Colors.grey.shade400,
                         );
                       },
-                      loadingBuilder: (context, child, progress) {
+                      loadingBuilder:
+                          (context, child, progress) {
                         if (progress == null) return child;
 
                         return const Center(
-                          child: CircularProgressIndicator(),
+                          child:
+                              CircularProgressIndicator(),
                         );
                       },
                     ),
@@ -231,13 +294,15 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
               left: 18,
               top: 18,
               child: Container(
-                padding: const EdgeInsets.symmetric(
+                padding:
+                    const EdgeInsets.symmetric(
                   horizontal: 12,
                   vertical: 7,
                 ),
                 decoration: BoxDecoration(
                   color: Colors.red.shade600,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius:
+                      BorderRadius.circular(20),
                 ),
                 child: Text(
                   '$discountPercent% OFF',
@@ -255,7 +320,8 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
               child: Container(
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(.45),
-                  borderRadius: const BorderRadius.vertical(
+                  borderRadius:
+                      const BorderRadius.vertical(
                     bottom: Radius.circular(30),
                   ),
                 ),
@@ -277,6 +343,10 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
     );
   }
 
+  // ============================================================
+  // PRICE
+  // ============================================================
+
   Widget _buildPriceSection() {
     return Container(
       padding: const EdgeInsets.all(18),
@@ -292,10 +362,12 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+            crossAxisAlignment:
+                CrossAxisAlignment.end,
             children: [
               Text(
                 '₹${price.toStringAsFixed(0)}',
@@ -312,7 +384,8 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
                   style: TextStyle(
                     fontSize: 16,
                     color: Colors.grey.shade500,
-                    decoration: TextDecoration.lineThrough,
+                    decoration:
+                        TextDecoration.lineThrough,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -338,7 +411,8 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
               Icon(
                 inStock
                     ? Icons.inventory_2_outlined
-                    : Icons.remove_shopping_cart_outlined,
+                    : Icons
+                        .remove_shopping_cart_outlined,
                 size: 18,
                 color: inStock
                     ? Colors.green.shade700
@@ -367,6 +441,10 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
     );
   }
 
+  // ============================================================
+  // QUANTITY SECTION
+  // ============================================================
+
   Widget _buildQuantitySection() {
     return Container(
       padding: const EdgeInsets.all(18),
@@ -388,17 +466,24 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
               ),
             ),
           ),
+
           Container(
             decoration: BoxDecoration(
               color: Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius:
+                  BorderRadius.circular(14),
             ),
             child: Row(
               children: [
                 IconButton(
-                  onPressed: quantity > 1 ? _decreaseQuantity : null,
-                  icon: const Icon(Icons.remove_rounded),
+                  onPressed: quantity > 1
+                      ? _decreaseQuantity
+                      : null,
+                  icon: const Icon(
+                    Icons.remove_rounded,
+                  ),
                 ),
+
                 SizedBox(
                   width: 35,
                   child: Center(
@@ -411,12 +496,17 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
                     ),
                   ),
                 ),
+
                 IconButton(
-                  onPressed: inStock &&
-                          quantity < product.stock
-                      ? _increaseQuantity
-                      : null,
-                  icon: const Icon(Icons.add_rounded),
+                  onPressed:
+                      inStock &&
+                              quantity <
+                                  product.stock
+                          ? _increaseQuantity
+                          : null,
+                  icon: const Icon(
+                    Icons.add_rounded,
+                  ),
                 ),
               ],
             ),
@@ -426,8 +516,13 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
     );
   }
 
+  // ============================================================
+  // DESCRIPTION
+  // ============================================================
+
   Widget _buildDescription() {
-    final description = product.description.trim();
+    final description =
+        product.description.trim();
 
     return Container(
       width: double.infinity,
@@ -440,7 +535,8 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
         ),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           const Text(
             'Product Description',
@@ -449,7 +545,9 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
               fontWeight: FontWeight.w900,
             ),
           ),
+
           const SizedBox(height: 12),
+
           Text(
             description.isEmpty
                 ? 'No description available for this product.'
@@ -465,8 +563,13 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
     );
   }
 
+  // ============================================================
+  // VENDOR
+  // ============================================================
+
   Widget _buildVendorSection() {
-    final vendorName = product.safeVendorName;
+    final vendorName =
+        product.safeVendorName;
 
     if (vendorName.isEmpty) {
       return const SizedBox.shrink();
@@ -488,17 +591,21 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
             width: 48,
             decoration: BoxDecoration(
               color: const Color(0xFFEDE9FE),
-              borderRadius: BorderRadius.circular(15),
+              borderRadius:
+                  BorderRadius.circular(15),
             ),
             child: const Icon(
               Icons.storefront_rounded,
               color: Color(0xFF5B35D5),
             ),
           ),
+
           const SizedBox(width: 13),
+
           Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
                 const Text(
                   'Sold by',
@@ -508,11 +615,14 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+
                 const SizedBox(height: 3),
+
                 Text(
                   vendorName,
                   maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  overflow:
+                      TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w900,
@@ -521,6 +631,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
               ],
             ),
           ),
+
           const Icon(
             Icons.verified_rounded,
             color: Colors.green,
@@ -530,6 +641,10 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
       ),
     );
   }
+
+  // ============================================================
+  // TRUST SECTION
+  // ============================================================
 
   Widget _buildTrustSection() {
     return Container(
@@ -543,33 +658,39 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
       ),
       child: Row(
         children: [
-          Expanded(
+          const Expanded(
             child: _TrustItem(
               icon: Icons.payments_outlined,
               title: 'COD',
               subtitle: 'Available',
             ),
           ),
+
           Container(
             height: 45,
             width: 1,
             color: Colors.grey.shade300,
           ),
-          Expanded(
+
+          const Expanded(
             child: _TrustItem(
-              icon: Icons.verified_user_outlined,
+              icon:
+                  Icons.verified_user_outlined,
               title: 'Secure',
               subtitle: 'Shopping',
             ),
           ),
+
           Container(
             height: 45,
             width: 1,
             color: Colors.grey.shade300,
           ),
-          Expanded(
+
+          const Expanded(
             child: _TrustItem(
-              icon: Icons.local_shipping_outlined,
+              icon:
+                  Icons.local_shipping_outlined,
               title: 'Fast',
               subtitle: 'Delivery',
             ),
@@ -579,8 +700,13 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
     );
   }
 
+  // ============================================================
+  // BOTTOM BAR
+  // ============================================================
+
   Widget _buildBottomBar() {
-    final existingQuantity = cartQuantity;
+    final existingQuantity =
+        cartQuantity;
 
     return SafeArea(
       top: false,
@@ -595,7 +721,8 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
           color: Colors.white,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(.10),
+              color:
+                  Colors.black.withOpacity(.10),
               blurRadius: 18,
               offset: const Offset(0, -6),
             ),
@@ -608,37 +735,51 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
               width: 54,
               decoration: BoxDecoration(
                 color: const Color(0xFFF1EEFF),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius:
+                    BorderRadius.circular(16),
               ),
               child: Stack(
                 children: [
                   const Center(
                     child: Icon(
-                      Icons.shopping_cart_outlined,
-                      color: Color(0xFF5B35D5),
+                      Icons
+                          .shopping_cart_outlined,
+                      color:
+                          Color(0xFF5B35D5),
                     ),
                   ),
+
                   if (existingQuantity > 0)
                     Positioned(
                       right: 4,
                       top: 4,
                       child: Container(
-                        padding: const EdgeInsets.all(4),
-                        constraints: const BoxConstraints(
+                        padding:
+                            const EdgeInsets.all(
+                          4,
+                        ),
+                        constraints:
+                            const BoxConstraints(
                           minWidth: 20,
                           minHeight: 20,
                         ),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF5B35D5),
-                          shape: BoxShape.circle,
+                        decoration:
+                            const BoxDecoration(
+                          color:
+                              Color(0xFF5B35D5),
+                          shape:
+                              BoxShape.circle,
                         ),
                         child: Text(
                           '$existingQuantity',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
+                          textAlign:
+                              TextAlign.center,
+                          style:
+                              const TextStyle(
                             color: Colors.white,
                             fontSize: 10,
-                            fontWeight: FontWeight.w900,
+                            fontWeight:
+                                FontWeight.w900,
                           ),
                         ),
                       ),
@@ -653,29 +794,43 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
               child: SizedBox(
                 height: 54,
                 child: OutlinedButton(
-                  onPressed: inStock ? _addToCart : null,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF5B35D5),
+                  onPressed:
+                      inStock
+                          ? _addToCart
+                          : null,
+                  style:
+                      OutlinedButton.styleFrom(
+                    foregroundColor:
+                        const Color(
+                      0xFF5B35D5,
+                    ),
                     side: const BorderSide(
-                      color: Color(0xFF5B35D5),
+                      color:
+                          Color(0xFF5B35D5),
                       width: 1.5,
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                    shape:
+                        RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(
+                        16,
+                      ),
                     ),
                   ),
                   child: addingToCart
                       ? const SizedBox(
                           height: 22,
                           width: 22,
-                          child: CircularProgressIndicator(
+                          child:
+                              CircularProgressIndicator(
                             strokeWidth: 2.5,
                           ),
                         )
                       : const Text(
                           'Add to Cart',
                           style: TextStyle(
-                            fontWeight: FontWeight.w900,
+                            fontWeight:
+                                FontWeight.w900,
                           ),
                         ),
                 ),
@@ -688,19 +843,32 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
               child: SizedBox(
                 height: 54,
                 child: ElevatedButton(
-                  onPressed: inStock ? _buyNow : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF5B35D5),
-                    foregroundColor: Colors.white,
+                  onPressed:
+                      inStock
+                          ? _buyNow
+                          : null,
+                  style:
+                      ElevatedButton.styleFrom(
+                    backgroundColor:
+                        const Color(
+                      0xFF5B35D5,
+                    ),
+                    foregroundColor:
+                        Colors.white,
                     elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                    shape:
+                        RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(
+                        16,
+                      ),
                     ),
                   ),
                   child: const Text(
                     'Buy Now',
                     style: TextStyle(
-                      fontWeight: FontWeight.w900,
+                      fontWeight:
+                          FontWeight.w900,
                     ),
                   ),
                 ),
@@ -712,183 +880,261 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
     );
   }
 
+  // ============================================================
+  // BUILD
+  // ============================================================
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7F7FA),
+    return WillPopScope(
+      onWillPop: _handleBack,
+      child: Scaffold(
+        backgroundColor:
+            const Color(0xFFF7F7FA),
 
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Product Details',
-          style: TextStyle(
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Share',
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  behavior: SnackBarBehavior.floating,
-                  content: Text(
-                    'Sharing option coming soon.',
-                  ),
-                ),
-              );
-            },
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+
+          // ----------------------------------------------------
+          // BACK BUTTON
+          // ----------------------------------------------------
+
+          leading: IconButton(
             icon: const Icon(
-              Icons.share_outlined,
+              Icons.arrow_back_rounded,
+            ),
+            onPressed: _goBack,
+            tooltip: 'Back',
+          ),
+
+          title: const Text(
+            'Product Details',
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
             ),
           ),
-        ],
-      ),
 
-      bottomNavigationBar: _buildBottomBar(),
-
-      body: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildProductImage(),
-
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                16,
-                20,
-                16,
-                24,
+          actions: [
+            IconButton(
+              tooltip: 'Share',
+              onPressed: () {
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(
+                  const SnackBar(
+                    behavior:
+                        SnackBarBehavior.floating,
+                    content: Text(
+                      'Sharing option coming soon.',
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(
+                Icons.share_outlined,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 11,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEDE9FE),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          product.category,
-                          style: const TextStyle(
-                            color: Color(0xFF5B35D5),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
+            ),
+          ],
+        ),
+
+        bottomNavigationBar:
+            _buildBottomBar(),
+
+        body: SingleChildScrollView(
+          physics:
+              const BouncingScrollPhysics(),
+          child: Column(
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
+            children: [
+              _buildProductImage(),
+
+              Padding(
+                padding:
+                    const EdgeInsets.fromLTRB(
+                  16,
+                  20,
+                  16,
+                  24,
+                ),
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding:
+                              const EdgeInsets
+                                  .symmetric(
+                            horizontal: 11,
+                            vertical: 6,
+                          ),
+                          decoration:
+                              BoxDecoration(
+                            color:
+                                const Color(
+                              0xFFEDE9FE,
+                            ),
+                            borderRadius:
+                                BorderRadius
+                                    .circular(
+                              20,
+                            ),
+                          ),
+                          child: Text(
+                            product.category,
+                            style:
+                                const TextStyle(
+                              color: Color(
+                                0xFF5B35D5,
+                              ),
+                              fontSize: 12,
+                              fontWeight:
+                                  FontWeight.w800,
+                            ),
                           ),
                         ),
+
+                        const Spacer(),
+
+                        if (inStock)
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.circle,
+                                size: 9,
+                                color: Colors
+                                    .green
+                                    .shade600,
+                              ),
+                              const SizedBox(
+                                width: 5,
+                              ),
+                              Text(
+                                'In Stock',
+                                style: TextStyle(
+                                  color: Colors
+                                      .green
+                                      .shade700,
+                                  fontWeight:
+                                      FontWeight
+                                          .w700,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    Text(
+                      product.name,
+                      style:
+                          const TextStyle(
+                        fontSize: 24,
+                        height: 1.2,
+                        fontWeight:
+                            FontWeight.w900,
+                        letterSpacing: -.3,
                       ),
-                      const Spacer(),
-                      if (inStock)
-                        Row(
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    _buildPriceSection(),
+
+                    const SizedBox(height: 14),
+
+                    _buildQuantitySection(),
+
+                    const SizedBox(height: 14),
+
+                    _buildDescription(),
+
+                    const SizedBox(height: 14),
+
+                    _buildVendorSection(),
+
+                    const SizedBox(height: 14),
+
+                    _buildTrustSection(),
+
+                    const SizedBox(height: 20),
+
+                    // ------------------------------------------------
+                    // COD NOTICE
+                    // ------------------------------------------------
+
+                    if (inStock)
+                      Container(
+                        width: double.infinity,
+                        padding:
+                            const EdgeInsets.all(
+                          16,
+                        ),
+                        decoration:
+                            BoxDecoration(
+                          color:
+                              Colors.green.shade50,
+                          borderRadius:
+                              BorderRadius.circular(
+                            18,
+                          ),
+                          border: Border.all(
+                            color:
+                                Colors.green.shade100,
+                          ),
+                        ),
+                        child: Row(
                           children: [
                             Icon(
-                              Icons.circle,
-                              size: 9,
-                              color: Colors.green.shade600,
+                              Icons
+                                  .local_shipping_rounded,
+                              color: Colors
+                                  .green
+                                  .shade700,
                             ),
-                            const SizedBox(width: 5),
-                            Text(
-                              'In Stock',
-                              style: TextStyle(
-                                color: Colors.green.shade700,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 12,
+
+                            const SizedBox(
+                              width: 12,
+                            ),
+
+                            Expanded(
+                              child: Text(
+                                'Cash on Delivery available on this product.',
+                                style: TextStyle(
+                                  color: Colors
+                                      .green
+                                      .shade800,
+                                  fontWeight:
+                                      FontWeight.w700,
+                                  fontSize: 13,
+                                ),
                               ),
                             ),
                           ],
                         ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  Text(
-                    product.name,
-                    style: const TextStyle(
-                      fontSize: 24,
-                      height: 1.2,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -.3,
-                    ),
-                  ),
-
-                  const SizedBox(height: 18),
-
-                  _buildPriceSection(),
-
-                  const SizedBox(height: 14),
-
-                  _buildQuantitySection(),
-
-                  const SizedBox(height: 14),
-
-                  _buildDescription(),
-
-                  const SizedBox(height: 14),
-
-                  _buildVendorSection(),
-
-                  const SizedBox(height: 14),
-
-                  _buildTrustSection(),
-
-                  const SizedBox(height: 20),
-
-                  if (inStock)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade50,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(
-                          color: Colors.green.shade100,
-                        ),
                       ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.local_shipping_rounded,
-                            color: Colors.green.shade700,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Cash on Delivery available on this product.',
-                              style: TextStyle(
-                                color: Colors.green.shade800,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
 
-                  const SizedBox(height: 90),
-                ],
+                    const SizedBox(height: 90),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 }
+
+// ============================================================
+// TRUST ITEM
+// ============================================================
 
 class _TrustItem extends StatelessWidget {
   final IconData icon;
@@ -910,7 +1156,9 @@ class _TrustItem extends StatelessWidget {
           size: 25,
           color: const Color(0xFF5B35D5),
         ),
+
         const SizedBox(height: 7),
+
         Text(
           title,
           style: const TextStyle(
@@ -918,7 +1166,9 @@ class _TrustItem extends StatelessWidget {
             fontWeight: FontWeight.w900,
           ),
         ),
+
         const SizedBox(height: 2),
+
         Text(
           subtitle,
           style: TextStyle(
