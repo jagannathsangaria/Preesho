@@ -31,6 +31,44 @@ class _VendorManagementPageState
   ];
 
   // ============================================================
+  // BACK NAVIGATION
+  // ============================================================
+
+  void _goBack() {
+    if (_loading) return;
+
+    final navigator = Navigator.of(context);
+
+    if (navigator.canPop()) {
+      navigator.pop();
+    } else {
+      navigator.pushNamedAndRemoveUntil(
+        '/',
+        (route) => false,
+      );
+    }
+  }
+
+  Future<bool> _handleBack() async {
+    if (_loading) {
+      return false;
+    }
+
+    final navigator = Navigator.of(context);
+
+    if (navigator.canPop()) {
+      return true;
+    }
+
+    navigator.pushNamedAndRemoveUntil(
+      '/',
+      (route) => false,
+    );
+
+    return false;
+  }
+
+  // ============================================================
   // COMMON MESSAGE
   // ============================================================
 
@@ -1169,277 +1207,340 @@ class _VendorManagementPageState
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor:
-          const Color(0xFFF7F8FC),
-      appBar: AppBar(
-        title: const Text(
-          'Vendor Management',
-          style: TextStyle(
-            fontWeight: FontWeight.w900,
+    return WillPopScope(
+      onWillPop: _handleBack,
+      child: Scaffold(
+        backgroundColor:
+            const Color(0xFFF7F8FC),
+        appBar: AppBar(
+          leading: IconButton(
+            tooltip: 'Back',
+            onPressed: _goBack,
+            icon: const Icon(
+              Icons.arrow_back_ios_new,
+            ),
           ),
+          title: const Text(
+            'Vendor Management',
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          centerTitle: false,
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          surfaceTintColor:
+              Colors.transparent,
         ),
-        centerTitle: false,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        surfaceTintColor:
-            Colors.transparent,
-      ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: _firestore
-            .collection('vendors')
-            .snapshots(),
-        builder: (
-          context,
-          snapshot,
-        ) {
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  'Unable to load vendors.\n\n${snapshot.error}',
-                  textAlign: TextAlign.center,
+        body: StreamBuilder<QuerySnapshot>(
+          stream: _firestore
+              .collection('vendors')
+              .snapshots(),
+          builder: (
+            context,
+            snapshot,
+          ) {
+            if (snapshot.hasError) {
+              return Center(
+                child: Padding(
+                  padding:
+                      const EdgeInsets.all(24),
+                  child: Text(
+                    'Unable to load vendors.\n\n${snapshot.error}',
+                    textAlign:
+                        TextAlign.center,
+                  ),
                 ),
-              ),
-            );
-          }
-
-          if (snapshot.connectionState ==
-              ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
-          }
-
-          final docs =
-              snapshot.data?.docs ?? [];
-
-          int pending = 0;
-          int approved = 0;
-          int rejected = 0;
-
-          for (final doc in docs) {
-            final data =
-                doc.data() as Map<String, dynamic>;
-
-            final status = (
-              data['status'] ?? ''
-            ).toString().toLowerCase();
-
-            if (status == 'approved') {
-              approved++;
-            } else if (status == 'rejected') {
-              rejected++;
-            } else {
-              pending++;
-            }
-          }
-
-          return RefreshIndicator(
-            onRefresh: () async {
-              await Future.delayed(
-                const Duration(milliseconds: 500),
               );
-            },
-            child: ListView(
-              physics:
-                  const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(
-                16,
-                8,
-                16,
-                30,
-              ),
-              children: [
-                // --------------------------------------------
-                // HEADER
-                // --------------------------------------------
+            }
 
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(0xFF111827),
-                        Color(0xFF374151),
-                      ],
-                    ),
-                    borderRadius:
-                        BorderRadius.circular(24),
+            if (snapshot.connectionState ==
+                ConnectionState.waiting) {
+              return const Center(
+                child:
+                    CircularProgressIndicator(),
+              );
+            }
+
+            final docs =
+                snapshot.data?.docs ?? [];
+
+            int pending = 0;
+            int approved = 0;
+            int rejected = 0;
+
+            for (final doc in docs) {
+              final data =
+                  doc.data()
+                      as Map<String, dynamic>;
+
+              final status = (
+                data['status'] ?? ''
+              ).toString().toLowerCase();
+
+              if (status == 'approved') {
+                approved++;
+              } else if (status ==
+                  'rejected') {
+                rejected++;
+              } else {
+                pending++;
+              }
+            }
+
+            return RefreshIndicator(
+              onRefresh: () async {
+                await Future.delayed(
+                  const Duration(
+                    milliseconds: 500,
                   ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 52,
-                        height: 52,
-                        decoration: BoxDecoration(
-                          color: Colors.white
-                              .withOpacity(0.12),
-                          borderRadius:
-                              BorderRadius.circular(17),
-                        ),
-                        child: const Icon(
-                          Icons.storefront_rounded,
-                          color: Colors.white,
-                          size: 28,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Vendor Control Center',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 19,
-                                fontWeight:
-                                    FontWeight.w900,
-                              ),
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              'Review vendors and verify documents',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                );
+              },
+              child: ListView(
+                physics:
+                    const AlwaysScrollableScrollPhysics(),
+                padding:
+                    const EdgeInsets.fromLTRB(
+                  16,
+                  8,
+                  16,
+                  30,
                 ),
+                children: [
+                  // --------------------------------------------
+                  // HEADER
+                  // --------------------------------------------
 
-                const SizedBox(height: 16),
-
-                // --------------------------------------------
-                // STATISTICS
-                // --------------------------------------------
-
-                Row(
-                  children: [
-                    _statCard(
-                      title: 'Total Vendors',
-                      value: docs.length.toString(),
-                      icon:
-                          Icons.groups_rounded,
-                    ),
-                    const SizedBox(width: 10),
-                    _statCard(
-                      title: 'Pending',
-                      value: pending.toString(),
-                      icon:
-                          Icons.pending_actions_rounded,
-                    ),
-                    const SizedBox(width: 10),
-                    _statCard(
-                      title: 'Approved',
-                      value: approved.toString(),
-                      icon:
-                          Icons.verified_rounded,
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 10),
-
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius:
-                        BorderRadius.circular(18),
-                    border: Border.all(
-                      color: Colors.grey.shade200,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.info_outline_rounded,
-                        size: 19,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          '$rejected vendor(s) rejected. '
-                          'Open a vendor to review documents and update status.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade700,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                // --------------------------------------------
-                // VENDOR LIST
-                // --------------------------------------------
-
-                if (docs.isEmpty)
                   Container(
                     padding:
-                        const EdgeInsets.all(35),
+                        const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      gradient:
+                          const LinearGradient(
+                        begin:
+                            Alignment.topLeft,
+                        end:
+                            Alignment.bottomRight,
+                        colors: [
+                          Color(0xFF111827),
+                          Color(0xFF374151),
+                        ],
+                      ),
+                      borderRadius:
+                          BorderRadius.circular(
+                        24,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 52,
+                          height: 52,
+                          decoration:
+                              BoxDecoration(
+                            color: Colors.white
+                                .withOpacity(0.12),
+                            borderRadius:
+                                BorderRadius
+                                    .circular(
+                              17,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons
+                                .storefront_rounded,
+                            color: Colors.white,
+                            size: 28,
+                          ),
+                        ),
+                        const SizedBox(
+                          width: 14,
+                        ),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment
+                                    .start,
+                            children: [
+                              Text(
+                                'Vendor Control Center',
+                                style: TextStyle(
+                                  color:
+                                      Colors.white,
+                                  fontSize: 19,
+                                  fontWeight:
+                                      FontWeight
+                                          .w900,
+                                ),
+                              ),
+                              SizedBox(
+                                height: 4,
+                              ),
+                              Text(
+                                'Review vendors and verify documents',
+                                style: TextStyle(
+                                  color:
+                                      Colors.white70,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // --------------------------------------------
+                  // STATISTICS
+                  // --------------------------------------------
+
+                  Row(
+                    children: [
+                      _statCard(
+                        title: 'Total Vendors',
+                        value:
+                            docs.length.toString(),
+                        icon:
+                            Icons.groups_rounded,
+                      ),
+                      const SizedBox(width: 10),
+                      _statCard(
+                        title: 'Pending',
+                        value:
+                            pending.toString(),
+                        icon: Icons
+                            .pending_actions_rounded,
+                      ),
+                      const SizedBox(width: 10),
+                      _statCard(
+                        title: 'Approved',
+                        value:
+                            approved.toString(),
+                        icon:
+                            Icons.verified_rounded,
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  Container(
+                    padding:
+                        const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius:
-                          BorderRadius.circular(22),
+                          BorderRadius.circular(
+                        18,
+                      ),
+                      border: Border.all(
+                        color:
+                            Colors.grey.shade200,
+                      ),
                     ),
-                    child: Column(
+                    child: Row(
                       children: [
-                        Icon(
-                          Icons.storefront_outlined,
-                          size: 50,
-                          color: Colors.grey.shade400,
+                        const Icon(
+                          Icons
+                              .info_outline_rounded,
+                          size: 19,
                         ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'No vendors found',
-                          style: TextStyle(
-                            fontWeight:
-                                FontWeight.w800,
-                            fontSize: 16,
-                          ),
+                        const SizedBox(
+                          width: 10,
                         ),
-                        const SizedBox(height: 5),
-                        Text(
-                          'Vendor registrations will appear here.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
+                        Expanded(
+                          child: Text(
+                            '$rejected vendor(s) rejected. '
+                            'Open a vendor to review documents and update status.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors
+                                  .grey.shade700,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                  )
-                else
-                  ...docs.map(
-                    (doc) {
-                      final data =
-                          doc.data()
-                              as Map<String, dynamic>;
-
-                      return _vendorCard(
-                        doc.id,
-                        data,
-                      );
-                    },
                   ),
-              ],
-            ),
-          );
-        },
+
+                  const SizedBox(height: 20),
+
+                  // --------------------------------------------
+                  // VENDOR LIST
+                  // --------------------------------------------
+
+                  if (docs.isEmpty)
+                    Container(
+                      padding:
+                          const EdgeInsets.all(
+                        35,
+                      ),
+                      decoration:
+                          BoxDecoration(
+                        color: Colors.white,
+                        borderRadius:
+                            BorderRadius.circular(
+                          22,
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons
+                                .storefront_outlined,
+                            size: 50,
+                            color: Colors
+                                .grey.shade400,
+                          ),
+                          const SizedBox(
+                            height: 12,
+                          ),
+                          const Text(
+                            'No vendors found',
+                            style: TextStyle(
+                              fontWeight:
+                                  FontWeight
+                                      .w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(
+                            height: 5,
+                          ),
+                          Text(
+                            'Vendor registrations will appear here.',
+                            textAlign:
+                                TextAlign.center,
+                            style: TextStyle(
+                              color: Colors
+                                  .grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    ...docs.map(
+                      (doc) {
+                        final data =
+                            doc.data()
+                                as Map<String,
+                                    dynamic>;
+
+                        return _vendorCard(
+                          doc.id,
+                          data,
+                        );
+                      },
+                    ),
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }
