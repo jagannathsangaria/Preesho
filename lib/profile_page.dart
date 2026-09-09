@@ -31,12 +31,13 @@ class _ProfilePageState extends State<ProfilePage> {
 
     if (navigator.canPop()) {
       navigator.pop();
-    } else {
-      navigator.pushNamedAndRemoveUntil(
-        '/',
-        (route) => false,
-      );
+      return;
     }
+
+    navigator.pushNamedAndRemoveUntil(
+      '/',
+      (route) => false,
+    );
   }
 
   Future<bool> _handleBack() async {
@@ -145,9 +146,10 @@ class _ProfilePageState extends State<ProfilePage> {
           backgroundColor: Colors.transparent,
           elevation: 0,
 
-          // ----------------------------------------------------
+          // ======================================================
           // BACK BUTTON
-          // ----------------------------------------------------
+          // ======================================================
+
           leading: IconButton(
             onPressed: _goBack,
             tooltip: 'Back',
@@ -167,14 +169,16 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
 
           actions: [
-            // --------------------------------------------------
+            // ====================================================
             // CART
-            // --------------------------------------------------
+            // ====================================================
+
             Stack(
               clipBehavior: Clip.none,
               children: [
                 IconButton(
                   onPressed: _openCart,
+                  tooltip: 'Cart',
                   icon: const Icon(
                     Icons.shopping_bag_outlined,
                     size: 26,
@@ -192,17 +196,14 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFE53935),
-                        borderRadius:
-                            BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(20),
                         border: Border.all(
                           color: const Color(0xFFF7F7FA),
                           width: 1.5,
                         ),
                       ),
                       child: Text(
-                        cartCount > 99
-                            ? '99+'
-                            : '$cartCount',
+                        cartCount > 99 ? '99+' : '$cartCount',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 9,
@@ -218,9 +219,9 @@ class _ProfilePageState extends State<ProfilePage> {
           ],
         ),
 
-        // ======================================================
+        // ========================================================
         // BODY
-        // ======================================================
+        // ========================================================
 
         body: RefreshIndicator(
           onRefresh: () async {
@@ -232,22 +233,18 @@ class _ProfilePageState extends State<ProfilePage> {
               const Duration(milliseconds: 300),
             );
           },
-
           child: ListView(
-            physics:
-                const AlwaysScrollableScrollPhysics(),
-
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(
               20,
               8,
               20,
               35,
             ),
-
             children: [
-              // ------------------------------------------------
+              // ==================================================
               // PROFILE HEADER
-              // ------------------------------------------------
+              // ==================================================
 
               _ProfileHeader(
                 user: currentUser,
@@ -256,18 +253,18 @@ class _ProfilePageState extends State<ProfilePage> {
 
               const SizedBox(height: 20),
 
-              // ------------------------------------------------
+              // ==================================================
               // LOGGED OUT
-              // ------------------------------------------------
+              // ==================================================
 
               if (currentUser == null)
                 _LoginCard(
                   onLogin: _openLogin,
                 ),
 
-              // ------------------------------------------------
+              // ==================================================
               // LOGGED IN
-              // ------------------------------------------------
+              // ==================================================
 
               if (currentUser != null) ...[
                 const _SectionTitle(
@@ -276,29 +273,32 @@ class _ProfilePageState extends State<ProfilePage> {
 
                 const SizedBox(height: 10),
 
-                // My Orders
+                // ------------------------------------------------
+                // MY ORDERS
+                // ------------------------------------------------
+
                 _ProfileMenuTile(
                   icon: Icons.receipt_long_rounded,
                   title: 'My Orders',
-                  subtitle:
-                      'Track and manage your orders',
+                  subtitle: 'Track and manage your orders',
                   onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) =>
-                            const OrdersPage(),
+                        builder: (_) => const OrdersPage(),
                       ),
                     );
                   },
                 ),
 
-                // Saved Addresses
+                // ------------------------------------------------
+                // SAVED ADDRESSES
+                // ------------------------------------------------
+
                 _ProfileMenuTile(
                   icon: Icons.location_on_outlined,
                   title: 'Saved Addresses',
-                  subtitle:
-                      'Manage your delivery addresses',
+                  subtitle: 'Manage your delivery addresses',
                   onTap: () {
                     _showComingSoon(
                       'Saved Addresses',
@@ -314,28 +314,28 @@ class _ProfilePageState extends State<ProfilePage> {
 
                 const SizedBox(height: 10),
 
-                // Admin Login
+                // ------------------------------------------------
+                // ADMIN LOGIN
+                // ------------------------------------------------
+
                 _ProfileMenuTile(
-                  icon: Icons
-                      .admin_panel_settings_outlined,
+                  icon: Icons.admin_panel_settings_outlined,
                   title: 'Admin Login',
-                  subtitle:
-                      'Access Preesho admin panel',
+                  subtitle: 'Access Preesho admin panel',
                   onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) =>
-                            const AdminLogin(),
+                        builder: (_) => const AdminLogin(),
                       ),
                     );
                   },
                 ),
               ],
 
-              // ------------------------------------------------
+              // ==================================================
               // LOGGED OUT EXPLORE
-              // ------------------------------------------------
+              // ==================================================
 
               if (currentUser == null) ...[
                 const _SectionTitle(
@@ -347,25 +347,23 @@ class _ProfilePageState extends State<ProfilePage> {
                 _ProfileMenuTile(
                   icon: Icons.receipt_long_rounded,
                   title: 'My Orders',
-                  subtitle:
-                      'Login to view your orders',
+                  subtitle: 'Login to view your orders',
                   onTap: _openLogin,
                 ),
 
                 _ProfileMenuTile(
                   icon: Icons.location_on_outlined,
                   title: 'Saved Addresses',
-                  subtitle:
-                      'Login to manage your addresses',
+                  subtitle: 'Login to manage your addresses',
                   onTap: _openLogin,
                 ),
               ],
 
               const SizedBox(height: 16),
 
-              // ------------------------------------------------
+              // ==================================================
               // HELP
-              // ------------------------------------------------
+              // ==================================================
 
               const _SectionTitle(
                 title: 'Help & Support',
@@ -376,8 +374,7 @@ class _ProfilePageState extends State<ProfilePage> {
               _ProfileMenuTile(
                 icon: Icons.support_agent_rounded,
                 title: 'Help & Support',
-                subtitle:
-                    'Get help with your Preesho experience',
+                subtitle: 'Get help with your Preesho experience',
                 onTap: () {
                   _showComingSoon(
                     'Help & Support',
@@ -385,15 +382,14 @@ class _ProfilePageState extends State<ProfilePage> {
                 },
               ),
 
-              // ------------------------------------------------
+              // ==================================================
               // ABOUT PREESHO
-              // ------------------------------------------------
+              // ==================================================
 
               _ProfileMenuTile(
                 icon: Icons.info_outline_rounded,
                 title: 'About Preesho',
-                subtitle:
-                    'Learn more about Preesho',
+                subtitle: 'Learn more about Preesho',
                 onTap: () {
                   showAboutDialog(
                     context: context,
@@ -404,8 +400,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       height: 48,
                       decoration: BoxDecoration(
                         color: const Color(0xFFF0EBFF),
-                        borderRadius:
-                            BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(14),
                       ),
                       child: const Icon(
                         Icons.shopping_bag_rounded,
@@ -423,9 +418,9 @@ class _ProfilePageState extends State<ProfilePage> {
                 },
               ),
 
-              // ------------------------------------------------
+              // ==================================================
               // LOGOUT
-              // ------------------------------------------------
+              // ==================================================
 
               if (currentUser != null) ...[
                 const SizedBox(height: 18),
@@ -437,9 +432,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
               const SizedBox(height: 24),
 
-              // ------------------------------------------------
+              // ==================================================
               // FOOTER
-              // ------------------------------------------------
+              // ==================================================
 
               Center(
                 child: Column(
@@ -452,9 +447,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-
                     const SizedBox(height: 4),
-
                     Text(
                       'Shop smart. Live better.',
                       style: TextStyle(
@@ -492,7 +485,6 @@ class _ProfileHeader extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.all(20),
-
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
@@ -502,36 +494,28 @@ class _ProfileHeader extends StatelessWidget {
             Color(0xFF4324B5),
           ],
         ),
-
         borderRadius: BorderRadius.circular(28),
-
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF5B35D5)
-                .withOpacity(0.25),
+            color: const Color(0xFF5B35D5).withOpacity(0.25),
             blurRadius: 22,
             offset: const Offset(0, 10),
           ),
         ],
       ),
-
       child: Row(
         children: [
           Container(
             width: 64,
             height: 64,
-
             decoration: BoxDecoration(
-              color:
-                  Colors.white.withOpacity(0.16),
+              color: Colors.white.withOpacity(0.16),
               shape: BoxShape.circle,
               border: Border.all(
-                color:
-                    Colors.white.withOpacity(0.35),
+                color: Colors.white.withOpacity(0.35),
                 width: 1.5,
               ),
             ),
-
             child: const Icon(
               Icons.person_rounded,
               color: Colors.white,
@@ -543,8 +527,7 @@ class _ProfileHeader extends StatelessWidget {
 
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   loggedIn
@@ -561,12 +544,10 @@ class _ProfileHeader extends StatelessWidget {
 
                 Text(
                   loggedIn
-                      ? (user?.email ??
-                          'Preesho Customer')
+                      ? (user?.email ?? 'Preesho Customer')
                       : 'Login to access your account',
                   maxLines: 2,
-                  overflow:
-                      TextOverflow.ellipsis,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.white70,
                     fontSize: 13,
@@ -580,8 +561,7 @@ class _ProfileHeader extends StatelessWidget {
             IconButton(
               onPressed: onLogin,
               style: IconButton.styleFrom(
-                backgroundColor:
-                    Colors.white.withOpacity(0.16),
+                backgroundColor: Colors.white.withOpacity(0.16),
               ),
               icon: const Icon(
                 Icons.arrow_forward_rounded,
@@ -609,33 +589,26 @@ class _LoginCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(18),
-
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(22),
-
         boxShadow: [
           BoxShadow(
-            color:
-                Colors.black.withOpacity(0.045),
+            color: Colors.black.withOpacity(0.045),
             blurRadius: 16,
             offset: const Offset(0, 7),
           ),
         ],
       ),
-
       child: Row(
         children: [
           Container(
             width: 48,
             height: 48,
-
             decoration: BoxDecoration(
               color: const Color(0xFFF0EBFF),
-              borderRadius:
-                  BorderRadius.circular(15),
+              borderRadius: BorderRadius.circular(15),
             ),
-
             child: const Icon(
               Icons.lock_open_rounded,
               color: Color(0xFF5B35D5),
@@ -646,8 +619,7 @@ class _LoginCard extends StatelessWidget {
 
           const Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Login for a better experience',
@@ -656,9 +628,7 @@ class _LoginCard extends StatelessWidget {
                     fontSize: 14,
                   ),
                 ),
-
                 SizedBox(height: 4),
-
                 Text(
                   'View orders, addresses and more',
                   style: TextStyle(
@@ -729,57 +699,40 @@ class _ProfileMenuTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin:
-          const EdgeInsets.only(bottom: 12),
-
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(20),
-
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color:
-                Colors.black.withOpacity(0.035),
+            color: Colors.black.withOpacity(0.035),
             blurRadius: 14,
             offset: const Offset(0, 6),
           ),
         ],
       ),
-
       child: Material(
         color: Colors.transparent,
-
         child: InkWell(
-          borderRadius:
-              BorderRadius.circular(20),
-
+          borderRadius: BorderRadius.circular(20),
           onTap: onTap,
-
           child: Padding(
-            padding:
-                const EdgeInsets.symmetric(
+            padding: const EdgeInsets.symmetric(
               horizontal: 15,
               vertical: 12,
             ),
-
             child: Row(
               children: [
                 Container(
                   width: 48,
                   height: 48,
-
                   decoration: BoxDecoration(
-                    color:
-                        const Color(0xFFF0EBFF),
-                    borderRadius:
-                        BorderRadius.circular(15),
+                    color: const Color(0xFFF0EBFF),
+                    borderRadius: BorderRadius.circular(15),
                   ),
-
                   child: Icon(
                     icon,
-                    color:
-                        const Color(0xFF5B35D5),
+                    color: const Color(0xFF5B35D5),
                     size: 23,
                   ),
                 ),
@@ -788,16 +741,13 @@ class _ProfileMenuTile extends StatelessWidget {
 
                 Expanded(
                   child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         title,
-                        style:
-                            const TextStyle(
+                        style: const TextStyle(
                           fontSize: 14,
-                          fontWeight:
-                              FontWeight.w800,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
 
@@ -806,11 +756,9 @@ class _ProfileMenuTile extends StatelessWidget {
                       Text(
                         subtitle,
                         maxLines: 1,
-                        overflow:
-                            TextOverflow.ellipsis,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color:
-                              Colors.grey.shade600,
+                          color: Colors.grey.shade600,
                           fontSize: 11.5,
                         ),
                       ),
@@ -822,8 +770,7 @@ class _ProfileMenuTile extends StatelessWidget {
 
                 Icon(
                   Icons.chevron_right_rounded,
-                  color:
-                      Colors.grey.shade500,
+                  color: Colors.grey.shade500,
                 ),
               ],
             ),
@@ -850,15 +797,12 @@ class _LogoutButton extends StatelessWidget {
     return SizedBox(
       width: double.infinity,
       height: 54,
-
       child: OutlinedButton.icon(
         onPressed: onPressed,
-
         icon: const Icon(
           Icons.logout_rounded,
           color: Color(0xFFE53935),
         ),
-
         label: const Text(
           'Logout',
           style: TextStyle(
@@ -866,18 +810,13 @@ class _LogoutButton extends StatelessWidget {
             fontWeight: FontWeight.w800,
           ),
         ),
-
         style: OutlinedButton.styleFrom(
           backgroundColor: Colors.white,
-
           side: BorderSide(
             color: Colors.red.shade100,
           ),
-
-          shape:
-              RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.circular(17),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(17),
           ),
         ),
       ),
