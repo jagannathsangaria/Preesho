@@ -101,7 +101,9 @@ class _VendorManagementPageState
   }) async {
     if (_loading) return;
 
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+    });
 
     try {
       final callable =
@@ -127,7 +129,9 @@ class _VendorManagementPageState
       );
     } finally {
       if (mounted) {
-        setState(() => _loading = false);
+        setState(() {
+          _loading = false;
+        });
       }
     }
   }
@@ -143,7 +147,9 @@ class _VendorManagementPageState
   }) async {
     if (_loading) return;
 
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+    });
 
     try {
       final callable =
@@ -168,7 +174,9 @@ class _VendorManagementPageState
       );
     } finally {
       if (mounted) {
-        setState(() => _loading = false);
+        setState(() {
+          _loading = false;
+        });
       }
     }
   }
@@ -185,7 +193,9 @@ class _VendorManagementPageState
   }) async {
     if (_loading) return;
 
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+    });
 
     try {
       final callable = _functions.httpsCallable(
@@ -212,7 +222,9 @@ class _VendorManagementPageState
       );
     } finally {
       if (mounted) {
-        setState(() => _loading = false);
+        setState(() {
+          _loading = false;
+        });
       }
     }
   }
@@ -402,7 +414,7 @@ class _VendorManagementPageState
 
     await showDialog(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return Dialog(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(22),
@@ -429,8 +441,9 @@ class _VendorManagementPageState
                       ),
                     ),
                     IconButton(
-                      onPressed: () =>
-                          Navigator.pop(context),
+                      onPressed: () {
+                        Navigator.pop(dialogContext);
+                      },
                       icon: const Icon(
                         Icons.close_rounded,
                       ),
@@ -505,7 +518,7 @@ class _VendorManagementPageState
     final reason =
         await showDialog<String>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: Text(title),
           content: TextField(
@@ -520,14 +533,15 @@ class _VendorManagementPageState
           ),
           actions: [
             TextButton(
-              onPressed: () =>
-                  Navigator.pop(context),
+              onPressed: () {
+                Navigator.pop(dialogContext);
+              },
               child: const Text('Cancel'),
             ),
             FilledButton(
               onPressed: () {
                 Navigator.pop(
-                  context,
+                  dialogContext,
                   controller.text.trim(),
                 );
               },
@@ -571,7 +585,7 @@ class _VendorManagementPageState
     final result =
         await showDialog<Map<String, String>>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return StatefulBuilder(
           builder: (
             context,
@@ -627,14 +641,15 @@ class _VendorManagementPageState
               ),
               actions: [
                 TextButton(
-                  onPressed: () =>
-                      Navigator.pop(context),
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                  },
                   child: const Text('Cancel'),
                 ),
                 FilledButton(
                   onPressed: () {
                     Navigator.pop(
-                      context,
+                      dialogContext,
                       {
                         'status': selectedStatus,
                         'reason':
@@ -875,9 +890,9 @@ class _VendorManagementPageState
         ),
         trailing: _statusChip(status),
         children: [
-          // ------------------------------------
+          // ======================================================
           // BASIC INFORMATION
-          // ------------------------------------
+          // ======================================================
 
           _sectionTitle(
             'Vendor Information',
@@ -903,9 +918,9 @@ class _VendorManagementPageState
 
           const SizedBox(height: 12),
 
-          // ------------------------------------
+          // ======================================================
           // DOCUMENT SUMMARY
-          // ------------------------------------
+          // ======================================================
 
           _sectionTitle(
             'Documents',
@@ -929,13 +944,17 @@ class _VendorManagementPageState
                     ),
                   ),
                 ),
-                CircularProgressIndicator(
-                  value:
-                      requiredDocuments.isEmpty
-                          ? 0
-                          : verified /
-                              requiredDocuments.length,
-                  strokeWidth: 5,
+                SizedBox(
+                  width: 34,
+                  height: 34,
+                  child: CircularProgressIndicator(
+                    value:
+                        requiredDocuments.isEmpty
+                            ? 0
+                            : verified /
+                                requiredDocuments.length,
+                    strokeWidth: 5,
+                  ),
                 ),
               ],
             ),
@@ -943,9 +962,9 @@ class _VendorManagementPageState
 
           const SizedBox(height: 12),
 
-          // ------------------------------------
+          // ======================================================
           // DOCUMENT LIST
-          // ------------------------------------
+          // ======================================================
 
           ...requiredDocuments.map(
             (type) {
@@ -961,9 +980,9 @@ class _VendorManagementPageState
             },
           ),
 
-          // ------------------------------------
+          // ======================================================
           // ADMIN APPROVAL
-          // ------------------------------------
+          // ======================================================
 
           _sectionTitle(
             'Admin Approval',
@@ -994,9 +1013,9 @@ class _VendorManagementPageState
 
           const SizedBox(height: 16),
 
-          // ------------------------------------
+          // ======================================================
           // ACTION BUTTONS
-          // ------------------------------------
+          // ======================================================
 
           Wrap(
             spacing: 10,
@@ -1177,7 +1196,10 @@ class _VendorManagementPageState
           crossAxisAlignment:
               CrossAxisAlignment.start,
           children: [
-            Icon(icon, size: 22),
+            Icon(
+              icon,
+              size: 22,
+            ),
             const SizedBox(height: 12),
             Text(
               value,
@@ -1307,9 +1329,9 @@ class _VendorManagementPageState
                   30,
                 ),
                 children: [
-                  // --------------------------------------------
+                  // ==================================================
                   // HEADER
-                  // --------------------------------------------
+                  // ==================================================
 
                   Container(
                     padding:
@@ -1393,9 +1415,9 @@ class _VendorManagementPageState
 
                   const SizedBox(height: 16),
 
-                  // --------------------------------------------
+                  // ==================================================
                   // STATISTICS
-                  // --------------------------------------------
+                  // ==================================================
 
                   Row(
                     children: [
@@ -1426,6 +1448,10 @@ class _VendorManagementPageState
                   ),
 
                   const SizedBox(height: 10),
+
+                  // ==================================================
+                  // REJECTED INFORMATION
+                  // ==================================================
 
                   Container(
                     padding:
@@ -1468,9 +1494,9 @@ class _VendorManagementPageState
 
                   const SizedBox(height: 20),
 
-                  // --------------------------------------------
+                  // ==================================================
                   // VENDOR LIST
-                  // --------------------------------------------
+                  // ==================================================
 
                   if (docs.isEmpty)
                     Container(
