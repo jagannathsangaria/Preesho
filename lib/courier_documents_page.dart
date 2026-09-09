@@ -62,8 +62,7 @@ class _CourierDocumentsPageState
   void initState() {
     super.initState();
 
-    _uid = widget.courierUid ??
-        _auth.currentUser?.uid;
+    _uid = widget.courierUid ?? _auth.currentUser?.uid;
 
     _loadCourier();
   }
@@ -218,8 +217,7 @@ class _CourierDocumentsPageState
     final raw = documents[key];
 
     if (raw is Map) {
-      controller.text =
-          _clean(
+      controller.text = _clean(
         raw['number'] ??
             raw['documentNumber'] ??
             raw['value'],
@@ -231,14 +229,10 @@ class _CourierDocumentsPageState
       );
 
       _documentStatuses[key] =
-          status.isEmpty
-              ? 'pending'
-              : status;
+          status.isEmpty ? 'pending' : status;
 
       _documentReasons[key] =
-          _clean(
-        raw['rejectionReason'],
-      );
+          _clean(raw['rejectionReason']);
     } else if (raw is String) {
       controller.text = raw;
     }
@@ -265,13 +259,11 @@ class _CourierDocumentsPageState
   }
 
   bool _isDocumentApproved(String key) {
-    return _documentStatuses[key] ==
-        'approved';
+    return _documentStatuses[key] == 'approved';
   }
 
   bool _isDocumentRejected(String key) {
-    return _documentStatuses[key] ==
-        'rejected';
+    return _documentStatuses[key] == 'rejected';
   }
 
   bool _isLocked(String key) {
@@ -288,16 +280,14 @@ class _CourierDocumentsPageState
   }) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context)
-        .showSnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(text),
         backgroundColor:
             error
                 ? Colors.red.shade700
                 : Colors.green.shade700,
-        behavior:
-            SnackBarBehavior.floating,
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -337,57 +327,43 @@ class _CourierDocumentsPageState
       final now =
           FieldValue.serverTimestamp();
 
-      final documents =
-          <String, dynamic>{
+      final documents = <String, dynamic>{
         'pan': {
-          'number':
-              _panController.text.trim(),
-          'status':
-              submit ? 'pending' : 'draft',
+          'number': _panController.text.trim(),
+          'status': submit ? 'pending' : 'draft',
           'rejectionReason': '',
           'updatedAt': now,
         },
         'aadhaar': {
-          'number':
-              _aadhaarController.text.trim(),
-          'status':
-              submit ? 'pending' : 'draft',
+          'number': _aadhaarController.text.trim(),
+          'status': submit ? 'pending' : 'draft',
           'rejectionReason': '',
           'updatedAt': now,
         },
         'drivingLicence': {
-          'number':
-              _dlController.text.trim(),
-          'status':
-              submit ? 'pending' : 'draft',
+          'number': _dlController.text.trim(),
+          'status': submit ? 'pending' : 'draft',
           'rejectionReason': '',
           'updatedAt': now,
         },
         'vehicleRc': {
-          'number':
-              _rcController.text.trim(),
-          'status':
-              submit ? 'pending' : 'draft',
+          'number': _rcController.text.trim(),
+          'status': submit ? 'pending' : 'draft',
           'rejectionReason': '',
           'updatedAt': now,
         },
         'addressProof': {
           'number':
-              _addressProofController
-                  .text
-                  .trim(),
-          'status':
-              submit ? 'pending' : 'draft',
+              _addressProofController.text.trim(),
+          'status': submit ? 'pending' : 'draft',
           'rejectionReason': '',
           'updatedAt': now,
         },
       };
 
-      final courierData =
-          <String, dynamic>{
+      final courierData = <String, dynamic>{
         'documents': documents,
-        'panNumber':
-            _panController.text.trim(),
+        'panNumber': _panController.text.trim(),
         'aadhaarNumber':
             _aadhaarController.text.trim(),
         'drivingLicenceNumber':
@@ -395,9 +371,7 @@ class _CourierDocumentsPageState
         'vehicleRcNumber':
             _rcController.text.trim(),
         'addressProofNumber':
-            _addressProofController
-                .text
-                .trim(),
+            _addressProofController.text.trim(),
         'updatedAt': now,
       };
 
@@ -405,8 +379,7 @@ class _CourierDocumentsPageState
         courierData.addAll({
           'documentsSubmitted': true,
           'status': 'pending_approval',
-          'registrationStatus':
-              'pending_approval',
+          'registrationStatus': 'pending_approval',
           'approvedByAdmin': false,
           'active': false,
           'rejectionReason': '',
@@ -416,8 +389,7 @@ class _CourierDocumentsPageState
         courierData.addAll({
           'documentsSubmitted': false,
           'status': 'pending_documents',
-          'registrationStatus':
-              'pending_documents',
+          'registrationStatus': 'pending_documents',
           'approvedByAdmin': false,
           'active': false,
         });
@@ -427,30 +399,26 @@ class _CourierDocumentsPageState
           .collection('couriers')
           .doc(_uid)
           .set(
-        courierData,
-        SetOptions(merge: true),
-      );
+            courierData,
+            SetOptions(merge: true),
+          );
 
       // Keep users collection synchronized.
-      final userData =
-          <String, dynamic>{
-        'documentsSubmitted':
-            submit,
+      final userData = <String, dynamic>{
+        'documentsSubmitted': submit,
         'status': submit
             ? 'pending_approval'
             : 'pending_documents',
-        'registrationStatus':
-            submit
-                ? 'pending_approval'
-                : 'pending_documents',
+        'registrationStatus': submit
+            ? 'pending_approval'
+            : 'pending_documents',
         'approvedByAdmin': false,
         'active': false,
         'updatedAt': now,
       };
 
       if (submit) {
-        userData['documentsSubmittedAt'] =
-            now;
+        userData['documentsSubmittedAt'] = now;
         userData['rejectionReason'] = '';
       }
 
@@ -458,17 +426,19 @@ class _CourierDocumentsPageState
           .collection('users')
           .doc(_uid)
           .set(
-        userData,
-        SetOptions(merge: true),
-      );
+            userData,
+            SetOptions(merge: true),
+          );
 
       if (!mounted) return;
 
       setState(() {
         _documentsSubmitted = submit;
+
         _status = submit
             ? 'pending_approval'
             : 'pending_documents';
+
         _approvedByAdmin = false;
         _active = false;
         _saving = false;
@@ -476,8 +446,7 @@ class _CourierDocumentsPageState
         if (submit) {
           for (final key
               in _documentStatuses.keys) {
-            _documentStatuses[key] =
-                'pending';
+            _documentStatuses[key] = 'pending';
           }
         }
       });
@@ -519,9 +488,7 @@ class _CourierDocumentsPageState
         _rcController.text.trim();
 
     final address =
-        _addressProofController
-            .text
-            .trim();
+        _addressProofController.text.trim();
 
     if (pan.isEmpty) {
       _message(
@@ -647,14 +614,11 @@ class _CourierDocumentsPageState
                 height: 44,
                 decoration: BoxDecoration(
                   color: approved
-                      ? Colors.green
-                          .withOpacity(.10)
+                      ? Colors.green.withOpacity(.10)
                       : rejected
-                          ? Colors.red
-                              .withOpacity(.10)
-                          : const Color(
-                              0xff5B35D5,
-                            ).withOpacity(.10),
+                          ? Colors.red.withOpacity(.10)
+                          : const Color(0xff5B35D5)
+                              .withOpacity(.10),
                   borderRadius:
                       BorderRadius.circular(12),
                 ),
@@ -664,9 +628,7 @@ class _CourierDocumentsPageState
                       ? Colors.green
                       : rejected
                           ? Colors.red
-                          : const Color(
-                              0xff5B35D5,
-                            ),
+                          : const Color(0xff5B35D5),
                 ),
               ),
               const SizedBox(width: 12),
@@ -733,9 +695,7 @@ class _CourierDocumentsPageState
               border:
                   OutlineInputBorder(
                 borderRadius:
-                    BorderRadius.circular(
-                  13,
-                ),
+                    BorderRadius.circular(13),
               ),
             ),
           ),
@@ -818,8 +778,7 @@ class _CourierDocumentsPageState
       );
     }
 
-    if (_status ==
-            'pending_approval' &&
+    if (_status == 'pending_approval' &&
         _documentsSubmitted) {
       return _infoCard(
         color: Colors.orange,
@@ -939,11 +898,8 @@ class _CourierDocumentsPageState
 
     int completed = 0;
 
-    for (final controller
-        in controllers) {
-      if (controller.text
-          .trim()
-          .isNotEmpty) {
+    for (final controller in controllers) {
+      if (controller.text.trim().isNotEmpty) {
         completed++;
       }
     }
@@ -1006,8 +962,7 @@ class _CourierDocumentsPageState
                   completed / total,
               minHeight: 8,
               backgroundColor:
-                  Colors.white
-                      .withOpacity(.20),
+                  Colors.white.withOpacity(.20),
               valueColor:
                   const AlwaysStoppedAnimation<
                       Color>(
@@ -1054,6 +1009,18 @@ class _CourierDocumentsPageState
       backgroundColor:
           const Color(0xfff5f6fa),
       appBar: AppBar(
+        // Explicit Back button
+        leading: IconButton(
+          onPressed: _saving
+              ? null
+              : () {
+                  Navigator.of(context).maybePop();
+                },
+          icon: const Icon(
+            Icons.arrow_back_rounded,
+          ),
+          tooltip: 'Back',
+        ),
         title: const Text(
           'Courier Documents',
           style:
