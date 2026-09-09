@@ -10,6 +10,7 @@ import 'checkout_page.dart';
 import 'login_page.dart';
 import 'admin_login.dart';
 import 'orders_page.dart';
+import 'model/model.dart' show CustomerAddress;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
