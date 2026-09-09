@@ -18,40 +18,48 @@ class _LoginPageState extends State<LoginPage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   // Login controllers
-  final emailController = TextEditingController();
-  final passwordController = TextEditingController();
+  final TextEditingController loginEmailController =
+      TextEditingController();
+  final TextEditingController loginPasswordController =
+      TextEditingController();
 
   // Registration controllers
-  final nameController = TextEditingController();
-  final registerEmailController = TextEditingController();
-  final registerPasswordController = TextEditingController();
-  final confirmPasswordController = TextEditingController();
-  final addressController = TextEditingController();
-  final pinCodeController = TextEditingController();
+  final TextEditingController mobileController =
+      TextEditingController();
+  final TextEditingController otpController =
+      TextEditingController();
+  final TextEditingController nameController =
+      TextEditingController();
+  final TextEditingController registerEmailController =
+      TextEditingController();
+  final TextEditingController registerPasswordController =
+      TextEditingController();
+  final TextEditingController confirmPasswordController =
+      TextEditingController();
+  final TextEditingController addressController =
+      TextEditingController();
+  final TextEditingController pinCodeController =
+      TextEditingController();
 
-  // Mobile / OTP controllers
-  final mobileController = TextEditingController();
-  final otpController = TextEditingController();
-
+  bool isLogin = true;
+  bool otpSent = false;
+  bool otpVerified = false;
   bool isLoading = false;
-  bool obscurePassword = true;
+
+  bool obscureLoginPassword = true;
   bool obscureRegisterPassword = true;
   bool obscureConfirmPassword = true;
 
-  bool isRegisterMode = false;
-  bool otpSent = false;
-  bool otpVerified = false;
-
   String? verificationId;
-
-  static const Color primary = Color(0xFF5B35D5);
-  static const Color primaryDark = Color(0xFF4323A8);
+  int? resendToken;
 
   @override
   void dispose() {
-    emailController.dispose();
-    passwordController.dispose();
+    loginEmailController.dispose();
+    loginPasswordController.dispose();
 
+    mobileController.dispose();
+    otpController.dispose();
     nameController.dispose();
     registerEmailController.dispose();
     registerPasswordController.dispose();
@@ -59,259 +67,47 @@ class _LoginPageState extends State<LoginPage> {
     addressController.dispose();
     pinCodeController.dispose();
 
-    mobileController.dispose();
-    otpController.dispose();
-
     super.dispose();
   }
 
-  void _goBack() {
-    if (isLoading) return;
+  // ============================================================
+  // COMMON MESSAGE
+  // ============================================================
 
-    final navigator = Navigator.of(context);
-
-    if (navigator.canPop()) {
-      navigator.pop();
-    } else {
-      navigator.pushNamedAndRemoveUntil(
-        '/',
-        (route) => false,
-      );
-    }
-  }
-
-  void showMessage(
+  void _showMessage(
     String message, {
-    bool isError = false,
+    bool error = false,
   }) {
     if (!mounted) return;
 
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          message,
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        backgroundColor:
-            isError ? Colors.red.shade600 : null,
+        content: Text(message),
+        backgroundColor: error ? Colors.red : Colors.green,
         behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
-      ),
-    );
-  }
-
-  String _normalizeStatus(dynamic value) {
-    final status =
-        value?.toString().trim().toLowerCase() ?? '';
-
-    switch (status) {
-      case 'pending':
-      case 'pending_documents':
-      case 'documents_pending':
-      case 'document_pending':
-        return 'pending_documents';
-
-      case 'pending_approval':
-      case 'pending approval':
-      case 'waiting_for_approval':
-      case 'submitted':
-        return 'pending_approval';
-
-      case 'approved':
-      case 'active':
-      case 'verified':
-        return 'approved';
-
-      case 'rejected':
-      case 'declined':
-        return 'rejected';
-
-      default:
-        return status;
-    }
-  }
-
-  // ============================================================
-  // COURIER LOGIN
-  // ============================================================
-
-  Future<void> _handleCourierLogin(User user) async {
-    final uid = user.uid;
-
-    Map<String, dynamic>? courierData;
-
-    try {
-      final courierSnapshot =
-          await _firestore
-              .collection('couriers')
-              .doc(uid)
-              .get();
-
-      if (courierSnapshot.exists) {
-        courierData = courierSnapshot.data();
-      }
-    } catch (_) {}
-
-    if (courierData == null) {
-      try {
-        final userSnapshot =
-            await _firestore
-                .collection('users')
-                .doc(uid)
-                .get();
-
-        if (userSnapshot.exists) {
-          final data = userSnapshot.data();
-
-          if (data != null) {
-            final role =
-                data['role']?.toString().toLowerCase() ?? '';
-
-            if (role == 'courier') {
-              courierData = data;
-            }
-          }
-        }
-      } catch (_) {}
-    }
-
-    if (courierData == null) {
-      if (!mounted) return;
-
-      showMessage('Login successful.');
-
-      Navigator.pop(context, true);
-      return;
-    }
-
-    final data = courierData;
-
-    final status = _normalizeStatus(
-      data['status'] ??
-          data['registrationStatus'] ??
-          data['approvalStatus'],
-    );
-
-    final approvedByAdmin =
-        data['approvedByAdmin'] == true ||
-        data['isApproved'] == true ||
-        data['approved'] == true;
-
-    final active = data['active'] == true;
-
-    final documentsSubmitted =
-        data['documentsSubmitted'] == true;
-
-    if (status == 'approved' &&
-        approvedByAdmin &&
-        active) {
-      if (!mounted) return;
-
-      showMessage(
-        'Courier login successful.',
-      );
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const CourierPanel(),
-        ),
-      );
-
-      return;
-    }
-
-    if (status == 'rejected') {
-      if (!mounted) return;
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const CourierDocumentsPage(),
-        ),
-      );
-
-      return;
-    }
-
-    if (!documentsSubmitted ||
-        status == 'pending_documents' ||
-        status.isEmpty) {
-      if (!mounted) return;
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const CourierDocumentsPage(),
-        ),
-      );
-
-      return;
-    }
-
-    if (status == 'pending_approval' ||
-        !approvedByAdmin ||
-        !active) {
-      if (!mounted) return;
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const CourierDocumentsPage(),
-        ),
-      );
-
-      return;
-    }
-
-    if (!mounted) return;
-
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const CourierDocumentsPage(),
       ),
     );
   }
 
   // ============================================================
-  // NORMAL LOGIN
+  // LOGIN
   // ============================================================
 
   Future<void> login() async {
-    final email = emailController.text.trim();
-    final password = passwordController.text;
+    final email = loginEmailController.text.trim();
+    final password = loginPasswordController.text;
 
     if (email.isEmpty) {
-      showMessage(
-        'Email enter karein.',
-        isError: true,
-      );
-      return;
-    }
-
-    if (!email.contains('@')) {
-      showMessage(
-        'Valid email enter karein.',
-        isError: true,
-      );
+      _showMessage("Please enter your email.", error: true);
       return;
     }
 
     if (password.isEmpty) {
-      showMessage(
-        'Password enter karein.',
-        isError: true,
-      );
+      _showMessage("Please enter your password.", error: true);
       return;
     }
-
-    FocusScope.of(context).unfocus();
 
     setState(() {
       isLoading = true;
@@ -324,66 +120,55 @@ class _LoginPageState extends State<LoginPage> {
         password: password,
       );
 
-      final user = credential.user;
+      final User? user = credential.user;
 
       if (user == null) {
-        showMessage(
-          'Login failed.',
-          isError: true,
+        _showMessage(
+          "Login failed. Please try again.",
+          error: true,
         );
         return;
       }
 
-      await _handleCourierLogin(user);
+      await _handleUserLogin(user);
+
     } on FirebaseAuthException catch (e) {
-      String message = 'Login failed.';
+      String message;
 
       switch (e.code) {
+        case 'invalid-email':
+          message = "Invalid email address.";
+          break;
+
         case 'user-not-found':
-          message =
-              'Is email se account nahi mila.';
+          message = "No account found with this email.";
           break;
 
         case 'wrong-password':
         case 'invalid-credential':
-          message =
-              'Email ya password galat hai.';
-          break;
-
-        case 'invalid-email':
-          message =
-              'Email address valid nahi hai.';
+          message = "Incorrect email or password.";
           break;
 
         case 'user-disabled':
-          message =
-              'Ye account disabled hai.';
+          message = "This account has been disabled.";
           break;
 
         case 'too-many-requests':
           message =
-              'Bahut attempts ho gaye. Thodi der baad try karein.';
+              "Too many attempts. Please try again later.";
           break;
 
-        case 'network-request-failed':
+        default:
           message =
-              'Internet connection check karein.';
-          break;
-
-        case 'operation-not-allowed':
-          message =
-              'Email/Password login Firebase mein enabled nahi hai.';
-          break;
+              e.message ?? "Login failed. Please try again.";
       }
 
-      showMessage(
-        message,
-        isError: true,
-      );
-    } catch (_) {
-      showMessage(
-        'Login ke time problem hui. Please try again.',
-        isError: true,
+      _showMessage(message, error: true);
+
+    } catch (e) {
+      _showMessage(
+        "Something went wrong. Please try again.",
+        error: true,
       );
     } finally {
       if (mounted) {
@@ -395,206 +180,438 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   // ============================================================
-  // SEND MOBILE OTP
+  // HANDLE USER LOGIN / COURIER LOGIN
   // ============================================================
 
-  Future<void> sendOtp() async {
+  Future<void> _handleUserLogin(User user) async {
+    try {
+      DocumentSnapshot<Map<String, dynamic>> userDoc =
+          await _firestore
+              .collection('users')
+              .doc(user.uid)
+              .get();
+
+      String? role;
+
+      if (userDoc.exists) {
+        final data = userDoc.data();
+
+        if (data != null) {
+          role = data['role']?.toString().toLowerCase();
+        }
+      }
+
+      // --------------------------------------------------------
+      // COURIER
+      // --------------------------------------------------------
+
+      if (role == 'courier') {
+        await _handleCourierLogin(user.uid);
+        return;
+      }
+
+      // --------------------------------------------------------
+      // CUSTOMER
+      // --------------------------------------------------------
+
+      if (!mounted) return;
+
+      Navigator.pushReplacementNamed(
+        context,
+        '/',
+      );
+
+    } catch (e) {
+      _showMessage(
+        "Unable to load account details.",
+        error: true,
+      );
+    }
+  }
+
+  // ============================================================
+  // COURIER LOGIN
+  // ============================================================
+
+  Future<void> _handleCourierLogin(String uid) async {
+    try {
+      DocumentSnapshot<Map<String, dynamic>> courierDoc =
+          await _firestore
+              .collection('couriers')
+              .doc(uid)
+              .get();
+
+      Map<String, dynamic>? data;
+
+      if (courierDoc.exists) {
+        data = courierDoc.data();
+      }
+
+      // Fallback to users collection
+      if (data == null) {
+        final userDoc = await _firestore
+            .collection('users')
+            .doc(uid)
+            .get();
+
+        if (userDoc.exists) {
+          data = userDoc.data();
+        }
+      }
+
+      final String status =
+          (data?['status'] ??
+                  data?['approvalStatus'] ??
+                  data?['registrationStatus'] ??
+                  '')
+              .toString()
+              .toLowerCase()
+              .trim();
+
+      if (!mounted) return;
+
+      // Approved courier
+      if (status == 'approved' ||
+          status == 'active' ||
+          status == 'verified') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const CourierPanel(),
+          ),
+        );
+        return;
+      }
+
+      // Pending documents / approval
+      if (status == 'pending_documents' ||
+          status == 'pending-approval' ||
+          status == 'pending_approval' ||
+          status == 'pending' ||
+          status.isEmpty) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const CourierDocumentsPage(),
+          ),
+        );
+        return;
+      }
+
+      // Rejected
+      if (status == 'rejected') {
+        _showMessage(
+          "Your courier application has been rejected.",
+          error: true,
+        );
+        return;
+      }
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const CourierDocumentsPage(),
+        ),
+      );
+
+    } catch (e) {
+      _showMessage(
+        "Unable to load courier account.",
+        error: true,
+      );
+    }
+  }
+
+  // ============================================================
+  // SEND OTP
+  // ============================================================
+
+  Future<void> sendOtp({bool resend = false}) async {
     final mobile =
-        mobileController.text.trim();
+        mobileController.text.trim().replaceAll(' ', '');
 
-    if (mobile.isEmpty) {
-      showMessage(
-        'Mobile number enter karein.',
-        isError: true,
+    if (mobile.length != 10) {
+      _showMessage(
+        "Please enter a valid 10-digit mobile number.",
+        error: true,
       );
       return;
     }
-
-    if (!RegExp(r'^[0-9]{10}$').hasMatch(mobile)) {
-      showMessage(
-        '10 digit valid mobile number enter karein.',
-        isError: true,
-      );
-      return;
-    }
-
-    FocusScope.of(context).unfocus();
 
     setState(() {
       isLoading = true;
     });
 
-    final phoneNumber = '+91$mobile';
+    final String phoneNumber = '+91$mobile';
 
     try {
       await _auth.verifyPhoneNumber(
         phoneNumber: phoneNumber,
 
+        timeout: const Duration(seconds: 60),
+
         verificationCompleted:
             (PhoneAuthCredential credential) async {
           // Android automatic verification.
-          // Registration flow will continue after
-          // the OTP verification state is available.
+          try {
+            await _completePhoneVerification(credential);
+          } catch (_) {}
         },
 
-        verificationFailed:
-            (FirebaseAuthException e) {
+        verificationFailed: (FirebaseAuthException e) {
           if (!mounted) return;
 
-          String message =
-              'OTP send nahi ho saka.';
+          setState(() {
+            isLoading = false;
+          });
 
-          if (e.code == 'invalid-phone-number') {
-            message =
-                'Mobile number valid nahi hai.';
-          } else if (e.code ==
-              'too-many-requests') {
-            message =
-                'Bahut OTP requests ho gayi hain. Thodi der baad try karein.';
-          } else if (e.code ==
-              'quota-exceeded') {
-            message =
-                'Firebase SMS quota exceed ho gaya.';
-          } else if (e.message != null &&
-              e.message!.isNotEmpty) {
-            message = e.message!;
+          String message;
+
+          switch (e.code) {
+            case 'invalid-phone-number':
+              message =
+                  "Invalid mobile number.";
+              break;
+
+            case 'too-many-requests':
+              message =
+                  "Too many OTP requests. Please try later.";
+              break;
+
+            case 'quota-exceeded':
+              message =
+                  "Firebase SMS quota exceeded.";
+              break;
+
+            case 'app-not-authorized':
+              message =
+                  "This app is not authorized for Firebase Phone Authentication.";
+              break;
+
+            default:
+              message =
+                  e.message ??
+                      "OTP could not be sent.";
           }
 
-          showMessage(
+          _showMessage(
             message,
-            isError: true,
+            error: true,
           );
         },
 
         codeSent:
-            (String id, int? resendToken) {
+            (String verificationIdValue,
+                int? resendTokenValue) {
           if (!mounted) return;
 
           setState(() {
-            verificationId = id;
+            verificationId =
+                verificationIdValue;
+
+            resendToken =
+                resendTokenValue;
+
             otpSent = true;
+            otpVerified = false;
+            isLoading = false;
           });
 
-          showMessage(
-            'OTP send ho gaya.',
+          _showMessage(
+            resend
+                ? "OTP resent successfully."
+                : "OTP sent to your mobile number.",
           );
         },
 
         codeAutoRetrievalTimeout:
-            (String id) {
-          verificationId = id;
+            (String verificationIdValue) {
+          verificationId =
+              verificationIdValue;
+
+          if (mounted) {
+            setState(() {
+              isLoading = false;
+            });
+          }
         },
+
+        forceResendingToken:
+            resend ? resendToken : null,
       );
-    } catch (_) {
-      showMessage(
-        'OTP send karte waqt problem hui.',
-        isError: true,
-      );
-    } finally {
+    } catch (e) {
       if (mounted) {
         setState(() {
           isLoading = false;
         });
       }
+
+      _showMessage(
+        "Unable to send OTP. Please try again.",
+        error: true,
+      );
     }
   }
 
   // ============================================================
-  // VERIFY MOBILE OTP
+  // VERIFY OTP
   // ============================================================
 
   Future<void> verifyOtp() async {
-    final otp =
-        otpController.text.trim();
+    final otp = otpController.text.trim();
 
     if (verificationId == null) {
-      showMessage(
-        'Pehle OTP send karein.',
-        isError: true,
+      _showMessage(
+        "Please request OTP first.",
+        error: true,
       );
       return;
     }
 
-    if (!RegExp(r'^[0-9]{6}$').hasMatch(otp)) {
-      showMessage(
-        '6 digit OTP enter karein.',
-        isError: true,
+    if (otp.length != 6) {
+      _showMessage(
+        "Please enter the 6-digit OTP.",
+        error: true,
       );
       return;
     }
-
-    FocusScope.of(context).unfocus();
 
     setState(() {
       isLoading = true;
     });
 
     try {
-      final credential =
+      final PhoneAuthCredential credential =
           PhoneAuthProvider.credential(
         verificationId: verificationId!,
         smsCode: otp,
       );
 
-      /*
-       * IMPORTANT:
-       *
-       * Yahan phone credential ko sign-in nahi kar rahe,
-       * kyunki final customer account Email + Password
-       * se login karega.
-       *
-       * Pehle OTP credential ko temporary verify karna
-       * zaroori hai.
-       *
-       * Firebase Phone Auth ke saath production-grade
-       * account linking/custom-token flow backend ke
-       * through handle kiya ja sakta hai.
-       */
-
-      // Firebase credential basic validation.
-      if (credential.smsCode != otp) {
-        showMessage(
-          'OTP verification failed.',
-          isError: true,
-        );
-        return;
-      }
-
-      setState(() {
-        otpVerified = true;
-      });
-
-      showMessage(
-        'Mobile OTP verified successfully.',
+      await _completePhoneVerification(
+        credential,
       );
+
     } on FirebaseAuthException catch (e) {
-      String message =
-          'OTP galat hai ya expire ho gaya.';
-
-      if (e.code == 'invalid-verification-code') {
-        message =
-            'OTP galat hai.';
-      } else if (e.code ==
-          'session-expired') {
-        message =
-            'OTP expire ho gaya. Naya OTP mangwayein.';
-      }
-
-      showMessage(
-        message,
-        isError: true,
-      );
-    } catch (_) {
-      showMessage(
-        'OTP verification mein problem hui.',
-        isError: true,
-      );
-    } finally {
       if (mounted) {
         setState(() {
           isLoading = false;
         });
       }
+
+      String message;
+
+      switch (e.code) {
+        case 'invalid-verification-code':
+          message =
+              "Incorrect OTP. Please check and try again.";
+          break;
+
+        case 'session-expired':
+          message =
+              "OTP expired. Please request a new OTP.";
+          break;
+
+        case 'credential-already-in-use':
+          message =
+              "This mobile number is already registered.";
+          break;
+
+        default:
+          message =
+              e.message ??
+                  "OTP verification failed.";
+      }
+
+      _showMessage(
+        message,
+        error: true,
+      );
+
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
+
+      _showMessage(
+        "OTP verification failed.",
+        error: true,
+      );
+    }
+  }
+
+  // ============================================================
+  // COMPLETE PHONE VERIFICATION
+  // ============================================================
+
+  Future<void> _completePhoneVerification(
+    PhoneAuthCredential credential,
+  ) async {
+    try {
+      UserCredential result;
+
+      final currentUser = _auth.currentUser;
+
+      // If no user exists, sign in using phone.
+      if (currentUser == null) {
+        result = await _auth.signInWithCredential(
+          credential,
+        );
+      } else {
+        // If user already exists, link phone.
+        result = await currentUser.linkWithCredential(
+          credential,
+        );
+      }
+
+      final user = result.user;
+
+      if (user == null) {
+        throw FirebaseAuthException(
+          code: 'phone-user-null',
+          message: 'Phone verification failed.',
+        );
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        otpVerified = true;
+        isLoading = false;
+      });
+
+      _showMessage(
+        "Mobile number verified successfully.",
+      );
+
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
+
+      if (e.code == 'provider-already-linked') {
+        setState(() {
+          otpVerified = true;
+        });
+
+        _showMessage(
+          "Mobile number is already verified.",
+        );
+        return;
+      }
+
+      if (e.code == 'credential-already-in-use') {
+        _showMessage(
+          "This mobile number is already registered with another account.",
+          error: true,
+        );
+        return;
+      }
+
+      rethrow;
     }
   }
 
@@ -604,28 +621,22 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> registerCustomer() async {
     if (!otpVerified) {
-      showMessage(
-        'Pehle mobile OTP verify karein.',
-        isError: true,
+      _showMessage(
+        "Please verify your mobile number with OTP first.",
+        error: true,
       );
       return;
     }
 
-    final name =
-        nameController.text.trim();
-
+    final name = nameController.text.trim();
     final email =
         registerEmailController.text.trim();
-
     final password =
         registerPasswordController.text;
-
     final confirmPassword =
         confirmPasswordController.text;
-
     final address =
         addressController.text.trim();
-
     final pinCode =
         pinCodeController.text.trim();
 
@@ -633,81 +644,136 @@ class _LoginPageState extends State<LoginPage> {
         mobileController.text.trim();
 
     if (name.isEmpty) {
-      showMessage(
-        'Name enter karein.',
-        isError: true,
+      _showMessage(
+        "Please enter your name.",
+        error: true,
       );
       return;
     }
 
-    if (email.isEmpty ||
-        !email.contains('@')) {
-      showMessage(
-        'Valid email enter karein.',
-        isError: true,
+    if (email.isEmpty) {
+      _showMessage(
+        "Please enter your email.",
+        error: true,
+      );
+      return;
+    }
+
+    if (!email.contains('@')) {
+      _showMessage(
+        "Please enter a valid email.",
+        error: true,
       );
       return;
     }
 
     if (password.length < 6) {
-      showMessage(
-        'Password kam se kam 6 characters ka hona chahiye.',
-        isError: true,
+      _showMessage(
+        "Password must be at least 6 characters.",
+        error: true,
       );
       return;
     }
 
     if (password != confirmPassword) {
-      showMessage(
-        'Password aur Confirm Password same hona chahiye.',
-        isError: true,
+      _showMessage(
+        "Passwords do not match.",
+        error: true,
       );
       return;
     }
 
     if (address.isEmpty) {
-      showMessage(
-        'Address enter karein.',
-        isError: true,
+      _showMessage(
+        "Please enter your address.",
+        error: true,
       );
       return;
     }
 
-    if (!RegExp(r'^[0-9]{6}$').hasMatch(pinCode)) {
-      showMessage(
-        '6 digit PIN Code enter karein.',
-        isError: true,
+    if (pinCode.length != 6) {
+      _showMessage(
+        "Please enter a valid 6-digit PIN code.",
+        error: true,
       );
       return;
     }
-
-    FocusScope.of(context).unfocus();
 
     setState(() {
       isLoading = true;
     });
 
-    UserCredential? credential;
-
     try {
-      // Create Email + Password account.
-      credential =
-          await _auth.createUserWithEmailAndPassword(
+      User? user = _auth.currentUser;
+
+      // --------------------------------------------------------
+      // SAFETY CHECK
+      // --------------------------------------------------------
+
+      if (user == null) {
+        throw FirebaseAuthException(
+          code: 'phone-session-missing',
+          message:
+              'Phone verification session is missing.',
+        );
+      }
+
+      // --------------------------------------------------------
+      // LINK EMAIL + PASSWORD TO SAME PHONE USER
+      // --------------------------------------------------------
+
+      final emailCredential =
+          EmailAuthProvider.credential(
         email: email,
         password: password,
       );
 
-      final user = credential.user;
+      UserCredential linkedCredential;
+
+      try {
+        linkedCredential =
+            await user.linkWithCredential(
+          emailCredential,
+        );
+      } on FirebaseAuthException catch (e) {
+        // If email provider is already linked,
+        // continue only if it is the current user.
+        if (e.code ==
+            'provider-already-linked') {
+          linkedCredential =
+              await user.reload().then(
+                (_) async => UserCredential(
+                  additionalUserInfo: null,
+                  credential: emailCredential,
+                  user: _auth.currentUser,
+                ),
+              );
+        } else {
+          rethrow;
+        }
+      }
+
+      user = linkedCredential.user ??
+          _auth.currentUser;
 
       if (user == null) {
-        throw Exception(
-          'Firebase user creation failed.',
+        throw FirebaseAuthException(
+          code: 'user-null',
+          message:
+              'Unable to create account.',
         );
       }
 
+      // --------------------------------------------------------
+      // UPDATE DISPLAY NAME
+      // --------------------------------------------------------
+
       await user.updateDisplayName(name);
 
-      // Save complete customer profile.
+      // --------------------------------------------------------
+      // FIRESTORE CUSTOMER DATA
+      // --------------------------------------------------------
+
       await _firestore
           .collection('users')
           .doc(user.uid)
@@ -718,14 +784,21 @@ class _LoginPageState extends State<LoginPage> {
           'email': email,
           'mobile': mobile,
           'phone': '+91$mobile',
+
           'mobileVerified': true,
+
           'address': address,
           'pinCode': pinCode,
+
           'role': 'customer',
           'status': 'active',
           'active': true,
+
+          'registrationComplete': true,
+
           'createdAt':
               FieldValue.serverTimestamp(),
+
           'updatedAt':
               FieldValue.serverTimestamp(),
         },
@@ -734,74 +807,66 @@ class _LoginPageState extends State<LoginPage> {
 
       if (!mounted) return;
 
-      showMessage(
-        'Registration successful. Ab Email aur Password se login kar sakte hain.',
+      _showMessage(
+        "Account created successfully.",
       );
 
-      // Return to previous page.
-      Navigator.pop(context, true);
+      await Future.delayed(
+        const Duration(milliseconds: 700),
+      );
+
+      if (!mounted) return;
+
+      Navigator.pushReplacementNamed(
+        context,
+        '/',
+      );
+
     } on FirebaseAuthException catch (e) {
-      String message =
-          'Registration failed.';
+      String message;
 
       switch (e.code) {
         case 'email-already-in-use':
           message =
-              'Is email se account pehle se registered hai.';
-          break;
-
-        case 'weak-password':
-          message =
-              'Password bahut weak hai. Kam se kam 6 characters rakhein.';
+              "This email is already registered.";
           break;
 
         case 'invalid-email':
           message =
-              'Email address valid nahi hai.';
+              "Please enter a valid email.";
           break;
 
-        case 'operation-not-allowed':
+        case 'weak-password':
           message =
-              'Firebase mein Email/Password Authentication enabled nahi hai.';
+              "Password is too weak.";
           break;
 
-        case 'network-request-failed':
+        case 'provider-already-linked':
           message =
-              'Internet connection check karein.';
+              "Email/password is already linked.";
           break;
 
-        case 'too-many-requests':
+        case 'credential-already-in-use':
           message =
-              'Bahut attempts ho gaye. Thodi der baad try karein.';
+              "This email is already connected to another account.";
           break;
+
+        default:
+          message =
+              e.message ??
+                  "Registration failed.";
       }
 
-      showMessage(
+      _showMessage(
         message,
-        isError: true,
-      );
-    } on FirebaseException catch (e) {
-      if (e.code == 'permission-denied') {
-        showMessage(
-          'Registration hua, lekin customer data save karne ki Firebase permission nahi hai.',
-          isError: true,
-        );
-      } else {
-        showMessage(
-          'Customer data save nahi ho saka.',
-          isError: true,
-        );
-      }
-    } catch (_) {
-      showMessage(
-        'Registration ke time problem hui. Please try again.',
-        isError: true,
+        error: true,
       );
 
-      // Try to rollback newly created auth user.
-      try {
-        await credential?.user?.delete();
-      } catch (_) {}
+    } catch (e) {
+      _showMessage(
+        "Registration failed. Please try again.",
+        error: true,
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -815,10 +880,8 @@ class _LoginPageState extends State<LoginPage> {
   // FORGOT PASSWORD
   // ============================================================
 
-  Future<void> forgotPassword() async {
-    if (isLoading) return;
-
-    await Navigator.push(
+  void forgotPassword() {
+    Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) =>
@@ -831,11 +894,10 @@ class _LoginPageState extends State<LoginPage> {
   // SWITCH LOGIN / REGISTER
   // ============================================================
 
-  void switchToRegister() {
-    if (isLoading) return;
-
+  void switchMode(bool loginMode) {
     setState(() {
-      isRegisterMode = true;
+      isLogin = loginMode;
+
       otpSent = false;
       otpVerified = false;
       verificationId = null;
@@ -843,192 +905,195 @@ class _LoginPageState extends State<LoginPage> {
     });
   }
 
-  void switchToLogin() {
-    if (isLoading) return;
-
-    setState(() {
-      isRegisterMode = false;
-    });
-  }
-
   // ============================================================
-  // INPUT DECORATION
+  // UI
   // ============================================================
 
-  InputDecoration inputDecoration({
-    required String label,
-    required IconData icon,
-    Widget? suffixIcon,
-  }) {
-    return InputDecoration(
-      labelText: label,
-      prefixIcon: Icon(
-        icon,
-        color: primary,
-      ),
-      suffixIcon: suffixIcon,
-      filled: true,
-      fillColor: Colors.grey.shade50,
-      contentPadding:
-          const EdgeInsets.symmetric(
-        horizontal: 16,
-        vertical: 17,
-      ),
-      border: OutlineInputBorder(
-        borderRadius:
-            BorderRadius.circular(16),
-        borderSide: BorderSide(
-          color: Colors.grey.shade200,
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor:
+          const Color(0xFFF7F8FA),
+
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        title: const Text(
+          "Preesho",
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius:
-            BorderRadius.circular(16),
-        borderSide: BorderSide(
-          color: Colors.grey.shade200,
-        ),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius:
-            BorderRadius.circular(16),
-        borderSide: const BorderSide(
-          color: primary,
-          width: 1.7,
+
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
+            children: [
+
+              const SizedBox(height: 15),
+
+              const Text(
+                "Welcome to Preesho",
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              Text(
+                isLogin
+                    ? "Login to continue shopping"
+                    : "Create your Preesho account",
+                style: TextStyle(
+                  fontSize: 15,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+
+              const SizedBox(height: 25),
+
+              // ==================================================
+              // LOGIN / REGISTER SWITCH
+              // ==================================================
+
+              Container(
+                padding:
+                    const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade200,
+                  borderRadius:
+                      BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _modeButton(
+                        title: "Login",
+                        selected: isLogin,
+                        onTap: () =>
+                            switchMode(true),
+                      ),
+                    ),
+                    Expanded(
+                      child: _modeButton(
+                        title: "New User",
+                        selected: !isLogin,
+                        onTap: () =>
+                            switchMode(false),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 25),
+
+              // ==================================================
+              // LOGIN
+              // ==================================================
+
+              if (isLogin)
+                _buildLoginForm(),
+
+              // ==================================================
+              // REGISTER
+              // ==================================================
+
+              if (!isLogin)
+                _buildRegisterForm(),
+
+              const SizedBox(height: 25),
+
+              Center(
+                child: Text(
+                  "© Preesho",
+                  style: TextStyle(
+                    color: Colors.grey.shade500,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   // ============================================================
-  // LOGIN UI
+  // LOGIN FORM
   // ============================================================
 
   Widget _buildLoginForm() {
     return Column(
-      crossAxisAlignment:
-          CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Sign in',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
 
-        const SizedBox(height: 6),
-
-        Text(
-          'Registered Email aur Password se login karein.',
-          style: TextStyle(
-            color: Colors.grey.shade600,
-            fontSize: 12,
-          ),
-        ),
-
-        const SizedBox(height: 22),
-
-        TextField(
-          controller: emailController,
+        _textField(
+          controller: loginEmailController,
+          label: "Email",
+          hint: "Enter registered email",
+          icon: Icons.email_outlined,
           keyboardType:
               TextInputType.emailAddress,
-          textInputAction:
-              TextInputAction.next,
-          enabled: !isLoading,
-          decoration: inputDecoration(
-            label: 'Email Address',
-            icon: Icons.email_outlined,
-          ),
         ),
 
-        const SizedBox(height: 15),
+        const SizedBox(height: 16),
 
-        TextField(
-          controller: passwordController,
-          obscureText: obscurePassword,
-          textInputAction:
-              TextInputAction.done,
-          enabled: !isLoading,
-          onSubmitted: (_) {
-            if (!isLoading) {
-              login();
-            }
-          },
-          decoration: inputDecoration(
-            label: 'Password',
-            icon: Icons.lock_outline_rounded,
-            suffixIcon: IconButton(
-              onPressed: isLoading
-                  ? null
-                  : () {
-                      setState(() {
-                        obscurePassword =
-                            !obscurePassword;
-                      });
-                    },
-              icon: Icon(
-                obscurePassword
-                    ? Icons
-                        .visibility_off_outlined
-                    : Icons
-                        .visibility_outlined,
-              ),
+        _textField(
+          controller: loginPasswordController,
+          label: "Password",
+          hint: "Enter password",
+          icon: Icons.lock_outline,
+          obscureText: obscureLoginPassword,
+          suffixIcon: IconButton(
+            icon: Icon(
+              obscureLoginPassword
+                  ? Icons.visibility_outlined
+                  : Icons
+                      .visibility_off_outlined,
             ),
+            onPressed: () {
+              setState(() {
+                obscureLoginPassword =
+                    !obscureLoginPassword;
+              });
+            },
           ),
         ),
 
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
 
         Align(
-          alignment:
-              Alignment.centerRight,
+          alignment: Alignment.centerRight,
           child: TextButton(
-            onPressed: isLoading
-                ? null
-                : forgotPassword,
+            onPressed: forgotPassword,
             child: const Text(
-              'Forgot Password?',
-              style: TextStyle(
-                color: primary,
-                fontWeight:
-                    FontWeight.w800,
-              ),
+              "Forgot Password?",
             ),
           ),
         ),
 
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
 
         _primaryButton(
-          text: 'Login',
-          icon: Icons.login_rounded,
-          onPressed:
-              isLoading ? null : login,
-        ),
-
-        const SizedBox(height: 18),
-
-        Center(
-          child: TextButton(
-            onPressed: isLoading
-                ? null
-                : switchToRegister,
-            child: const Text(
-              'New User? Create Account',
-              style: TextStyle(
-                color: primary,
-                fontWeight:
-                    FontWeight.w800,
-              ),
-            ),
-          ),
+          title: "Login",
+          onPressed: isLoading
+              ? null
+              : login,
         ),
       ],
     );
   }
 
   // ============================================================
-  // REGISTRATION UI
+  // REGISTER FORM
   // ============================================================
 
   Widget _buildRegisterForm() {
@@ -1036,157 +1101,98 @@ class _LoginPageState extends State<LoginPage> {
       crossAxisAlignment:
           CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Create Account',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
 
-        const SizedBox(height: 6),
-
-        Text(
-          'Pehle mobile OTP verify karein, phir apni details complete karein.',
-          style: TextStyle(
-            color: Colors.grey.shade600,
-            fontSize: 12,
-            height: 1.4,
-          ),
-        ),
-
-        const SizedBox(height: 22),
-
+        // ------------------------------------------------------
         // MOBILE
-        TextField(
+        // ------------------------------------------------------
+
+        _textField(
           controller: mobileController,
+          label: "Mobile Number",
+          hint: "10-digit mobile number",
+          icon: Icons.phone_outlined,
           keyboardType:
               TextInputType.phone,
+          enabled: !otpVerified,
           maxLength: 10,
-          enabled:
-              !isLoading && !otpVerified,
-          decoration: inputDecoration(
-            label: 'Mobile Number',
-            icon:
-                Icons.phone_android_rounded,
-            suffixIcon: otpVerified
-                ? const Icon(
-                    Icons.verified_rounded,
-                    color: Colors.green,
-                  )
-                : null,
-          ),
         ),
 
-        if (!otpVerified) ...[
-          const SizedBox(height: 4),
+        const SizedBox(height: 12),
 
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: OutlinedButton.icon(
-              onPressed: isLoading
-                  ? null
-                  : sendOtp,
-              icon: const Icon(
-                Icons.sms_rounded,
-              ),
-              label: Text(
-                otpSent
-                    ? 'Resend OTP'
-                    : 'Send OTP',
-                style: const TextStyle(
-                  fontWeight:
-                      FontWeight.w800,
-                ),
-              ),
-              style:
-                  OutlinedButton.styleFrom(
-                foregroundColor:
-                    primary,
-                side:
-                    const BorderSide(
-                  color: primary,
-                ),
-                shape:
-                    RoundedRectangleBorder(
-                  borderRadius:
-                      BorderRadius.circular(
-                    15,
-                  ),
-                ),
-              ),
-            ),
+        if (!otpVerified)
+          _primaryButton(
+            title: otpSent
+                ? "Resend OTP"
+                : "Send OTP",
+            onPressed: isLoading
+                ? null
+                : () => sendOtp(
+                      resend: otpSent,
+                    ),
           ),
-        ],
+
+        // ------------------------------------------------------
+        // OTP
+        // ------------------------------------------------------
 
         if (otpSent && !otpVerified) ...[
-          const SizedBox(height: 15),
+          const SizedBox(height: 16),
 
-          TextField(
+          _textField(
             controller: otpController,
+            label: "OTP",
+            hint: "Enter 6-digit OTP",
+            icon: Icons.sms_outlined,
             keyboardType:
                 TextInputType.number,
             maxLength: 6,
-            enabled: !isLoading,
-            decoration:
-                inputDecoration(
-              label: 'Enter OTP',
-              icon:
-                  Icons.lock_clock_rounded,
-            ),
           ),
 
-          const SizedBox(height: 4),
+          const SizedBox(height: 12),
 
           _primaryButton(
-            text: 'Verify OTP',
-            icon:
-                Icons.verified_rounded,
+            title: "Verify OTP",
             onPressed: isLoading
                 ? null
                 : verifyOtp,
           ),
         ],
 
+        // ------------------------------------------------------
+        // VERIFIED
+        // ------------------------------------------------------
+
         if (otpVerified) ...[
-          const SizedBox(height: 18),
+          const SizedBox(height: 12),
 
           Container(
             width: double.infinity,
             padding:
-                const EdgeInsets.all(13),
-            decoration:
-                BoxDecoration(
-              color:
-                  Colors.green.withOpacity(
-                .08,
-              ),
+                const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.green
+                  .withOpacity(0.10),
               borderRadius:
-                  BorderRadius.circular(
-                14,
-              ),
+                  BorderRadius.circular(12),
               border: Border.all(
                 color: Colors.green
-                    .withOpacity(.2),
+                    .withOpacity(0.35),
               ),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(
-                  Icons
-                      .verified_rounded,
+                const Icon(
+                  Icons.verified,
                   color: Colors.green,
                 ),
-                SizedBox(width: 10),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Mobile number successfully verified.',
+                    "Mobile number verified successfully",
                     style: TextStyle(
-                      color:
-                          Colors.green,
+                      color: Colors.green.shade700,
                       fontWeight:
-                          FontWeight.w700,
+                          FontWeight.w600,
                     ),
                   ),
                 ),
@@ -1194,178 +1200,257 @@ class _LoginPageState extends State<LoginPage> {
             ),
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 22),
 
+          // ----------------------------------------------------
           // NAME
-          TextField(
-            controller:
-                nameController,
-            textCapitalization:
-                TextCapitalization.words,
-            enabled: !isLoading,
-            decoration:
-                inputDecoration(
-              label: 'Full Name',
-              icon:
-                  Icons.person_outline_rounded,
-            ),
+          // ----------------------------------------------------
+
+          _textField(
+            controller: nameController,
+            label: "Name",
+            hint: "Enter your full name",
+            icon: Icons.person_outline,
           ),
 
-          const SizedBox(height: 15),
+          const SizedBox(height: 16),
 
+          // ----------------------------------------------------
           // EMAIL
-          TextField(
+          // ----------------------------------------------------
+
+          _textField(
             controller:
                 registerEmailController,
+            label: "Email ID",
+            hint: "Enter email address",
+            icon: Icons.email_outlined,
             keyboardType:
                 TextInputType.emailAddress,
-            enabled: !isLoading,
-            decoration:
-                inputDecoration(
-              label: 'Email Address',
-              icon:
-                  Icons.email_outlined,
-            ),
           ),
 
-          const SizedBox(height: 15),
+          const SizedBox(height: 16),
 
+          // ----------------------------------------------------
           // PASSWORD DIRECTLY BELOW EMAIL
-          TextField(
+          // ----------------------------------------------------
+
+          _textField(
             controller:
                 registerPasswordController,
+            label: "Password",
+            hint: "Create password",
+            icon: Icons.lock_outline,
             obscureText:
                 obscureRegisterPassword,
-            enabled: !isLoading,
-            decoration:
-                inputDecoration(
-              label: 'Password',
-              icon:
-                  Icons.lock_outline_rounded,
-              suffixIcon:
-                  IconButton(
-                onPressed: isLoading
-                    ? null
-                    : () {
-                        setState(() {
-                          obscureRegisterPassword =
-                              !obscureRegisterPassword;
-                        });
-                      },
-                icon: Icon(
-                  obscureRegisterPassword
-                      ? Icons
-                          .visibility_off_outlined
-                      : Icons
-                          .visibility_outlined,
-                ),
+            suffixIcon: IconButton(
+              icon: Icon(
+                obscureRegisterPassword
+                    ? Icons
+                        .visibility_outlined
+                    : Icons
+                        .visibility_off_outlined,
               ),
+              onPressed: () {
+                setState(() {
+                  obscureRegisterPassword =
+                      !obscureRegisterPassword;
+                });
+              },
             ),
           ),
 
-          const SizedBox(height: 15),
+          const SizedBox(height: 16),
 
+          // ----------------------------------------------------
           // CONFIRM PASSWORD
-          TextField(
+          // ----------------------------------------------------
+
+          _textField(
             controller:
                 confirmPasswordController,
+            label: "Confirm Password",
+            hint: "Re-enter password",
+            icon: Icons.lock_reset_outlined,
             obscureText:
                 obscureConfirmPassword,
-            enabled: !isLoading,
-            decoration:
-                inputDecoration(
-              label:
-                  'Confirm Password',
-              icon:
-                  Icons
-                      .lock_reset_rounded,
-              suffixIcon:
-                  IconButton(
-                onPressed: isLoading
-                    ? null
-                    : () {
-                        setState(() {
-                          obscureConfirmPassword =
-                              !obscureConfirmPassword;
-                        });
-                      },
-                icon: Icon(
-                  obscureConfirmPassword
-                      ? Icons
-                          .visibility_off_outlined
-                      : Icons
-                          .visibility_outlined,
-                ),
+            suffixIcon: IconButton(
+              icon: Icon(
+                obscureConfirmPassword
+                    ? Icons
+                        .visibility_outlined
+                    : Icons
+                        .visibility_off_outlined,
               ),
+              onPressed: () {
+                setState(() {
+                  obscureConfirmPassword =
+                      !obscureConfirmPassword;
+                });
+              },
             ),
           ),
 
-          const SizedBox(height: 15),
+          const SizedBox(height: 16),
 
+          // ----------------------------------------------------
           // ADDRESS
-          TextField(
-            controller:
-                addressController,
+          // ----------------------------------------------------
+
+          _textField(
+            controller: addressController,
+            label: "Address",
+            hint: "Enter complete address",
+            icon: Icons.home_outlined,
             maxLines: 3,
-            enabled: !isLoading,
-            textCapitalization:
-                TextCapitalization.sentences,
-            decoration:
-                inputDecoration(
-              label: 'Address',
-              icon:
-                  Icons.location_on_outlined,
-            ),
           ),
 
-          const SizedBox(height: 15),
+          const SizedBox(height: 16),
 
+          // ----------------------------------------------------
           // PIN CODE
-          TextField(
-            controller:
-                pinCodeController,
+          // ----------------------------------------------------
+
+          _textField(
+            controller: pinCodeController,
+            label: "PIN Code",
+            hint: "6-digit PIN code",
+            icon: Icons.location_on_outlined,
             keyboardType:
                 TextInputType.number,
             maxLength: 6,
-            enabled: !isLoading,
-            decoration:
-                inputDecoration(
-              label: 'PIN Code',
-              icon:
-                  Icons.pin_drop_outlined,
-            ),
           ),
 
-          const SizedBox(height: 8),
+          const SizedBox(height: 22),
+
+          // ----------------------------------------------------
+          // CREATE ACCOUNT
+          // ----------------------------------------------------
 
           _primaryButton(
-            text: 'Create Account',
-            icon:
-                Icons.person_add_alt_1_rounded,
+            title: "Create Account",
             onPressed: isLoading
                 ? null
                 : registerCustomer,
           ),
         ],
+      ],
+    );
+  }
 
-        const SizedBox(height: 18),
+  // ============================================================
+  // MODE BUTTON
+  // ============================================================
 
-        Center(
-          child: TextButton(
-            onPressed: isLoading
-                ? null
-                : switchToLogin,
-            child: const Text(
-              'Already have an account? Login',
-              style: TextStyle(
-                color: primary,
-                fontWeight:
-                    FontWeight.w800,
-              ),
+  Widget _modeButton({
+    required String title,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration:
+            const Duration(milliseconds: 200),
+        padding:
+            const EdgeInsets.symmetric(
+          vertical: 12,
+        ),
+        decoration: BoxDecoration(
+          color: selected
+              ? Colors.white
+              : Colors.transparent,
+          borderRadius:
+              BorderRadius.circular(9),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: Colors.black
+                        .withOpacity(0.06),
+                    blurRadius: 5,
+                  ),
+                ]
+              : null,
+        ),
+        child: Center(
+          child: Text(
+            title,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: selected
+                  ? Colors.black
+                  : Colors.grey.shade600,
             ),
           ),
         ),
-      ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // TEXT FIELD
+  // ============================================================
+
+  Widget _textField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    bool obscureText = false,
+    Widget? suffixIcon,
+    TextInputType? keyboardType,
+    bool enabled = true,
+    int? maxLength,
+    int maxLines = 1,
+  }) {
+    return TextField(
+      controller: controller,
+      enabled: enabled,
+      obscureText: obscureText,
+      keyboardType: keyboardType,
+      maxLength: maxLength,
+      maxLines: obscureText ? 1 : maxLines,
+      decoration: InputDecoration(
+        counterText: "",
+        labelText: label,
+        hintText: hint,
+        prefixIcon: Icon(icon),
+        suffixIcon: suffixIcon,
+        filled: true,
+        fillColor: enabled
+            ? Colors.white
+            : Colors.grey.shade100,
+        border: OutlineInputBorder(
+          borderRadius:
+              BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder:
+            OutlineInputBorder(
+          borderRadius:
+              BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: Colors.grey.shade300,
+          ),
+        ),
+        focusedBorder:
+            OutlineInputBorder(
+          borderRadius:
+              BorderRadius.circular(12),
+          borderSide: const BorderSide(
+            color: Colors.blue,
+            width: 1.5,
+          ),
+        ),
+        disabledBorder:
+            OutlineInputBorder(
+          borderRadius:
+              BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: Colors.grey.shade300,
+          ),
+        ),
+      ),
     );
   }
 
@@ -1374,380 +1459,42 @@ class _LoginPageState extends State<LoginPage> {
   // ============================================================
 
   Widget _primaryButton({
-    required String text,
-    required IconData icon,
+    required String title,
     required VoidCallback? onPressed,
   }) {
     return SizedBox(
       width: double.infinity,
-      height: 56,
+      height: 52,
       child: ElevatedButton(
         onPressed: onPressed,
-        style:
-            ElevatedButton.styleFrom(
-          backgroundColor: primary,
-          foregroundColor:
-              Colors.white,
-          elevation: 3,
-          shadowColor:
-              primary.withOpacity(.25),
-          shape:
-              RoundedRectangleBorder(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor:
+              Colors.grey.shade400,
+          shape: RoundedRectangleBorder(
             borderRadius:
-                BorderRadius.circular(
-              17,
-            ),
+                BorderRadius.circular(12),
           ),
         ),
         child: isLoading
             ? const SizedBox(
-                height: 24,
-                width: 24,
+                width: 22,
+                height: 22,
                 child:
                     CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  valueColor:
-                      AlwaysStoppedAnimation<
-                          Color>(
-                    Colors.white,
-                  ),
+                  strokeWidth: 2,
+                  color: Colors.white,
                 ),
               )
-            : Row(
-                mainAxisAlignment:
-                    MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    icon,
-                    size: 21,
-                  ),
-                  const SizedBox(
-                    width: 9,
-                  ),
-                  Text(
-                    text,
-                    style:
-                        const TextStyle(
-                      fontSize: 16,
-                      fontWeight:
-                          FontWeight.w900,
-                    ),
-                  ),
-                ],
+            : Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight:
+                      FontWeight.w600,
+                ),
               ),
-      ),
-    );
-  }
-
-  // ============================================================
-  // BUILD
-  // ============================================================
-
-  @override
-  Widget build(BuildContext context) {
-    return PopScope(
-      canPop: !isLoading,
-      onPopInvokedWithResult:
-          (didPop, result) {
-        if (didPop) return;
-
-        if (!isLoading) {
-          _goBack();
-        }
-      },
-      child: Scaffold(
-        backgroundColor:
-            const Color(0xFFF7F7FA),
-        appBar: AppBar(
-          backgroundColor:
-              Colors.transparent,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          leading: IconButton(
-            onPressed:
-                isLoading ? null : _goBack,
-            icon: const Icon(
-              Icons.arrow_back_rounded,
-            ),
-          ),
-        ),
-        body: SafeArea(
-          child:
-              SingleChildScrollView(
-            physics:
-                const BouncingScrollPhysics(),
-            padding:
-                const EdgeInsets.fromLTRB(
-              20,
-              15,
-              20,
-              35,
-            ),
-            child: Column(
-              children: [
-                Container(
-                  height: 88,
-                  width: 88,
-                  decoration:
-                      BoxDecoration(
-                    gradient:
-                        const LinearGradient(
-                      colors: [
-                        primary,
-                        primaryDark,
-                      ],
-                      begin:
-                          Alignment.topLeft,
-                      end:
-                          Alignment.bottomRight,
-                    ),
-                    borderRadius:
-                        BorderRadius.circular(
-                      27,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: primary
-                            .withOpacity(
-                          .25,
-                        ),
-                        blurRadius: 25,
-                        offset:
-                            const Offset(
-                          0,
-                          11,
-                        ),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons
-                        .shopping_bag_rounded,
-                    color: Colors.white,
-                    size: 44,
-                  ),
-                ),
-
-                const SizedBox(
-                  height: 22,
-                ),
-
-                const Text(
-                  'Welcome to Preesho',
-                  textAlign:
-                      TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 27,
-                    fontWeight:
-                        FontWeight.w900,
-                    letterSpacing: -.6,
-                  ),
-                ),
-
-                const SizedBox(
-                  height: 8,
-                ),
-
-                Text(
-                  isRegisterMode
-                      ? 'Create your Preesho customer account.'
-                      : 'Login karke apne orders aur shopping ko manage karein.',
-                  textAlign:
-                      TextAlign.center,
-                  style: TextStyle(
-                    color:
-                        Colors.grey.shade600,
-                    fontSize: 13,
-                    height: 1.45,
-                  ),
-                ),
-
-                const SizedBox(
-                  height: 25,
-                ),
-
-                // MODE SWITCH
-                Container(
-                  padding:
-                      const EdgeInsets.all(
-                    5,
-                  ),
-                  decoration:
-                      BoxDecoration(
-                    color: Colors.white,
-                    borderRadius:
-                        BorderRadius.circular(
-                      16,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child:
-                            _modeButton(
-                          title: 'Login',
-                          selected:
-                              !isRegisterMode,
-                          onTap:
-                              switchToLogin,
-                        ),
-                      ),
-                      Expanded(
-                        child:
-                            _modeButton(
-                          title:
-                              'New User',
-                          selected:
-                              isRegisterMode,
-                          onTap:
-                              switchToRegister,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(
-                  height: 15,
-                ),
-
-                Container(
-                  width:
-                      double.infinity,
-                  padding:
-                      const EdgeInsets.all(
-                    20,
-                  ),
-                  decoration:
-                      BoxDecoration(
-                    color: Colors.white,
-                    borderRadius:
-                        BorderRadius.circular(
-                      25,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black
-                            .withOpacity(
-                          .055,
-                        ),
-                        blurRadius: 25,
-                        offset:
-                            const Offset(
-                          0,
-                          10,
-                        ),
-                      ),
-                    ],
-                  ),
-                  child: isRegisterMode
-                      ? _buildRegisterForm()
-                      : _buildLoginForm(),
-                ),
-
-                const SizedBox(
-                  height: 20,
-                ),
-
-                Container(
-                  width:
-                      double.infinity,
-                  padding:
-                      const EdgeInsets.all(
-                    16,
-                  ),
-                  decoration:
-                      BoxDecoration(
-                    color: primary
-                        .withOpacity(
-                      .07,
-                    ),
-                    borderRadius:
-                        BorderRadius.circular(
-                      18,
-                    ),
-                    border: Border.all(
-                      color: primary
-                          .withOpacity(
-                        .12,
-                      ),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons
-                            .security_rounded,
-                        color: primary,
-                        size: 24,
-                      ),
-                      const SizedBox(
-                        width: 12,
-                      ),
-                      Expanded(
-                        child: Text(
-                          'Aapki account information Firebase Authentication aur Firestore ke through securely manage hogi.',
-                          style:
-                              TextStyle(
-                            color: Colors
-                                .grey
-                                .shade700,
-                            fontSize: 12,
-                            height: 1.4,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _modeButton({
-    required String title,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: isLoading
-          ? null
-          : onTap,
-      child: AnimatedContainer(
-        duration:
-            const Duration(
-          milliseconds: 200,
-        ),
-        padding:
-            const EdgeInsets.symmetric(
-          vertical: 13,
-        ),
-        decoration:
-            BoxDecoration(
-          color: selected
-              ? primary
-              : Colors.transparent,
-          borderRadius:
-              BorderRadius.circular(
-            12,
-          ),
-        ),
-        child: Text(
-          title,
-          textAlign:
-              TextAlign.center,
-          style: TextStyle(
-            color: selected
-                ? Colors.white
-                : Colors.grey.shade700,
-            fontWeight:
-                FontWeight.w800,
-          ),
-        ),
       ),
     );
   }
