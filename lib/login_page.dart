@@ -1,6 +1,9 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import 'courier_documents_page.dart';
+import 'courier_panel.dart';
 import 'forgot_password_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -12,6 +15,7 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
@@ -29,6 +33,29 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
+  // ------------------------------------------------------------
+  // BACK
+  // ------------------------------------------------------------
+
+  void _goBack() {
+    if (isLoading) return;
+
+    final navigator = Navigator.of(context);
+
+    if (navigator.canPop()) {
+      navigator.pop();
+    } else {
+      navigator.pushNamedAndRemoveUntil(
+        '/',
+        (route) => false,
+      );
+    }
+  }
+
+  // ------------------------------------------------------------
+  // MESSAGE
+  // ------------------------------------------------------------
+
   void showMessage(
     String message, {
     bool isError = false,
@@ -43,7 +70,8 @@ class _LoginPageState extends State<LoginPage> {
             fontWeight: FontWeight.w600,
           ),
         ),
-        backgroundColor: isError ? Colors.red.shade600 : null,
+        backgroundColor:
+            isError ? Colors.red.shade600 : null,
         behavior: SnackBarBehavior.floating,
         margin: const EdgeInsets.all(16),
         shape: RoundedRectangleBorder(
@@ -52,6 +80,214 @@ class _LoginPageState extends State<LoginPage> {
       ),
     );
   }
+
+  // ------------------------------------------------------------
+  // STATUS NORMALIZATION
+  // ------------------------------------------------------------
+
+  String _normalizeStatus(dynamic value) {
+    final status = value?.toString().trim().toLowerCase() ?? '';
+
+    switch (status) {
+      case 'pending':
+      case 'pending_documents':
+      case 'documents_pending':
+      case 'document_pending':
+        return 'pending_documents';
+
+      case 'pending_approval':
+      case 'pending approval':
+      case 'waiting_for_approval':
+      case 'submitted':
+        return 'pending_approval';
+
+      case 'approved':
+      case 'active':
+      case 'verified':
+        return 'approved';
+
+      case 'rejected':
+      case 'declined':
+        return 'rejected';
+
+      default:
+        return status;
+    }
+  }
+
+  // ------------------------------------------------------------
+  // CHECK COURIER
+  // ------------------------------------------------------------
+
+  Future<void> _handleCourierLogin(User user) async {
+    final uid = user.uid;
+
+    Map<String, dynamic>? courierData;
+
+    // First check couriers collection.
+    try {
+      final courierSnapshot =
+          await _firestore
+              .collection('couriers')
+              .doc(uid)
+              .get();
+
+      if (courierSnapshot.exists) {
+        courierData = courierSnapshot.data();
+      }
+    } catch (_) {
+      // Continue with users collection fallback.
+    }
+
+    // Fallback to users collection.
+    if (courierData == null) {
+      try {
+        final userSnapshot =
+            await _firestore
+                .collection('users')
+                .doc(uid)
+                .get();
+
+        if (userSnapshot.exists) {
+          final data = userSnapshot.data();
+
+          if (data != null) {
+            final role =
+                data['role']?.toString().toLowerCase() ?? '';
+
+            if (role == 'courier') {
+              courierData = data;
+            }
+          }
+        }
+      } catch (_) {
+        // Normal customer login can continue.
+      }
+    }
+
+    // Not a courier.
+    if (courierData == null) {
+      if (!mounted) return;
+
+      showMessage('Login successful.');
+
+      Navigator.pop(context, true);
+      return;
+    }
+
+    final data = courierData;
+
+    final status = _normalizeStatus(
+      data['status'] ??
+          data['registrationStatus'] ??
+          data['approvalStatus'],
+    );
+
+    final approvedByAdmin =
+        data['approvedByAdmin'] == true ||
+        data['isApproved'] == true ||
+        data['approved'] == true;
+
+    final active = data['active'] == true;
+
+    final documentsSubmitted =
+        data['documentsSubmitted'] == true;
+
+    // ----------------------------------------------------------
+    // APPROVED COURIER
+    // ----------------------------------------------------------
+
+    if (status == 'approved' &&
+        approvedByAdmin &&
+        active) {
+      if (!mounted) return;
+
+      showMessage(
+        'Courier login successful.',
+      );
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const CourierPanel(),
+        ),
+      );
+
+      return;
+    }
+
+    // ----------------------------------------------------------
+    // REJECTED COURIER
+    // ----------------------------------------------------------
+
+    if (status == 'rejected') {
+      if (!mounted) return;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const CourierDocumentsPage(),
+        ),
+      );
+
+      return;
+    }
+
+    // ----------------------------------------------------------
+    // DOCUMENTS NOT SUBMITTED
+    // ----------------------------------------------------------
+
+    if (!documentsSubmitted ||
+        status == 'pending_documents' ||
+        status.isEmpty) {
+      if (!mounted) return;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const CourierDocumentsPage(),
+        ),
+      );
+
+      return;
+    }
+
+    // ----------------------------------------------------------
+    // DOCUMENTS SUBMITTED / WAITING FOR ADMIN
+    // ----------------------------------------------------------
+
+    if (status == 'pending_approval' ||
+        !approvedByAdmin ||
+        !active) {
+      if (!mounted) return;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const CourierDocumentsPage(),
+        ),
+      );
+
+      return;
+    }
+
+    // ----------------------------------------------------------
+    // FALLBACK
+    // ----------------------------------------------------------
+
+    if (!mounted) return;
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const CourierDocumentsPage(),
+      ),
+    );
+  }
+
+  // ------------------------------------------------------------
+  // LOGIN
+  // ------------------------------------------------------------
 
   Future<void> login() async {
     final email = emailController.text.trim();
@@ -94,7 +330,9 @@ class _LoginPageState extends State<LoginPage> {
         password: password,
       );
 
-      if (credential.user == null) {
+      final user = credential.user;
+
+      if (user == null) {
         showMessage(
           'Login failed.',
           isError: true,
@@ -102,30 +340,30 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      if (!mounted) return;
-
-      showMessage('Login successful.');
-
-      Navigator.pop(context, true);
+      await _handleCourierLogin(user);
     } on FirebaseAuthException catch (e) {
       String message = 'Login failed.';
 
       switch (e.code) {
         case 'user-not-found':
-          message = 'Is email se account nahi mila.';
+          message =
+              'Is email se account nahi mila.';
           break;
 
         case 'wrong-password':
         case 'invalid-credential':
-          message = 'Email ya password galat hai.';
+          message =
+              'Email ya password galat hai.';
           break;
 
         case 'invalid-email':
-          message = 'Email address valid nahi hai.';
+          message =
+              'Email address valid nahi hai.';
           break;
 
         case 'user-disabled':
-          message = 'Ye account disabled hai.';
+          message =
+              'Ye account disabled hai.';
           break;
 
         case 'too-many-requests':
@@ -162,7 +400,13 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  // ------------------------------------------------------------
+  // FORGOT PASSWORD
+  // ------------------------------------------------------------
+
   Future<void> forgotPassword() async {
+    if (isLoading) return;
+
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -170,6 +414,10 @@ class _LoginPageState extends State<LoginPage> {
       ),
     );
   }
+
+  // ------------------------------------------------------------
+  // INPUT DECORATION
+  // ------------------------------------------------------------
 
   InputDecoration inputDecoration({
     required String label,
@@ -211,283 +459,397 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
+  // ------------------------------------------------------------
+  // BUILD
+  // ------------------------------------------------------------
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7F7FA),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        leading: IconButton(
-          onPressed: () {
-            Navigator.pop(context);
-          },
-          icon: const Icon(
-            Icons.arrow_back_rounded,
+    return PopScope(
+      canPop: !isLoading,
+      onPopInvokedWithResult:
+          (didPop, result) {
+        if (didPop) return;
+
+        if (!isLoading) {
+          _goBack();
+        }
+      },
+      child: Scaffold(
+        backgroundColor:
+            const Color(0xFFF7F7FA),
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          leading: IconButton(
+            onPressed:
+                isLoading ? null : _goBack,
+            icon: const Icon(
+              Icons.arrow_back_rounded,
+            ),
           ),
         ),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(
-            20,
-            15,
-            20,
-            35,
-          ),
-          child: Column(
-            children: [
-              Container(
-                height: 88,
-                width: 88,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [
-                      primary,
-                      primaryDark,
+        body: SafeArea(
+          child: SingleChildScrollView(
+            physics:
+                const BouncingScrollPhysics(),
+            padding:
+                const EdgeInsets.fromLTRB(
+              20,
+              15,
+              20,
+              35,
+            ),
+            child: Column(
+              children: [
+                // ------------------------------------------------
+                // LOGO
+                // ------------------------------------------------
+
+                Container(
+                  height: 88,
+                  width: 88,
+                  decoration:
+                      BoxDecoration(
+                    gradient:
+                        const LinearGradient(
+                      colors: [
+                        primary,
+                        primaryDark,
+                      ],
+                      begin:
+                          Alignment.topLeft,
+                      end:
+                          Alignment.bottomRight,
+                    ),
+                    borderRadius:
+                        BorderRadius.circular(
+                      27,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: primary
+                            .withOpacity(.25),
+                        blurRadius: 25,
+                        offset:
+                            const Offset(
+                          0,
+                          11,
+                        ),
+                      ),
                     ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
                   ),
-                  borderRadius: BorderRadius.circular(27),
-                  boxShadow: [
-                    BoxShadow(
-                      color: primary.withOpacity(.25),
-                      blurRadius: 25,
-                      offset: const Offset(0, 11),
+                  child: const Icon(
+                    Icons
+                        .shopping_bag_rounded,
+                    color: Colors.white,
+                    size: 44,
+                  ),
+                ),
+
+                const SizedBox(height: 22),
+
+                const Text(
+                  'Welcome to Preesho',
+                  textAlign:
+                      TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 27,
+                    fontWeight:
+                        FontWeight.w900,
+                    letterSpacing: -.6,
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                Text(
+                  'Login karke apne orders aur shopping ko manage karein.',
+                  textAlign:
+                      TextAlign.center,
+                  style: TextStyle(
+                    color:
+                        Colors.grey.shade600,
+                    fontSize: 13,
+                    height: 1.45,
+                  ),
+                ),
+
+                const SizedBox(height: 30),
+
+                // ------------------------------------------------
+                // LOGIN CARD
+                // ------------------------------------------------
+
+                Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.all(
+                    20,
+                  ),
+                  decoration:
+                      BoxDecoration(
+                    color: Colors.white,
+                    borderRadius:
+                        BorderRadius.circular(
+                      25,
                     ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.shopping_bag_rounded,
-                  color: Colors.white,
-                  size: 44,
-                ),
-              ),
-
-              const SizedBox(height: 22),
-
-              const Text(
-                'Welcome to Preesho',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 27,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -.6,
-                ),
-              ),
-
-              const SizedBox(height: 8),
-
-              Text(
-                'Login karke apne orders aur shopping ko manage karein.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 13,
-                  height: 1.45,
-                ),
-              ),
-
-              const SizedBox(height: 30),
-
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(25),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(.055),
-                      blurRadius: 25,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Sign in',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black
+                            .withOpacity(.055),
+                        blurRadius: 25,
+                        offset:
+                            const Offset(
+                          0,
+                          10,
+                        ),
                       ),
-                    ),
-
-                    const SizedBox(height: 6),
-
-                    Text(
-                      'Apne registered email aur password se login karein.',
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontSize: 12,
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment
+                            .start,
+                    children: [
+                      const Text(
+                        'Sign in',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight:
+                              FontWeight.w900,
+                        ),
                       ),
-                    ),
 
-                    const SizedBox(height: 22),
+                      const SizedBox(height: 6),
 
-                    TextField(
-                      controller: emailController,
-                      keyboardType:
-                          TextInputType.emailAddress,
-                      textInputAction:
-                          TextInputAction.next,
-                      decoration: inputDecoration(
-                        label: 'Email Address',
-                        icon: Icons.email_outlined,
+                      Text(
+                        'Apne registered email aur password se login karein.',
+                        style: TextStyle(
+                          color:
+                              Colors.grey.shade600,
+                          fontSize: 12,
+                        ),
                       ),
-                    ),
 
-                    const SizedBox(height: 15),
+                      const SizedBox(height: 22),
 
-                    TextField(
-                      controller: passwordController,
-                      obscureText: obscurePassword,
-                      textInputAction:
-                          TextInputAction.done,
-                      onSubmitted: (_) {
-                        if (!isLoading) {
-                          login();
-                        }
-                      },
-                      decoration: inputDecoration(
-                        label: 'Password',
-                        icon: Icons.lock_outline_rounded,
-                        suffixIcon: IconButton(
-                          onPressed: () {
-                            setState(() {
-                              obscurePassword =
-                                  !obscurePassword;
-                            });
-                          },
-                          icon: Icon(
-                            obscurePassword
-                                ? Icons
-                                    .visibility_off_outlined
-                                : Icons
-                                    .visibility_outlined,
+                      TextField(
+                        controller:
+                            emailController,
+                        keyboardType:
+                            TextInputType
+                                .emailAddress,
+                        textInputAction:
+                            TextInputAction.next,
+                        enabled: !isLoading,
+                        decoration:
+                            inputDecoration(
+                          label:
+                              'Email Address',
+                          icon: Icons
+                              .email_outlined,
+                        ),
+                      ),
+
+                      const SizedBox(height: 15),
+
+                      TextField(
+                        controller:
+                            passwordController,
+                        obscureText:
+                            obscurePassword,
+                        textInputAction:
+                            TextInputAction.done,
+                        enabled: !isLoading,
+                        onSubmitted: (_) {
+                          if (!isLoading) {
+                            login();
+                          }
+                        },
+                        decoration:
+                            inputDecoration(
+                          label: 'Password',
+                          icon: Icons
+                              .lock_outline_rounded,
+                          suffixIcon:
+                              IconButton(
+                            onPressed:
+                                isLoading
+                                    ? null
+                                    : () {
+                                        setState(
+                                          () {
+                                            obscurePassword =
+                                                !obscurePassword;
+                                          },
+                                        );
+                                      },
+                            icon: Icon(
+                              obscurePassword
+                                  ? Icons
+                                      .visibility_off_outlined
+                                  : Icons
+                                      .visibility_outlined,
+                            ),
                           ),
                         ),
                       ),
-                    ),
 
-                    const SizedBox(height: 8),
+                      const SizedBox(height: 8),
 
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed:
-                            isLoading
-                                ? null
-                                : forgotPassword,
-                        child: const Text(
-                          'Forgot Password?',
-                          style: TextStyle(
-                            color: primary,
-                            fontWeight: FontWeight.w800,
+                      Align(
+                        alignment:
+                            Alignment.centerRight,
+                        child: TextButton(
+                          onPressed:
+                              isLoading
+                                  ? null
+                                  : forgotPassword,
+                          child:
+                              const Text(
+                            'Forgot Password?',
+                            style:
+                                TextStyle(
+                              color: primary,
+                              fontWeight:
+                                  FontWeight
+                                      .w800,
+                            ),
                           ),
                         ),
                       ),
-                    ),
 
-                    const SizedBox(height: 8),
+                      const SizedBox(height: 8),
 
-                    SizedBox(
-                      width: double.infinity,
-                      height: 56,
-                      child: ElevatedButton(
-                        onPressed:
-                            isLoading ? null : login,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: primary,
-                          foregroundColor: Colors.white,
-                          elevation: 3,
-                          shadowColor:
-                              primary.withOpacity(.25),
-                          shape:
-                              RoundedRectangleBorder(
-                            borderRadius:
-                                BorderRadius.circular(17),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child:
+                            ElevatedButton(
+                          onPressed:
+                              isLoading
+                                  ? null
+                                  : login,
+                          style:
+                              ElevatedButton
+                                  .styleFrom(
+                            backgroundColor:
+                                primary,
+                            foregroundColor:
+                                Colors.white,
+                            elevation: 3,
+                            shadowColor:
+                                primary.withOpacity(
+                              .25,
+                            ),
+                            shape:
+                                RoundedRectangleBorder(
+                              borderRadius:
+                                  BorderRadius
+                                      .circular(
+                                17,
+                              ),
+                            ),
                           ),
-                        ),
-                        child: isLoading
-                            ? const SizedBox(
-                                height: 24,
-                                width: 24,
-                                child:
-                                    CircularProgressIndicator(
-                                  strokeWidth: 2.5,
-                                  valueColor:
-                                      AlwaysStoppedAnimation<
-                                          Color>(
-                                    Colors.white,
-                                  ),
-                                ),
-                              )
-                            : const Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.login_rounded,
-                                    size: 21,
-                                  ),
-                                  SizedBox(width: 9),
-                                  Text(
-                                    'Login',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight:
-                                          FontWeight.w900,
+                          child: isLoading
+                              ? const SizedBox(
+                                  height: 24,
+                                  width: 24,
+                                  child:
+                                      CircularProgressIndicator(
+                                    strokeWidth:
+                                        2.5,
+                                    valueColor:
+                                        AlwaysStoppedAnimation<
+                                            Color>(
+                                      Colors.white,
                                     ),
                                   ),
-                                ],
-                              ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: primary.withOpacity(.07),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: primary.withOpacity(.12),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.security_rounded,
-                      color: primary,
-                      size: 24,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Aapki login information Firebase Authentication ke through secure rahegi.',
-                        style: TextStyle(
-                          color: Colors.grey.shade700,
-                          fontSize: 12,
-                          height: 1.4,
+                                )
+                              : const Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment
+                                          .center,
+                                  children: [
+                                    Icon(
+                                      Icons
+                                          .login_rounded,
+                                      size: 21,
+                                    ),
+                                    SizedBox(
+                                      width: 9,
+                                    ),
+                                    Text(
+                                      'Login',
+                                      style:
+                                          TextStyle(
+                                        fontSize:
+                                            16,
+                                        fontWeight:
+                                            FontWeight
+                                                .w900,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+
+                const SizedBox(height: 20),
+
+                // ------------------------------------------------
+                // SECURITY INFO
+                // ------------------------------------------------
+
+                Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.all(
+                    16,
+                  ),
+                  decoration:
+                      BoxDecoration(
+                    color: primary
+                        .withOpacity(.07),
+                    borderRadius:
+                        BorderRadius.circular(
+                      18,
+                    ),
+                    border: Border.all(
+                      color: primary
+                          .withOpacity(.12),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons
+                            .security_rounded,
+                        color: primary,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Aapki login information Firebase Authentication ke through secure rahegi.',
+                          style: TextStyle(
+                            color: Colors
+                                .grey.shade700,
+                            fontSize: 12,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
