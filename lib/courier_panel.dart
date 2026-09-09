@@ -31,29 +31,45 @@ class _CourierPanelState extends State<CourierPanel> {
   @override
   void initState() {
     super.initState();
-    _functions = FirebaseFunctions.instanceFor(region: 'asia-south1');
+
+    _functions =
+        FirebaseFunctions.instanceFor(
+      region: 'asia-south1',
+    );
   }
 
-  String get _uid => _auth.currentUser?.uid ?? '';
+  String get _uid =>
+      _auth.currentUser?.uid ?? '';
 
-  Stream<QuerySnapshot<Map<String, dynamic>>> _ordersStream() {
-    return _firestore.collection('orders').snapshots();
+  Stream<QuerySnapshot<Map<String, dynamic>>>
+      _ordersStream() {
+    return _firestore
+        .collection('orders')
+        .snapshots();
   }
 
-  bool _isAssignedToCourier(Map<String, dynamic> data) {
+  bool _isAssignedToCourier(
+    Map<String, dynamic> data,
+  ) {
     if (_uid.isEmpty) return false;
 
-    final courierId = data['courierId']?.toString() ?? '';
-    final courierUid = data['courierUid']?.toString() ?? '';
+    final courierId =
+        data['courierId']?.toString() ?? '';
+
+    final courierUid =
+        data['courierUid']?.toString() ?? '';
+
     final assignedCourierId =
         data['assignedCourierId']?.toString() ?? '';
 
-    final courierDetails = data['courierDetails'];
+    final courierDetails =
+        data['courierDetails'];
 
     String detailsUid = '';
 
     if (courierDetails is Map) {
-      detailsUid = courierDetails['uid']?.toString() ?? '';
+      detailsUid =
+          courierDetails['uid']?.toString() ?? '';
     }
 
     return courierId == _uid ||
@@ -62,16 +78,23 @@ class _CourierPanelState extends State<CourierPanel> {
         detailsUid == _uid;
   }
 
-  List<QueryDocumentSnapshot<Map<String, dynamic>>> _assignedOrders(
+  List<QueryDocumentSnapshot<Map<String, dynamic>>>
+      _assignedOrders(
     QuerySnapshot<Map<String, dynamic>> snapshot,
   ) {
     final orders = snapshot.docs
-        .where((doc) => _isAssignedToCourier(doc.data()))
+        .where(
+          (doc) =>
+              _isAssignedToCourier(doc.data()),
+        )
         .toList();
 
     orders.sort((a, b) {
-      final aTime = _getTimestamp(a.data()['createdAt']);
-      final bTime = _getTimestamp(b.data()['createdAt']);
+      final aTime =
+          _getTimestamp(a.data()['createdAt']);
+
+      final bTime =
+          _getTimestamp(b.data()['createdAt']);
 
       return bTime.compareTo(aTime);
     });
@@ -80,8 +103,13 @@ class _CourierPanelState extends State<CourierPanel> {
   }
 
   DateTime _getTimestamp(dynamic value) {
-    if (value is Timestamp) return value.toDate();
-    if (value is DateTime) return value;
+    if (value is Timestamp) {
+      return value.toDate();
+    }
+
+    if (value is DateTime) {
+      return value;
+    }
 
     return DateTime.fromMillisecondsSinceEpoch(0);
   }
@@ -98,7 +126,9 @@ class _CourierPanelState extends State<CourierPanel> {
 
     try {
       final callable =
-          _functions.httpsCallable('updateCourierOrderStatus');
+          _functions.httpsCallable(
+        'updateCourierOrderStatus',
+      );
 
       await callable.call({
         'orderId': orderId,
@@ -109,8 +139,10 @@ class _CourierPanelState extends State<CourierPanel> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Order status updated to $status'),
-          behavior: SnackBarBehavior.floating,
+          content:
+              Text('Order status updated to $status'),
+          behavior:
+              SnackBarBehavior.floating,
         ),
       );
     } on FirebaseFunctionsException catch (e) {
@@ -119,9 +151,11 @@ class _CourierPanelState extends State<CourierPanel> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            e.message ?? 'Unable to update order status.',
+            e.message ??
+                'Unable to update order status.',
           ),
-          behavior: SnackBarBehavior.floating,
+          behavior:
+              SnackBarBehavior.floating,
         ),
       );
     } catch (e) {
@@ -129,8 +163,11 @@ class _CourierPanelState extends State<CourierPanel> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Something went wrong. Please try again.'),
-          behavior: SnackBarBehavior.floating,
+          content: Text(
+            'Something went wrong. Please try again.',
+          ),
+          behavior:
+              SnackBarBehavior.floating,
         ),
       );
     } finally {
@@ -142,26 +179,37 @@ class _CourierPanelState extends State<CourierPanel> {
     }
   }
 
-  String _orderStatus(Map<String, dynamic> data) {
-    return data['status']?.toString() ?? 'Placed';
+  String _orderStatus(
+    Map<String, dynamic> data,
+  ) {
+    return data['status']?.toString() ??
+        'Placed';
   }
 
-  String _customerName(Map<String, dynamic> data) {
+  String _customerName(
+    Map<String, dynamic> data,
+  ) {
     return data['customerName']?.toString() ??
         data['userName']?.toString() ??
         data['name']?.toString() ??
         'Customer';
   }
 
-  String _customerPhone(Map<String, dynamic> data) {
+  String _customerPhone(
+    Map<String, dynamic> data,
+  ) {
     return data['customerPhone']?.toString() ??
         data['phone']?.toString() ??
         data['mobile']?.toString() ??
         '';
   }
 
-  String _address(Map<String, dynamic> data) {
-    final address = data['shippingAddress'] ?? data['address'];
+  String _address(
+    Map<String, dynamic> data,
+  ) {
+    final address =
+        data['shippingAddress'] ??
+            data['address'];
 
     if (address is Map) {
       final parts = <String>[
@@ -172,26 +220,48 @@ class _CourierPanelState extends State<CourierPanel> {
         address['city']?.toString() ?? '',
         address['state']?.toString() ?? '',
         address['pincode']?.toString() ?? '',
-      ].where((e) => e.trim().isNotEmpty).toList();
+      ]
+          .where(
+            (e) => e.trim().isNotEmpty,
+          )
+          .toList();
 
       return parts.join(', ');
     }
 
-    return address?.toString() ?? 'Address not available';
+    return address?.toString() ??
+        'Address not available';
   }
 
-  double _codAmount(Map<String, dynamic> data) {
-    final value = data['codAmount'] ?? data['totalAmount'];
+  double _codAmount(
+    Map<String, dynamic> data,
+  ) {
+    final value =
+        data['codAmount'] ??
+            data['totalAmount'];
 
-    if (value is num) return value.toDouble();
+    if (value is num) {
+      return value.toDouble();
+    }
 
-    return double.tryParse(value?.toString() ?? '0') ?? 0;
+    return double.tryParse(
+          value?.toString() ?? '0',
+        ) ??
+        0;
   }
 
-  bool _isCOD(Map<String, dynamic> data) {
+  bool _isCOD(
+    Map<String, dynamic> data,
+  ) {
     return data['isCOD'] == true ||
-        data['paymentMethod']?.toString().toUpperCase() == 'COD' ||
-        data['paymentType']?.toString().toLowerCase().contains('cash') ==
+        data['paymentMethod']
+                ?.toString()
+                .toUpperCase() ==
+            'COD' ||
+        data['paymentType']
+                ?.toString()
+                .toLowerCase()
+                .contains('cash') ==
             true;
   }
 
@@ -202,26 +272,45 @@ class _CourierPanelState extends State<CourierPanel> {
       return '';
     }
 
-    final day = date.day.toString().padLeft(2, '0');
-    final month = date.month.toString().padLeft(2, '0');
-    final year = date.year.toString();
+    final day =
+        date.day.toString().padLeft(2, '0');
 
-    final hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
-    final minute = date.minute.toString().padLeft(2, '0');
-    final period = date.hour >= 12 ? 'PM' : 'AM';
+    final month =
+        date.month.toString().padLeft(2, '0');
 
-    return '$day/$month/$year • $hour:$minute $period';
+    final year =
+        date.year.toString();
+
+    final hour =
+        date.hour % 12 == 0
+            ? 12
+            : date.hour % 12;
+
+    final minute =
+        date.minute.toString().padLeft(2, '0');
+
+    final period =
+        date.hour >= 12
+            ? 'PM'
+            : 'AM';
+
+    return '$day/$month/$year • '
+        '$hour:$minute $period';
   }
 
   int _statusIndex(String status) {
-    final index = _statusFlow.indexOf(status);
+    final index =
+        _statusFlow.indexOf(status);
+
     return index < 0 ? 0 : index;
   }
 
   String _nextStatus(String status) {
-    final index = _statusIndex(status);
+    final index =
+        _statusIndex(status);
 
-    if (index >= _statusFlow.length - 1) {
+    if (index >=
+        _statusFlow.length - 1) {
       return '';
     }
 
@@ -232,14 +321,19 @@ class _CourierPanelState extends State<CourierPanel> {
     switch (status) {
       case 'Delivered':
         return Colors.green;
+
       case 'Out for Delivery':
         return Colors.orange;
+
       case 'Picked by Courier':
         return Colors.indigo;
+
       case 'Shipped':
         return Colors.blue;
+
       case 'Cancelled':
         return Colors.red;
+
       default:
         return Colors.grey.shade700;
     }
@@ -252,20 +346,25 @@ class _CourierPanelState extends State<CourierPanel> {
   ) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding:
+            const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius:
+              BorderRadius.circular(18),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(.06),
+              color:
+                  Colors.black.withOpacity(.06),
               blurRadius: 14,
-              offset: const Offset(0, 5),
+              offset:
+                  const Offset(0, 5),
             ),
           ],
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
           children: [
             Icon(
               icon,
@@ -275,9 +374,11 @@ class _CourierPanelState extends State<CourierPanel> {
             const SizedBox(height: 10),
             Text(
               value,
-              style: const TextStyle(
+              style:
+                  const TextStyle(
                 fontSize: 22,
-                fontWeight: FontWeight.w800,
+                fontWeight:
+                    FontWeight.w800,
               ),
             ),
             const SizedBox(height: 3),
@@ -285,8 +386,10 @@ class _CourierPanelState extends State<CourierPanel> {
               title,
               style: TextStyle(
                 fontSize: 12,
-                color: Colors.grey.shade600,
-                fontWeight: FontWeight.w600,
+                color:
+                    Colors.grey.shade600,
+                fontWeight:
+                    FontWeight.w600,
               ),
             ),
           ],
@@ -296,83 +399,131 @@ class _CourierPanelState extends State<CourierPanel> {
   }
 
   Widget _orderCard(
-    QueryDocumentSnapshot<Map<String, dynamic>> document,
+    QueryDocumentSnapshot<
+            Map<String, dynamic>>
+        document,
   ) {
-    final data = document.data();
+    final data =
+        document.data();
 
-    final orderId = document.id;
-    final status = _orderStatus(data);
-    final nextStatus = _nextStatus(status);
-    final isCOD = _isCOD(data);
-    final amount = _codAmount(data);
+    final orderId =
+        document.id;
 
-    final customer = _customerName(data);
-    final phone = _customerPhone(data);
-    final address = _address(data);
-    final createdAt = _formatDate(data['createdAt']);
+    final status =
+        _orderStatus(data);
 
-    final items = data['items'];
+    final nextStatus =
+        _nextStatus(status);
+
+    final isCOD =
+        _isCOD(data);
+
+    final amount =
+        _codAmount(data);
+
+    final customer =
+        _customerName(data);
+
+    final phone =
+        _customerPhone(data);
+
+    final address =
+        _address(data);
+
+    final createdAt =
+        _formatDate(
+      data['createdAt'],
+    );
+
+    final items =
+        data['items'];
 
     int itemCount = 0;
 
     if (items is List) {
-      itemCount = items.length;
+      itemCount =
+          items.length;
     }
 
-    final statusColor = _statusColor(status);
+    final statusColor =
+        _statusColor(status);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+      margin:
+          const EdgeInsets.only(
+        bottom: 14,
+      ),
+      padding:
+          const EdgeInsets.all(16),
+      decoration:
+          BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius:
+            BorderRadius.circular(22),
         border: Border.all(
-          color: Colors.grey.shade200,
+          color:
+              Colors.grey.shade200,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(.045),
+            color:
+                Colors.black.withOpacity(.045),
             blurRadius: 15,
-            offset: const Offset(0, 5),
+            offset:
+                const Offset(0, 5),
           ),
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(11),
-                decoration: BoxDecoration(
-                  color: Colors.indigo.withOpacity(.08),
-                  borderRadius: BorderRadius.circular(14),
+                padding:
+                    const EdgeInsets.all(11),
+                decoration:
+                    BoxDecoration(
+                  color:
+                      Colors.indigo.withOpacity(.08),
+                  borderRadius:
+                      BorderRadius.circular(14),
                 ),
-                child: const Icon(
+                child:
+                    const Icon(
                   Icons.local_shipping_outlined,
-                  color: Colors.indigo,
+                  color:
+                      Colors.indigo,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Order #${orderId.length > 8 ? orderId.substring(0, 8).toUpperCase() : orderId.toUpperCase()}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
+                      style:
+                          const TextStyle(
+                        fontWeight:
+                            FontWeight.w800,
                         fontSize: 15,
                       ),
                     ),
                     if (createdAt.isNotEmpty)
                       Padding(
-                        padding: const EdgeInsets.only(top: 3),
+                        padding:
+                            const EdgeInsets.only(
+                          top: 3,
+                        ),
                         child: Text(
                           createdAt,
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
+                          style:
+                              TextStyle(
+                            color:
+                                Colors.grey.shade600,
                             fontSize: 11,
                           ),
                         ),
@@ -381,19 +532,26 @@ class _CourierPanelState extends State<CourierPanel> {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(
+                padding:
+                    const EdgeInsets.symmetric(
                   horizontal: 10,
                   vertical: 7,
                 ),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(.1),
-                  borderRadius: BorderRadius.circular(30),
+                decoration:
+                    BoxDecoration(
+                  color:
+                      statusColor.withOpacity(.1),
+                  borderRadius:
+                      BorderRadius.circular(30),
                 ),
                 child: Text(
                   status,
-                  style: TextStyle(
-                    color: statusColor,
-                    fontWeight: FontWeight.w800,
+                  style:
+                      TextStyle(
+                    color:
+                        statusColor,
+                    fontWeight:
+                        FontWeight.w800,
                     fontSize: 11,
                   ),
                 ),
@@ -414,16 +572,20 @@ class _CourierPanelState extends State<CourierPanel> {
               Expanded(
                 child: Text(
                   customer,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
+                  style:
+                      const TextStyle(
+                    fontWeight:
+                        FontWeight.w700,
                   ),
                 ),
               ),
               if (phone.isNotEmpty)
                 IconButton(
-                  tooltip: 'Customer phone',
+                  tooltip:
+                      'Customer phone',
                   onPressed: () {},
-                  icon: const Icon(
+                  icon:
+                      const Icon(
                     Icons.phone_outlined,
                     size: 20,
                   ),
@@ -434,7 +596,8 @@ class _CourierPanelState extends State<CourierPanel> {
           const SizedBox(height: 8),
 
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
             children: [
               const Icon(
                 Icons.location_on_outlined,
@@ -445,8 +608,10 @@ class _CourierPanelState extends State<CourierPanel> {
               Expanded(
                 child: Text(
                   address,
-                  style: TextStyle(
-                    color: Colors.grey.shade700,
+                  style:
+                      TextStyle(
+                    color:
+                        Colors.grey.shade700,
                     height: 1.35,
                   ),
                 ),
@@ -472,7 +637,9 @@ class _CourierPanelState extends State<CourierPanel> {
               else
                 _smallInfo(
                   Icons.credit_card_outlined,
-                  data['paymentMethod']?.toString() ?? 'Paid',
+                  data['paymentMethod']
+                          ?.toString() ??
+                      'Paid',
                 ),
             ],
           ),
@@ -483,53 +650,78 @@ class _CourierPanelState extends State<CourierPanel> {
               status != 'Cancelled' &&
               nextStatus.isNotEmpty)
             SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _loading
-                    ? null
-                    : () => _updateOrderStatus(
-                          orderId,
-                          nextStatus,
-                        ),
-                icon: const Icon(Icons.arrow_forward_rounded),
-                label: Text(
+              width:
+                  double.infinity,
+              child:
+                  ElevatedButton.icon(
+                onPressed:
+                    _loading
+                        ? null
+                        : () =>
+                            _updateOrderStatus(
+                              orderId,
+                              nextStatus,
+                            ),
+                icon:
+                    const Icon(
+                  Icons.arrow_forward_rounded,
+                ),
+                label:
+                    Text(
                   'Mark as $nextStatus',
                 ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.indigo,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
+                style:
+                    ElevatedButton.styleFrom(
+                  backgroundColor:
+                      Colors.indigo,
+                  foregroundColor:
+                      Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(
                     vertical: 14,
                   ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
+                  shape:
+                      RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius.circular(15),
                   ),
                 ),
               ),
             )
           else if (status == 'Delivered')
             Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(
+              width:
+                  double.infinity,
+              padding:
+                  const EdgeInsets.symmetric(
                 vertical: 13,
               ),
-              decoration: BoxDecoration(
-                color: Colors.green.withOpacity(.08),
-                borderRadius: BorderRadius.circular(15),
+              decoration:
+                  BoxDecoration(
+                color:
+                    Colors.green.withOpacity(.08),
+                borderRadius:
+                    BorderRadius.circular(15),
               ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              child:
+                  const Row(
+                mainAxisAlignment:
+                    MainAxisAlignment.center,
                 children: [
                   Icon(
                     Icons.check_circle_outline,
-                    color: Colors.green,
+                    color:
+                        Colors.green,
                   ),
                   SizedBox(width: 8),
                   Text(
                     'Order Delivered',
-                    style: TextStyle(
-                      color: Colors.green,
-                      fontWeight: FontWeight.w800,
+                    style:
+                        TextStyle(
+                      color:
+                          Colors.green,
+                      fontWeight:
+                          FontWeight.w800,
                     ),
                   ),
                 ],
@@ -539,22 +731,31 @@ class _CourierPanelState extends State<CourierPanel> {
           const SizedBox(height: 10),
 
           OutlinedButton(
-            onPressed: () => _showOrderDetails(
+            onPressed:
+                () =>
+                    _showOrderDetails(
               document,
             ),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size(
+            style:
+                OutlinedButton.styleFrom(
+              minimumSize:
+                  const Size(
                 double.infinity,
                 46,
               ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
+              shape:
+                  RoundedRectangleBorder(
+                borderRadius:
+                    BorderRadius.circular(15),
               ),
             ),
-            child: const Text(
+            child:
+                const Text(
               'View Order Details',
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
+              style:
+                  TextStyle(
+                fontWeight:
+                    FontWeight.w700,
               ),
             ),
           ),
@@ -569,30 +770,38 @@ class _CourierPanelState extends State<CourierPanel> {
     bool highlight = false,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(
+      padding:
+          const EdgeInsets.symmetric(
         horizontal: 10,
         vertical: 7,
       ),
-      decoration: BoxDecoration(
+      decoration:
+          BoxDecoration(
         color: highlight
             ? Colors.orange.withOpacity(.1)
             : Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius:
+            BorderRadius.circular(10),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize:
+            MainAxisSize.min,
         children: [
           Icon(
             icon,
             size: 16,
-            color: highlight ? Colors.orange.shade800 : Colors.grey.shade700,
+            color: highlight
+                ? Colors.orange.shade800
+                : Colors.grey.shade700,
           ),
           const SizedBox(width: 5),
           Text(
             text,
-            style: TextStyle(
+            style:
+                TextStyle(
               fontSize: 11,
-              fontWeight: FontWeight.w700,
+              fontWeight:
+                  FontWeight.w700,
               color: highlight
                   ? Colors.orange.shade800
                   : Colors.grey.shade700,
@@ -604,45 +813,68 @@ class _CourierPanelState extends State<CourierPanel> {
   }
 
   Future<void> _showOrderDetails(
-    QueryDocumentSnapshot<Map<String, dynamic>> document,
+    QueryDocumentSnapshot<
+            Map<String, dynamic>>
+        document,
   ) async {
-    final data = document.data();
+    final data =
+        document.data();
 
-    final items = data['items'];
+    final items =
+        data['items'];
 
     final List<dynamic> itemList =
-        items is List ? items : <dynamic>[];
+        items is List
+            ? items
+            : <dynamic>[];
 
     if (!mounted) return;
 
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      isScrollControlled:
+          true,
+      backgroundColor:
+          Colors.transparent,
       builder: (context) {
         return Container(
-          height: MediaQuery.of(context).size.height * .82,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(
-              top: Radius.circular(28),
+          height:
+              MediaQuery.of(context)
+                      .size
+                      .height *
+                  .82,
+          decoration:
+              const BoxDecoration(
+            color:
+                Colors.white,
+            borderRadius:
+                BorderRadius.vertical(
+              top:
+                  Radius.circular(28),
             ),
           ),
           child: SafeArea(
             child: Column(
               children: [
                 const SizedBox(height: 10),
+
                 Container(
                   width: 45,
                   height: 5,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(20),
+                  decoration:
+                      BoxDecoration(
+                    color:
+                        Colors.grey.shade300,
+                    borderRadius:
+                        BorderRadius.circular(20),
                   ),
                 ),
+
                 const SizedBox(height: 18),
+
                 Padding(
-                  padding: const EdgeInsets.symmetric(
+                  padding:
+                      const EdgeInsets.symmetric(
                     horizontal: 20,
                   ),
                   child: Row(
@@ -650,22 +882,33 @@ class _CourierPanelState extends State<CourierPanel> {
                       const Expanded(
                         child: Text(
                           'Order Details',
-                          style: TextStyle(
+                          style:
+                              TextStyle(
                             fontSize: 21,
-                            fontWeight: FontWeight.w800,
+                            fontWeight:
+                                FontWeight.w800,
                           ),
                         ),
                       ),
                       IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close),
+                        onPressed:
+                            () =>
+                                Navigator.pop(
+                          context,
+                        ),
+                        icon:
+                            const Icon(
+                          Icons.close,
+                        ),
                       ),
                     ],
                   ),
                 ),
+
                 Expanded(
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(
+                    padding:
+                        const EdgeInsets.fromLTRB(
                       20,
                       5,
                       20,
@@ -682,9 +925,12 @@ class _CourierPanelState extends State<CourierPanel> {
                       ),
                       _detailBox(
                         'Phone',
-                        _customerPhone(data).isEmpty
+                        _customerPhone(data)
+                                .isEmpty
                             ? 'Not available'
-                            : _customerPhone(data),
+                            : _customerPhone(
+                                data,
+                              ),
                       ),
                       _detailBox(
                         'Address',
@@ -694,7 +940,8 @@ class _CourierPanelState extends State<CourierPanel> {
                         'Payment',
                         _isCOD(data)
                             ? 'Cash on Delivery'
-                            : data['paymentMethod']?.toString() ??
+                            : data['paymentMethod']
+                                    ?.toString() ??
                                 'Paid',
                       ),
                       if (_isCOD(data))
@@ -706,22 +953,33 @@ class _CourierPanelState extends State<CourierPanel> {
                         'Status',
                         _orderStatus(data),
                       ),
-                      const SizedBox(height: 12),
+
+                      const SizedBox(
+                        height: 12,
+                      ),
+
                       const Text(
                         'Items',
-                        style: TextStyle(
+                        style:
+                            TextStyle(
                           fontSize: 17,
-                          fontWeight: FontWeight.w800,
+                          fontWeight:
+                              FontWeight.w800,
                         ),
                       ),
-                      const SizedBox(height: 10),
+
+                      const SizedBox(
+                        height: 10,
+                      ),
+
                       if (itemList.isEmpty)
                         const Text(
                           'No item details available.',
                         )
                       else
                         ...itemList.map(
-                          (item) => _itemTile(item),
+                          (item) =>
+                              _itemTile(item),
                         ),
                     ],
                   ),
@@ -739,28 +997,41 @@ class _CourierPanelState extends State<CourierPanel> {
     String value,
   ) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(15),
+      margin:
+          const EdgeInsets.only(
+        bottom: 10,
+      ),
+      padding:
+          const EdgeInsets.all(14),
+      decoration:
+          BoxDecoration(
+        color:
+            Colors.grey.shade50,
+        borderRadius:
+            BorderRadius.circular(15),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style: TextStyle(
+            style:
+                TextStyle(
               fontSize: 11,
-              color: Colors.grey.shade600,
-              fontWeight: FontWeight.w700,
+              color:
+                  Colors.grey.shade600,
+              fontWeight:
+                  FontWeight.w700,
             ),
           ),
           const SizedBox(height: 5),
           Text(
             value,
-            style: const TextStyle(
-              fontWeight: FontWeight.w700,
+            style:
+                const TextStyle(
+              fontWeight:
+                  FontWeight.w700,
               height: 1.35,
             ),
           ),
@@ -769,63 +1040,84 @@ class _CourierPanelState extends State<CourierPanel> {
     );
   }
 
-  Widget _itemTile(dynamic item) {
+  Widget _itemTile(
+    dynamic item,
+  ) {
     if (item is! Map) {
       return const SizedBox.shrink();
     }
 
     final name =
         item['name']?.toString() ??
-        item['productName']?.toString() ??
-        'Product';
+            item['productName']
+                ?.toString() ??
+            'Product';
 
     final quantity =
-        item['quantity']?.toString() ??
-        item['qty']?.toString() ??
-        '1';
+        item['quantity']
+                ?.toString() ??
+            item['qty']
+                ?.toString() ??
+            '1';
 
     final price =
         item['price'] ??
-        item['sellingPrice'] ??
-        item['totalPrice'] ??
-        0;
+            item['sellingPrice'] ??
+            item['totalPrice'] ??
+            0;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(13),
-      decoration: BoxDecoration(
-        border: Border.all(
-          color: Colors.grey.shade200,
+      margin:
+          const EdgeInsets.only(
+        bottom: 8,
+      ),
+      padding:
+          const EdgeInsets.all(13),
+      decoration:
+          BoxDecoration(
+        border:
+            Border.all(
+          color:
+              Colors.grey.shade200,
         ),
-        borderRadius: BorderRadius.circular(15),
+        borderRadius:
+            BorderRadius.circular(15),
       ),
       child: Row(
         children: [
           const Icon(
             Icons.inventory_2_outlined,
-            color: Colors.indigo,
+            color:
+                Colors.indigo,
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               name,
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
+              style:
+                  const TextStyle(
+                fontWeight:
+                    FontWeight.w700,
               ),
             ),
           ),
           Text(
             'x$quantity',
-            style: TextStyle(
-              color: Colors.grey.shade600,
-              fontWeight: FontWeight.w700,
+            style:
+                TextStyle(
+              color:
+                  Colors.grey.shade600,
+              fontWeight:
+                  FontWeight.w700,
             ),
           ),
           const SizedBox(width: 12),
           Text(
             '₹$price',
-            style: const TextStyle(
-              fontWeight: FontWeight.w800,
+            style:
+                const TextStyle(
+              fontWeight:
+                  FontWeight.w800,
             ),
           ),
         ],
@@ -833,90 +1125,178 @@ class _CourierPanelState extends State<CourierPanel> {
     );
   }
 
+  // ============================================================
+  // BUILD
+  // ============================================================
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
-      backgroundColor: const Color(0xfff6f7fb),
+      backgroundColor:
+          const Color(0xfff6f7fb),
+
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        title: const Text(
-          'Courier Panel',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
+        backgroundColor:
+            Colors.white,
+        foregroundColor:
+            Colors.black,
+
+        // Explicit Back button
+        leading: IconButton(
+          tooltip: 'Back',
+          onPressed: _loading
+              ? null
+              : () {
+                  Navigator.of(
+                    context,
+                  ).maybePop();
+                },
+          icon: const Icon(
+            Icons.arrow_back_rounded,
           ),
         ),
+
+        title: const Text(
+          'Courier Panel',
+          style:
+              TextStyle(
+            fontWeight:
+                FontWeight.w800,
+          ),
+        ),
+
         actions: [
           IconButton(
             tooltip: 'Refresh',
-            onPressed: () {
-              setState(() {});
-            },
-            icon: const Icon(Icons.refresh_rounded),
+            onPressed: _loading
+                ? null
+                : () {
+                    setState(() {});
+                  },
+            icon:
+                const Icon(
+              Icons.refresh_rounded,
+            ),
           ),
+
           IconButton(
             tooltip: 'Logout',
-            onPressed: () async {
-              await _auth.signOut();
+            onPressed: _loading
+                ? null
+                : () async {
+                    await _auth.signOut();
 
-              if (!mounted) return;
+                    if (!mounted) return;
 
-              Navigator.of(context).pushNamedAndRemoveUntil(
-                '/',
-                (route) => false,
-              );
-            },
-            icon: const Icon(Icons.logout_rounded),
+                    Navigator.of(
+                      context,
+                    ).pushNamedAndRemoveUntil(
+                      '/',
+                      (route) => false,
+                    );
+                  },
+            icon:
+                const Icon(
+              Icons.logout_rounded,
+            ),
           ),
         ],
       ),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: _ordersStream(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+
+      body:
+          StreamBuilder<
+              QuerySnapshot<
+                  Map<String, dynamic>>>(
+        stream:
+            _ordersStream(),
+        builder:
+            (context, snapshot) {
+          if (snapshot
+                  .connectionState ==
+              ConnectionState.waiting) {
             return const Center(
-              child: CircularProgressIndicator(),
+              child:
+                  CircularProgressIndicator(),
             );
           }
 
           if (snapshot.hasError) {
             return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
+              child:
+                  Padding(
+                padding:
+                    const EdgeInsets.all(
+                  24,
+                ),
+                child:
+                    Text(
                   'Unable to load orders.\n${snapshot.error}',
-                  textAlign: TextAlign.center,
+                  textAlign:
+                      TextAlign.center,
                 ),
               ),
             );
           }
 
-          final assignedOrders = snapshot.hasData
-              ? _assignedOrders(snapshot.data!)
-              : <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+          final assignedOrders =
+              snapshot.hasData
+                  ? _assignedOrders(
+                      snapshot.data!,
+                    )
+                  : <
+                      QueryDocumentSnapshot<
+                          Map<String, dynamic>>>[];
 
-          final activeOrders = assignedOrders.where((doc) {
-            final status = _orderStatus(doc.data());
-            return status != 'Delivered' &&
-                status != 'Cancelled';
-          }).length;
+          final activeOrders =
+              assignedOrders
+                  .where(
+                    (doc) {
+                      final status =
+                          _orderStatus(
+                        doc.data(),
+                      );
 
-          final deliveredOrders = assignedOrders.where((doc) {
-            return _orderStatus(doc.data()) == 'Delivered';
-          }).length;
+                      return status !=
+                              'Delivered' &&
+                          status !=
+                              'Cancelled';
+                    },
+                  )
+                  .length;
 
-          final codOrders = assignedOrders.where((doc) {
-            return _isCOD(doc.data());
-          }).length;
+          final deliveredOrders =
+              assignedOrders
+                  .where(
+                    (doc) =>
+                        _orderStatus(
+                          doc.data(),
+                        ) ==
+                        'Delivered',
+                  )
+                  .length;
+
+          final codOrders =
+              assignedOrders
+                  .where(
+                    (doc) =>
+                        _isCOD(
+                      doc.data(),
+                    ),
+                  )
+                  .length;
 
           return RefreshIndicator(
             onRefresh: () async {
               setState(() {});
             },
             child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(
+              physics:
+                  const AlwaysScrollableScrollPhysics(),
+              padding:
+                  const EdgeInsets.fromLTRB(
                 16,
                 16,
                 16,
@@ -924,49 +1304,78 @@ class _CourierPanelState extends State<CourierPanel> {
               ),
               children: [
                 Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
+                  padding:
+                      const EdgeInsets.all(
+                    20,
+                  ),
+                  decoration:
+                      BoxDecoration(
+                    gradient:
+                        const LinearGradient(
                       colors: [
                         Color(0xff1a237e),
                         Color(0xff3949ab),
                       ],
                     ),
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius:
+                        BorderRadius.circular(
+                      24,
+                    ),
                   ),
                   child: Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(13),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(.15),
-                          shape: BoxShape.circle,
+                        padding:
+                            const EdgeInsets.all(
+                          13,
                         ),
-                        child: const Icon(
+                        decoration:
+                            BoxDecoration(
+                          color:
+                              Colors.white.withOpacity(.15),
+                          shape:
+                              BoxShape.circle,
+                        ),
+                        child:
+                            const Icon(
                           Icons.delivery_dining,
-                          color: Colors.white,
+                          color:
+                              Colors.white,
                           size: 30,
                         ),
                       ),
-                      const SizedBox(width: 14),
+                      const SizedBox(
+                        width: 14,
+                      ),
                       const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        child:
+                            Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
                           children: [
                             Text(
                               'Welcome, Courier',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w800,
+                              style:
+                                  TextStyle(
+                                color:
+                                    Colors.white,
+                                fontSize:
+                                    20,
+                                fontWeight:
+                                    FontWeight.w800,
                               ),
                             ),
-                            SizedBox(height: 4),
+                            SizedBox(
+                              height: 4,
+                            ),
                             Text(
                               'Manage your assigned deliveries',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
+                              style:
+                                  TextStyle(
+                                color:
+                                    Colors.white70,
+                                fontSize:
+                                    12,
                               ),
                             ),
                           ],
@@ -976,83 +1385,122 @@ class _CourierPanelState extends State<CourierPanel> {
                   ),
                 ),
 
-                const SizedBox(height: 16),
+                const SizedBox(
+                  height: 16,
+                ),
 
                 Row(
                   children: [
                     _statCard(
                       'Active',
-                      activeOrders.toString(),
+                      activeOrders
+                          .toString(),
                       Icons.local_shipping_outlined,
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(
+                      width: 10,
+                    ),
                     _statCard(
                       'Delivered',
-                      deliveredOrders.toString(),
+                      deliveredOrders
+                          .toString(),
                       Icons.check_circle_outline,
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(
+                      width: 10,
+                    ),
                     _statCard(
                       'COD',
-                      codOrders.toString(),
+                      codOrders
+                          .toString(),
                       Icons.payments_outlined,
                     ),
                   ],
                 ),
 
-                const SizedBox(height: 22),
+                const SizedBox(
+                  height: 22,
+                ),
 
                 Row(
                   children: [
                     const Expanded(
                       child: Text(
                         'Assigned Orders',
-                        style: TextStyle(
+                        style:
+                            TextStyle(
                           fontSize: 20,
-                          fontWeight: FontWeight.w800,
+                          fontWeight:
+                              FontWeight.w800,
                         ),
                       ),
                     ),
                     Text(
                       '${assignedOrders.length} orders',
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
-                        fontWeight: FontWeight.w600,
+                      style:
+                          TextStyle(
+                        color:
+                            Colors.grey.shade600,
+                        fontWeight:
+                            FontWeight.w600,
                       ),
                     ),
                   ],
                 ),
 
-                const SizedBox(height: 12),
+                const SizedBox(
+                  height: 12,
+                ),
 
-                if (assignedOrders.isEmpty)
+                if (assignedOrders
+                    .isEmpty)
                   Container(
-                    padding: const EdgeInsets.all(35),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(22),
+                    padding:
+                        const EdgeInsets.all(
+                      35,
                     ),
-                    child: Column(
+                    decoration:
+                        BoxDecoration(
+                      color:
+                          Colors.white,
+                      borderRadius:
+                          BorderRadius.circular(
+                        22,
+                      ),
+                    ),
+                    child:
+                        Column(
                       children: [
                         Icon(
                           Icons.inventory_2_outlined,
                           size: 55,
-                          color: Colors.grey.shade400,
+                          color:
+                              Colors.grey.shade400,
                         ),
-                        const SizedBox(height: 15),
+                        const SizedBox(
+                          height: 15,
+                        ),
                         const Text(
                           'No orders assigned',
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w800,
+                          style:
+                              TextStyle(
+                            fontSize:
+                                17,
+                            fontWeight:
+                                FontWeight.w800,
                           ),
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(
+                          height: 6,
+                        ),
                         Text(
                           'New assigned orders will appear here.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
+                          textAlign:
+                              TextAlign.center,
+                          style:
+                              TextStyle(
+                            color:
+                                Colors.grey.shade600,
                           ),
                         ),
                       ],
@@ -1060,7 +1508,10 @@ class _CourierPanelState extends State<CourierPanel> {
                   )
                 else
                   ...assignedOrders.map(
-                    (document) => _orderCard(document),
+                    (document) =>
+                        _orderCard(
+                      document,
+                    ),
                   ),
               ],
             ),
