@@ -79,6 +79,25 @@ class _CourierDocumentsPageState
   }
 
   // ============================================================
+  // BACK
+  // ============================================================
+
+  void _goBack() {
+    if (_saving) return;
+
+    final navigator = Navigator.of(context);
+
+    if (navigator.canPop()) {
+      navigator.pop();
+    } else {
+      navigator.pushNamedAndRemoveUntil(
+        '/',
+        (route) => false,
+      );
+    }
+  }
+
+  // ============================================================
   // LOAD COURIER DATA
   // ============================================================
 
@@ -164,7 +183,7 @@ class _CourierDocumentsPageState
         );
       }
 
-      // Also support old flat fields if present.
+      // Legacy flat fields support.
       if (_panController.text.isEmpty) {
         _panController.text =
             _clean(data['panNumber']);
@@ -271,6 +290,11 @@ class _CourierDocumentsPageState
       return true;
     }
 
+    if (_documentsSubmitted &&
+        _status == 'pending_approval') {
+      return true;
+    }
+
     return _isDocumentApproved(key);
   }
 
@@ -299,7 +323,7 @@ class _CourierDocumentsPageState
   Future<void> _saveDocumentNumbers({
     bool submit = false,
   }) async {
-    if (_uid == null) {
+    if (_uid == null || _uid!.isEmpty) {
       _message(
         'Courier login session nahi mili.',
         error: true,
@@ -310,6 +334,16 @@ class _CourierDocumentsPageState
     if (_isAccountApproved()) {
       _message(
         'Courier account already approved hai.',
+        error: true,
+      );
+      return;
+    }
+
+    if (submit &&
+        _documentsSubmitted &&
+        _status == 'pending_approval') {
+      _message(
+        'Documents already Admin review mein hain.',
         error: true,
       );
       return;
@@ -327,59 +361,82 @@ class _CourierDocumentsPageState
       final now =
           FieldValue.serverTimestamp();
 
-      final documents = <String, dynamic>{
+      final documentStatus =
+          submit ? 'pending' : 'draft';
+
+      final documents =
+          <String, dynamic>{
         'pan': {
-          'number': _panController.text.trim(),
-          'status': submit ? 'pending' : 'draft',
+          'number':
+              _panController.text.trim(),
+          'status':
+              documentStatus,
           'rejectionReason': '',
           'updatedAt': now,
         },
         'aadhaar': {
-          'number': _aadhaarController.text.trim(),
-          'status': submit ? 'pending' : 'draft',
+          'number':
+              _aadhaarController.text.trim(),
+          'status':
+              documentStatus,
           'rejectionReason': '',
           'updatedAt': now,
         },
         'drivingLicence': {
-          'number': _dlController.text.trim(),
-          'status': submit ? 'pending' : 'draft',
+          'number':
+              _dlController.text.trim(),
+          'status':
+              documentStatus,
           'rejectionReason': '',
           'updatedAt': now,
         },
         'vehicleRc': {
-          'number': _rcController.text.trim(),
-          'status': submit ? 'pending' : 'draft',
+          'number':
+              _rcController.text.trim(),
+          'status':
+              documentStatus,
           'rejectionReason': '',
           'updatedAt': now,
         },
         'addressProof': {
           'number':
               _addressProofController.text.trim(),
-          'status': submit ? 'pending' : 'draft',
+          'status':
+              documentStatus,
           'rejectionReason': '',
           'updatedAt': now,
         },
       };
 
-      final courierData = <String, dynamic>{
+      final courierData =
+          <String, dynamic>{
         'documents': documents,
-        'panNumber': _panController.text.trim(),
+
+        'panNumber':
+            _panController.text.trim(),
+
         'aadhaarNumber':
             _aadhaarController.text.trim(),
+
         'drivingLicenceNumber':
             _dlController.text.trim(),
+
         'vehicleRcNumber':
             _rcController.text.trim(),
+
         'addressProofNumber':
             _addressProofController.text.trim(),
+
         'updatedAt': now,
       };
 
       if (submit) {
         courierData.addAll({
           'documentsSubmitted': true,
-          'status': 'pending_approval',
-          'registrationStatus': 'pending_approval',
+          'status':
+              'pending_approval',
+          'registrationStatus':
+              'pending_approval',
           'approvedByAdmin': false,
           'active': false,
           'rejectionReason': '',
@@ -388,8 +445,10 @@ class _CourierDocumentsPageState
       } else {
         courierData.addAll({
           'documentsSubmitted': false,
-          'status': 'pending_documents',
-          'registrationStatus': 'pending_documents',
+          'status':
+              'pending_documents',
+          'registrationStatus':
+              'pending_documents',
           'approvedByAdmin': false,
           'active': false,
         });
@@ -403,23 +462,38 @@ class _CourierDocumentsPageState
             SetOptions(merge: true),
           );
 
-      // Keep users collection synchronized.
-      final userData = <String, dynamic>{
-        'documentsSubmitted': submit,
+      // ========================================================
+      // SYNC USERS COLLECTION
+      // ========================================================
+
+      final userData =
+          <String, dynamic>{
+        'documentsSubmitted':
+            submit,
+
         'status': submit
             ? 'pending_approval'
             : 'pending_documents',
+
         'registrationStatus': submit
             ? 'pending_approval'
             : 'pending_documents',
+
         'approvedByAdmin': false,
+
         'active': false,
+
         'updatedAt': now,
       };
 
       if (submit) {
-        userData['documentsSubmittedAt'] = now;
-        userData['rejectionReason'] = '';
+        userData[
+                'documentsSubmittedAt'] =
+            now;
+
+        userData[
+                'rejectionReason'] =
+            '';
       }
 
       await _firestore
@@ -433,21 +507,36 @@ class _CourierDocumentsPageState
       if (!mounted) return;
 
       setState(() {
-        _documentsSubmitted = submit;
+        _documentsSubmitted =
+            submit;
 
         _status = submit
             ? 'pending_approval'
             : 'pending_documents';
 
-        _approvedByAdmin = false;
+        _approvedByAdmin =
+            false;
+
         _active = false;
+
         _saving = false;
 
         if (submit) {
           for (final key
               in _documentStatuses.keys) {
-            _documentStatuses[key] = 'pending';
+            _documentStatuses[key] =
+                'pending';
           }
+        } else {
+          for (final key
+              in _documentStatuses.keys) {
+            _documentStatuses[key] =
+                'draft';
+          }
+        }
+
+        if (submit) {
+          _rejectionReason = '';
         }
       });
 
@@ -506,6 +595,17 @@ class _CourierDocumentsPageState
       return false;
     }
 
+    final panRegex =
+        RegExp(r'^[A-Za-z]{5}[0-9]{4}[A-Za-z]$');
+
+    if (!panRegex.hasMatch(pan)) {
+      _message(
+        'Valid PAN Number enter karein.',
+        error: true,
+      );
+      return false;
+    }
+
     if (aadhaar.isEmpty) {
       _message(
         'Aadhaar Number enter karein.',
@@ -551,7 +651,7 @@ class _CourierDocumentsPageState
   }
 
   // ============================================================
-  // FIELD
+  // DOCUMENT FIELD
   // ============================================================
 
   Widget _documentField({
@@ -579,10 +679,13 @@ class _CourierDocumentsPageState
 
     return Container(
       margin:
-          const EdgeInsets.only(bottom: 16),
+          const EdgeInsets.only(
+        bottom: 16,
+      ),
       padding:
           const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+      decoration:
+          BoxDecoration(
         color: Colors.white,
         borderRadius:
             BorderRadius.circular(18),
@@ -612,15 +715,21 @@ class _CourierDocumentsPageState
               Container(
                 width: 44,
                 height: 44,
-                decoration: BoxDecoration(
+                decoration:
+                    BoxDecoration(
                   color: approved
-                      ? Colors.green.withOpacity(.10)
+                      ? Colors.green
+                          .withOpacity(.10)
                       : rejected
-                          ? Colors.red.withOpacity(.10)
-                          : const Color(0xff5B35D5)
-                              .withOpacity(.10),
+                          ? Colors.red
+                              .withOpacity(.10)
+                          : const Color(
+                              0xff5B35D5,
+                            ).withOpacity(.10),
                   borderRadius:
-                      BorderRadius.circular(12),
+                      BorderRadius.circular(
+                    12,
+                  ),
                 ),
                 child: Icon(
                   icon,
@@ -628,10 +737,14 @@ class _CourierDocumentsPageState
                       ? Colors.green
                       : rejected
                           ? Colors.red
-                          : const Color(0xff5B35D5),
+                          : const Color(
+                              0xff5B35D5,
+                            ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(
+                width: 12,
+              ),
               Expanded(
                 child: Text(
                   title,
@@ -646,22 +759,28 @@ class _CourierDocumentsPageState
               if (approved)
                 const Icon(
                   Icons.lock_rounded,
-                  color: Colors.green,
+                  color:
+                      Colors.green,
                 ),
               if (rejected)
                 const Icon(
                   Icons.error_outline_rounded,
-                  color: Colors.red,
+                  color:
+                      Colors.red,
                 ),
             ],
           ),
 
-          const SizedBox(height: 14),
+          const SizedBox(
+            height: 14,
+          ),
 
           TextField(
-            controller: controller,
+            controller:
+                controller,
             enabled:
-                !locked && !_saving,
+                !locked &&
+                !_saving,
             keyboardType:
                 keyboardType,
             obscureText:
@@ -672,9 +791,12 @@ class _CourierDocumentsPageState
                 TextCapitalization.characters,
             decoration:
                 InputDecoration(
-              labelText: title,
-              hintText: hint,
-              counterText: '',
+              labelText:
+                  title,
+              hintText:
+                  hint,
+              counterText:
+                  '',
               prefixIcon:
                   const Icon(
                 Icons.edit_document,
@@ -686,7 +808,13 @@ class _CourierDocumentsPageState
                           color:
                               Colors.green,
                         )
-                      : null,
+                      : rejected
+                          ? const Icon(
+                              Icons.edit_rounded,
+                              color:
+                                  Colors.red,
+                            )
+                          : null,
               filled: true,
               fillColor:
                   locked
@@ -695,7 +823,9 @@ class _CourierDocumentsPageState
               border:
                   OutlineInputBorder(
                 borderRadius:
-                    BorderRadius.circular(13),
+                    BorderRadius.circular(
+                  13,
+                ),
               ),
             ),
           ),
@@ -711,14 +841,16 @@ class _CourierDocumentsPageState
                   const Icon(
                     Icons.verified_rounded,
                     size: 16,
-                    color: Colors.green,
+                    color:
+                        Colors.green,
                   ),
                   const SizedBox(
                     width: 5,
                   ),
                   Text(
                     'Admin Approved • Locked',
-                    style: TextStyle(
+                    style:
+                        TextStyle(
                       color:
                           Colors.green.shade700,
                       fontSize: 12,
@@ -731,22 +863,31 @@ class _CourierDocumentsPageState
             ),
 
           if (rejected) ...[
-            const SizedBox(height: 10),
+            const SizedBox(
+              height: 10,
+            ),
             Container(
-              width: double.infinity,
+              width:
+                  double.infinity,
               padding:
-                  const EdgeInsets.all(11),
-              decoration: BoxDecoration(
+                  const EdgeInsets.all(
+                11,
+              ),
+              decoration:
+                  BoxDecoration(
                 color:
                     Colors.red.shade50,
                 borderRadius:
-                    BorderRadius.circular(10),
+                    BorderRadius.circular(
+                  10,
+                ),
               ),
               child: Text(
                 reason.isEmpty
                     ? 'Admin ne document reject kiya hai. Details dobara enter karein.'
                     : 'Admin Reason: $reason',
-                style: TextStyle(
+                style:
+                    TextStyle(
                   color:
                       Colors.red.shade800,
                   fontSize: 12,
@@ -768,7 +909,8 @@ class _CourierDocumentsPageState
   Widget _statusCard() {
     if (_isAccountApproved()) {
       return _infoCard(
-        color: Colors.green,
+        color:
+            Colors.green,
         icon:
             Icons.verified_rounded,
         title:
@@ -778,10 +920,12 @@ class _CourierDocumentsPageState
       );
     }
 
-    if (_status == 'pending_approval' &&
+    if (_status ==
+            'pending_approval' &&
         _documentsSubmitted) {
       return _infoCard(
-        color: Colors.orange,
+        color:
+            Colors.orange,
         icon:
             Icons.hourglass_top_rounded,
         title:
@@ -791,22 +935,27 @@ class _CourierDocumentsPageState
       );
     }
 
-    if (_status == 'rejected') {
+    if (_status ==
+        'rejected') {
       return _infoCard(
-        color: Colors.red,
+        color:
+            Colors.red,
         icon:
             Icons.cancel_outlined,
         title:
             'Documents Rejected',
-        text: _rejectionReason.isEmpty
-            ? 'Rejected details ko correct karke dobara submit karein.'
-            : _rejectionReason,
+        text:
+            _rejectionReason.isEmpty
+                ? 'Rejected details ko correct karke dobara submit karein.'
+                : _rejectionReason,
       );
     }
 
     return _infoCard(
       color:
-          const Color(0xff5B35D5),
+          const Color(
+        0xff5B35D5,
+      ),
       icon:
           Icons.description_rounded,
       title:
@@ -825,7 +974,8 @@ class _CourierDocumentsPageState
     return Container(
       padding:
           const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+      decoration:
+          BoxDecoration(
         color:
             color.withOpacity(.08),
         borderRadius:
@@ -841,7 +991,8 @@ class _CourierDocumentsPageState
         children: [
           Icon(
             icon,
-            color: color,
+            color:
+                color,
             size: 27,
           ),
           const SizedBox(
@@ -856,7 +1007,8 @@ class _CourierDocumentsPageState
                   title,
                   style:
                       TextStyle(
-                    color: color,
+                    color:
+                        color,
                     fontSize: 15,
                     fontWeight:
                         FontWeight.w800,
@@ -898,8 +1050,11 @@ class _CourierDocumentsPageState
 
     int completed = 0;
 
-    for (final controller in controllers) {
-      if (controller.text.trim().isNotEmpty) {
+    for (final controller
+        in controllers) {
+      if (controller.text
+          .trim()
+          .isNotEmpty) {
         completed++;
       }
     }
@@ -909,7 +1064,8 @@ class _CourierDocumentsPageState
     return Container(
       padding:
           const EdgeInsets.all(18),
-      decoration: BoxDecoration(
+      decoration:
+          BoxDecoration(
         gradient:
             const LinearGradient(
           colors: [
@@ -931,7 +1087,8 @@ class _CourierDocumentsPageState
                   'KYC Progress',
                   style:
                       TextStyle(
-                    color: Colors.white,
+                    color:
+                        Colors.white,
                     fontSize: 17,
                     fontWeight:
                         FontWeight.w800,
@@ -942,7 +1099,8 @@ class _CourierDocumentsPageState
                 '$completed/$total',
                 style:
                     const TextStyle(
-                  color: Colors.white,
+                  color:
+                      Colors.white,
                   fontSize: 17,
                   fontWeight:
                       FontWeight.w900,
@@ -955,7 +1113,9 @@ class _CourierDocumentsPageState
           ),
           ClipRRect(
             borderRadius:
-                BorderRadius.circular(10),
+                BorderRadius.circular(
+              10,
+            ),
             child:
                 LinearProgressIndicator(
               value:
@@ -979,7 +1139,8 @@ class _CourierDocumentsPageState
                 : '${total - completed} document details remaining.',
             style:
                 const TextStyle(
-              color: Colors.white70,
+              color:
+                  Colors.white70,
               fontSize: 12,
             ),
           ),
@@ -998,7 +1159,8 @@ class _CourierDocumentsPageState
   ) {
     if (_loading) {
       return const Scaffold(
-        body: Center(
+        body:
+            Center(
           child:
               CircularProgressIndicator(),
         ),
@@ -1009,19 +1171,21 @@ class _CourierDocumentsPageState
       backgroundColor:
           const Color(0xfff5f6fa),
       appBar: AppBar(
-        // Explicit Back button
-        leading: IconButton(
-          onPressed: _saving
-              ? null
-              : () {
-                  Navigator.of(context).maybePop();
-                },
-          icon: const Icon(
+        leading:
+            IconButton(
+          onPressed:
+              _saving
+                  ? null
+                  : _goBack,
+          icon:
+              const Icon(
             Icons.arrow_back_rounded,
           ),
-          tooltip: 'Back',
+          tooltip:
+              'Back',
         ),
-        title: const Text(
+        title:
+            const Text(
           'Courier Documents',
           style:
               TextStyle(
@@ -1030,10 +1194,13 @@ class _CourierDocumentsPageState
           ),
         ),
         backgroundColor:
-            const Color(0xfff5f6fa),
+            const Color(
+          0xfff5f6fa,
+        ),
         foregroundColor:
             Colors.black87,
-        elevation: 0,
+        elevation:
+            0,
         actions: [
           IconButton(
             onPressed:
@@ -1044,14 +1211,18 @@ class _CourierDocumentsPageState
                 const Icon(
               Icons.refresh_rounded,
             ),
+            tooltip:
+                'Refresh',
           ),
         ],
       ),
       body: SafeArea(
-        child: RefreshIndicator(
+        child:
+            RefreshIndicator(
           onRefresh:
               _loadCourier,
-          child: ListView(
+          child:
+              ListView(
             physics:
                 const AlwaysScrollableScrollPhysics(),
             padding:
@@ -1104,31 +1275,40 @@ class _CourierDocumentsPageState
               ),
 
               _documentField(
-                key: 'pan',
-                title: 'PAN Number',
-                hint: 'ABCDE1234F',
+                key:
+                    'pan',
+                title:
+                    'PAN Number',
+                hint:
+                    'ABCDE1234F',
                 icon:
                     Icons.badge_rounded,
                 controller:
                     _panController,
-                maxLength: 10,
+                maxLength:
+                    10,
               ),
 
               _documentField(
-                key: 'aadhaar',
-                title: 'Aadhaar Number',
-                hint: '12 digit Aadhaar Number',
+                key:
+                    'aadhaar',
+                title:
+                    'Aadhaar Number',
+                hint:
+                    '12 digit Aadhaar Number',
                 icon:
                     Icons.credit_card_rounded,
                 controller:
                     _aadhaarController,
                 keyboardType:
                     TextInputType.number,
-                maxLength: 12,
+                maxLength:
+                    12,
               ),
 
               _documentField(
-                key: 'drivingLicence',
+                key:
+                    'drivingLicence',
                 title:
                     'Driving Licence Number',
                 hint:
@@ -1137,11 +1317,13 @@ class _CourierDocumentsPageState
                     Icons.drive_eta_rounded,
                 controller:
                     _dlController,
-                maxLength: 30,
+                maxLength:
+                    30,
               ),
 
               _documentField(
-                key: 'vehicleRc',
+                key:
+                    'vehicleRc',
                 title:
                     'Vehicle RC Number',
                 hint:
@@ -1150,11 +1332,13 @@ class _CourierDocumentsPageState
                     Icons.directions_car_rounded,
                 controller:
                     _rcController,
-                maxLength: 30,
+                maxLength:
+                    30,
               ),
 
               _documentField(
-                key: 'addressProof',
+                key:
+                    'addressProof',
                 title:
                     'Address Proof Number / Details',
                 hint:
@@ -1163,16 +1347,22 @@ class _CourierDocumentsPageState
                     Icons.home_rounded,
                 controller:
                     _addressProofController,
-                maxLength: 100,
+                maxLength:
+                    100,
               ),
 
               const SizedBox(
                 height: 8,
               ),
 
+              // ==================================================
+              // SAVE BUTTON
+              // ==================================================
+
               if (!_isAccountApproved() &&
-                  _status !=
-                      'pending_approval') ...[
+                  !(_documentsSubmitted &&
+                      _status ==
+                          'pending_approval')) ...[
                 SizedBox(
                   height: 52,
                   width:
@@ -1214,6 +1404,10 @@ class _CourierDocumentsPageState
                   height: 12,
                 ),
 
+                // ==============================================
+                // SUBMIT BUTTON
+                // ==============================================
+
                 SizedBox(
                   height: 55,
                   width:
@@ -1225,22 +1419,25 @@ class _CourierDocumentsPageState
                             ? null
                             : () =>
                                 _saveDocumentNumbers(
-                                  submit: true,
+                                  submit:
+                                      true,
                                 ),
-                    icon: _saving
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child:
-                                CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color:
-                                  Colors.white,
-                            ),
-                          )
-                        : const Icon(
-                            Icons.send_rounded,
-                          ),
+                    icon:
+                        _saving
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child:
+                                    CircularProgressIndicator(
+                                  strokeWidth:
+                                      2,
+                                  color:
+                                      Colors.white,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.send_rounded,
+                              ),
                     label:
                         Text(
                       _saving
@@ -1276,6 +1473,10 @@ class _CourierDocumentsPageState
                 ),
               ],
 
+              // ==================================================
+              // PENDING APPROVAL
+              // ==================================================
+
               if (_status ==
                       'pending_approval' &&
                   _documentsSubmitted) ...[
@@ -1291,6 +1492,47 @@ class _CourierDocumentsPageState
                       'Editing Locked',
                   text:
                       'Admin approval/rejection ka wait karein. Verification complete hone tak submitted details edit nahi hongi.',
+                ),
+              ],
+
+              // ==================================================
+              // APPROVED
+              // ==================================================
+
+              if (_isAccountApproved()) ...[
+                const SizedBox(
+                  height: 15,
+                ),
+                _infoCard(
+                  color:
+                      Colors.green,
+                  icon:
+                      Icons.verified_rounded,
+                  title:
+                      'KYC Approved',
+                  text:
+                      'Aapke Courier KYC documents Admin ne approve kar diye hain. Ab document details change nahi ki ja sakti.',
+                ),
+              ],
+
+              // ==================================================
+              // REJECTED
+              // ==================================================
+
+              if (_status ==
+                      'rejected') ...[
+                const SizedBox(
+                  height: 15,
+                ),
+                _infoCard(
+                  color:
+                      Colors.red,
+                  icon:
+                      Icons.edit_note_rounded,
+                  title:
+                      'Edit & Resubmit',
+                  text:
+                      'Rejected details ko correct karein aur "Resubmit for Approval" button dabayein.',
                 ),
               ],
             ],
