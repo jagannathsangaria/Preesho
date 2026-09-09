@@ -44,6 +44,43 @@ class CartPage extends StatefulWidget {
 class _CartPageState extends State<CartPage> {
   bool _loading = false;
 
+  // ============================================================
+  // BACK NAVIGATION
+  // ============================================================
+
+  void _goBack() {
+    if (_loading) return;
+
+    final navigator = Navigator.of(context);
+
+    if (navigator.canPop()) {
+      navigator.pop();
+      return;
+    }
+
+    navigator.pushNamedAndRemoveUntil(
+      '/',
+      (route) => false,
+    );
+  }
+
+  Future<bool> _handleBack() async {
+    if (_loading) return false;
+
+    final navigator = Navigator.of(context);
+
+    if (navigator.canPop()) {
+      return true;
+    }
+
+    navigator.pushNamedAndRemoveUntil(
+      '/',
+      (route) => false,
+    );
+
+    return false;
+  }
+
   String _money(double value) {
     return '₹${value.toStringAsFixed(0)}';
   }
@@ -59,7 +96,13 @@ class _CartPageState extends State<CartPage> {
         100;
   }
 
+  // ============================================================
+  // INCREASE
+  // ============================================================
+
   Future<void> _increase(CartItem item) async {
+    if (_loading) return;
+
     setState(() => _loading = true);
 
     await CartController.increaseQuantity(item.id);
@@ -70,7 +113,13 @@ class _CartPageState extends State<CartPage> {
     widget.onCartChanged();
   }
 
+  // ============================================================
+  // DECREASE
+  // ============================================================
+
   Future<void> _decrease(CartItem item) async {
+    if (_loading) return;
+
     setState(() => _loading = true);
 
     await CartController.decreaseQuantity(item.id);
@@ -80,6 +129,10 @@ class _CartPageState extends State<CartPage> {
     setState(() => _loading = false);
     widget.onCartChanged();
   }
+
+  // ============================================================
+  // REMOVE
+  // ============================================================
 
   Future<void> _remove(CartItem item) async {
     await CartController.removeProduct(item.id);
@@ -92,7 +145,9 @@ class _CartPageState extends State<CartPage> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text('${item.name} removed from cart'),
+          content: Text(
+            '${item.name} removed from cart',
+          ),
           behavior: SnackBarBehavior.floating,
           action: SnackBarAction(
             label: 'OK',
@@ -103,6 +158,10 @@ class _CartPageState extends State<CartPage> {
 
     setState(() {});
   }
+
+  // ============================================================
+  // CLEAR CART
+  // ============================================================
 
   Future<void> _clearCart() async {
     if (CartController.items.isEmpty) return;
@@ -126,13 +185,19 @@ class _CartPageState extends State<CartPage> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(dialogContext, false);
+                Navigator.pop(
+                  dialogContext,
+                  false,
+                );
               },
               child: const Text('Cancel'),
             ),
             FilledButton(
               onPressed: () {
-                Navigator.pop(dialogContext, true);
+                Navigator.pop(
+                  dialogContext,
+                  true,
+                );
               },
               child: const Text('Clear'),
             ),
@@ -158,6 +223,10 @@ class _CartPageState extends State<CartPage> {
     );
   }
 
+  // ============================================================
+  // CHECKOUT
+  // ============================================================
+
   Future<void> _checkout() async {
     if (CartController.items.isEmpty) return;
 
@@ -167,7 +236,7 @@ class _CartPageState extends State<CartPage> {
       final result = await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => LoginPage(),
+          builder: (_) => const LoginPage(),
         ),
       );
 
@@ -194,6 +263,10 @@ class _CartPageState extends State<CartPage> {
     widget.onCartChanged();
   }
 
+  // ============================================================
+  // BUILD
+  // ============================================================
+
   @override
   Widget build(BuildContext context) {
     final items = CartController.items;
@@ -204,111 +277,142 @@ class _CartPageState extends State<CartPage> {
 
     final hasDiscount = originalTotal > total;
 
-    return Scaffold(
-      backgroundColor: const Color(0xffF6F7FB),
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xff171717),
-        centerTitle: false,
-        title: const Text(
-          'My Cart',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        actions: [
-          if (items.isNotEmpty)
-            IconButton(
-              tooltip: 'Clear cart',
-              onPressed: _clearCart,
-              icon: const Icon(
-                Icons.delete_sweep_outlined,
-              ),
+    return WillPopScope(
+      onWillPop: _handleBack,
+      child: Scaffold(
+        backgroundColor: const Color(0xffF6F7FB),
+        appBar: AppBar(
+          elevation: 0,
+          backgroundColor: Colors.white,
+          foregroundColor: const Color(0xff171717),
+
+          // ======================================================
+          // BACK BUTTON
+          // ======================================================
+
+          leading: IconButton(
+            onPressed: _goBack,
+            tooltip: 'Back',
+            icon: const Icon(
+              Icons.arrow_back_rounded,
+              size: 26,
             ),
-          const SizedBox(width: 6),
-        ],
-      ),
-      body: items.isEmpty
-          ? _EmptyCart(
-              onContinueShopping: () {
-                Navigator.pop(context);
-              },
-            )
-          : RefreshIndicator(
-              onRefresh: () async {
-                await CartController.initialize();
+          ),
 
-                if (!mounted) return;
+          centerTitle: false,
 
-                setState(() {});
-                widget.onCartChanged();
-              },
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(
-                  12,
-                  12,
-                  12,
-                  180,
+          title: const Text(
+            'My Cart',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+
+          actions: [
+            if (items.isNotEmpty)
+              IconButton(
+                tooltip: 'Clear cart',
+                onPressed: _loading
+                    ? null
+                    : _clearCart,
+                icon: const Icon(
+                  Icons.delete_sweep_outlined,
                 ),
-                children: [
-                  _CartHeader(
-                    itemCount: CartController.itemCount,
-                    savings: savings,
-                  ),
-                  const SizedBox(height: 12),
+              ),
+            const SizedBox(width: 6),
+          ],
+        ),
 
-                  ...items.map(
-                    (item) => Padding(
-                      padding: const EdgeInsets.only(
-                        bottom: 12,
-                      ),
-                      child: _CartProductCard(
-                        item: item,
-                        discountPercent:
-                            _discountPercent(item),
-                        onIncrease: _loading
-                            ? null
-                            : () => _increase(item),
-                        onDecrease: _loading
-                            ? null
-                            : () => _decrease(item),
-                        onRemove: () => _remove(item),
+        body: items.isEmpty
+            ? _EmptyCart(
+                onContinueShopping: _goBack,
+              )
+            : RefreshIndicator(
+                onRefresh: () async {
+                  await CartController.initialize();
+
+                  if (!mounted) return;
+
+                  setState(() {});
+                  widget.onCartChanged();
+                },
+                child: ListView(
+                  physics:
+                      const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(
+                    12,
+                    12,
+                    12,
+                    180,
+                  ),
+                  children: [
+                    _CartHeader(
+                      itemCount:
+                          CartController.itemCount,
+                      savings: savings,
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    ...items.map(
+                      (item) => Padding(
+                        padding:
+                            const EdgeInsets.only(
+                          bottom: 12,
+                        ),
+                        child: _CartProductCard(
+                          item: item,
+                          discountPercent:
+                              _discountPercent(item),
+                          onIncrease: _loading
+                              ? null
+                              : () => _increase(item),
+                          onDecrease: _loading
+                              ? null
+                              : () => _decrease(item),
+                          onRemove: _loading
+                              ? () {}
+                              : () => _remove(item),
+                        ),
                       ),
                     ),
-                  ),
 
-                  const SizedBox(height: 4),
+                    const SizedBox(height: 4),
 
-                  const _DeliveryInfoCard(),
+                    const _DeliveryInfoCard(),
 
-                  const SizedBox(height: 12),
+                    const SizedBox(height: 12),
 
-                  _PriceDetailsCard(
-                    originalTotal: originalTotal,
-                    total: total,
-                    savings: savings,
-                    hasDiscount: hasDiscount,
-                  ),
+                    _PriceDetailsCard(
+                      originalTotal: originalTotal,
+                      total: total,
+                      savings: savings,
+                      hasDiscount: hasDiscount,
+                    ),
 
-                  const SizedBox(height: 12),
+                    const SizedBox(height: 12),
 
-                  const _CodInfoCard(),
-                ],
+                    const _CodInfoCard(),
+                  ],
+                ),
               ),
-            ),
-      bottomNavigationBar: items.isEmpty
-          ? null
-          : _CheckoutBottomBar(
-              total: total,
-              itemCount: CartController.itemCount,
-              onCheckout: _checkout,
-            ),
+
+        bottomNavigationBar: items.isEmpty
+            ? null
+            : _CheckoutBottomBar(
+                total: total,
+                itemCount: CartController.itemCount,
+                onCheckout: _checkout,
+              ),
+      ),
     );
   }
 }
+
+// ============================================================
+// CART HEADER
+// ============================================================
 
 class _CartHeader extends StatelessWidget {
   final int itemCount;
@@ -352,7 +456,8 @@ class _CartHeader extends StatelessWidget {
               color: Colors.white.withValues(
                 alpha: 0.18,
               ),
-              borderRadius: BorderRadius.circular(15),
+              borderRadius:
+                  BorderRadius.circular(15),
             ),
             child: const Icon(
               Icons.shopping_bag_outlined,
@@ -360,7 +465,9 @@ class _CartHeader extends StatelessWidget {
               size: 27,
             ),
           ),
+
           const SizedBox(width: 12),
+
           Expanded(
             child: Column(
               crossAxisAlignment:
@@ -374,7 +481,9 @@ class _CartHeader extends StatelessWidget {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
+
                 const SizedBox(height: 4),
+
                 Text(
                   savings > 0
                       ? 'You are saving ₹${savings.toStringAsFixed(0)}'
@@ -389,6 +498,7 @@ class _CartHeader extends StatelessWidget {
               ],
             ),
           ),
+
           const Icon(
             Icons.arrow_forward_ios_rounded,
             color: Colors.white70,
@@ -399,6 +509,10 @@ class _CartHeader extends StatelessWidget {
     );
   }
 }
+
+// ============================================================
+// CART PRODUCT CARD
+// ============================================================
 
 class _CartProductCard extends StatelessWidget {
   final CartItem item;
@@ -449,7 +563,9 @@ class _CartProductCard extends StatelessWidget {
                   imageUrl: item.imageUrl,
                   size: 94,
                 ),
+
                 const SizedBox(width: 12),
+
                 Expanded(
                   child: Column(
                     crossAxisAlignment:
@@ -466,7 +582,9 @@ class _CartProductCard extends StatelessWidget {
                           height: 1.2,
                         ),
                       ),
+
                       const SizedBox(height: 5),
+
                       Text(
                         item.category,
                         maxLines: 1,
@@ -474,33 +592,44 @@ class _CartProductCard extends StatelessWidget {
                             TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.grey.shade600,
-                          fontWeight: FontWeight.w500,
+                          color:
+                              Colors.grey.shade600,
+                          fontWeight:
+                              FontWeight.w500,
                         ),
                       ),
+
                       const SizedBox(height: 8),
+
                       Row(
                         children: [
                           Text(
                             '₹${item.numericPrice.toStringAsFixed(0)}',
-                            style: const TextStyle(
+                            style:
+                                const TextStyle(
                               fontSize: 19,
-                              fontWeight: FontWeight.w900,
+                              fontWeight:
+                                  FontWeight.w900,
                             ),
                           ),
+
                           if (hasDiscount) ...[
                             const SizedBox(width: 7),
+
                             Text(
                               '₹${item.originalPrice.toStringAsFixed(0)}',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: Colors.grey.shade500,
+                                color:
+                                    Colors.grey.shade500,
                                 decoration:
                                     TextDecoration
                                         .lineThrough,
                               ),
                             ),
+
                             const SizedBox(width: 6),
+
                             Container(
                               padding:
                                   const EdgeInsets
@@ -508,7 +637,8 @@ class _CartProductCard extends StatelessWidget {
                                 horizontal: 6,
                                 vertical: 3,
                               ),
-                              decoration: BoxDecoration(
+                              decoration:
+                                  BoxDecoration(
                                 color: Colors.green
                                     .withValues(
                                   alpha: 0.10,
@@ -519,8 +649,10 @@ class _CartProductCard extends StatelessWidget {
                               ),
                               child: Text(
                                 '${discountPercent.round()}% OFF',
-                                style: const TextStyle(
-                                  color: Colors.green,
+                                style:
+                                    const TextStyle(
+                                  color:
+                                      Colors.green,
                                   fontSize: 10,
                                   fontWeight:
                                       FontWeight.w800,
@@ -533,6 +665,7 @@ class _CartProductCard extends StatelessWidget {
                     ],
                   ),
                 ),
+
                 IconButton(
                   onPressed: onRemove,
                   tooltip: 'Remove',
@@ -543,12 +676,16 @@ class _CartProductCard extends StatelessWidget {
                 ),
               ],
             ),
+
             const SizedBox(height: 12),
+
             Divider(
               height: 1,
               color: Colors.grey.shade200,
             ),
+
             const SizedBox(height: 10),
+
             Row(
               children: [
                 if (item.availableStock > 0)
@@ -564,12 +701,15 @@ class _CartProductCard extends StatelessWidget {
                         '${item.availableStock} available',
                         style: TextStyle(
                           fontSize: 11,
-                          color: Colors.grey.shade600,
+                          color:
+                              Colors.grey.shade600,
                         ),
                       ),
                     ],
                   ),
+
                 const Spacer(),
+
                 Container(
                   height: 38,
                   decoration: BoxDecoration(
@@ -597,18 +737,21 @@ class _CartProductCard extends StatelessWidget {
                           size: 18,
                         ),
                       ),
+
                       Container(
                         width: 34,
                         alignment: Alignment.center,
                         child: Text(
                           '${item.quantity}',
-                          style: const TextStyle(
+                          style:
+                              const TextStyle(
                             fontWeight:
                                 FontWeight.w800,
                             fontSize: 14,
                           ),
                         ),
                       ),
+
                       IconButton(
                         onPressed: onIncrease,
                         padding: EdgeInsets.zero,
@@ -634,6 +777,10 @@ class _CartProductCard extends StatelessWidget {
   }
 }
 
+// ============================================================
+// PRODUCT IMAGE
+// ============================================================
+
 class _ProductImage extends StatelessWidget {
   final String imageUrl;
   final double size;
@@ -645,7 +792,8 @@ class _ProductImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasImage = imageUrl.trim().isNotEmpty;
+    final hasImage =
+        imageUrl.trim().isNotEmpty;
 
     return Container(
       width: size,
@@ -673,7 +821,8 @@ class _ProductImage extends StatelessWidget {
                   child: SizedBox(
                     width: 22,
                     height: 22,
-                    child: CircularProgressIndicator(
+                    child:
+                        CircularProgressIndicator(
                       strokeWidth: 2,
                     ),
                   ),
@@ -684,6 +833,10 @@ class _ProductImage extends StatelessWidget {
     );
   }
 }
+
+// ============================================================
+// IMAGE PLACEHOLDER
+// ============================================================
 
 class _ImagePlaceholder extends StatelessWidget {
   const _ImagePlaceholder();
@@ -699,6 +852,10 @@ class _ImagePlaceholder extends StatelessWidget {
     );
   }
 }
+
+// ============================================================
+// DELIVERY INFO
+// ============================================================
 
 class _DeliveryInfoCard extends StatelessWidget {
   const _DeliveryInfoCard();
@@ -742,6 +899,10 @@ class _DeliveryInfoCard extends StatelessWidget {
   }
 }
 
+// ============================================================
+// INFO ROW
+// ============================================================
+
 class _InfoRow extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -764,7 +925,8 @@ class _InfoRow extends StatelessWidget {
           height: 40,
           decoration: BoxDecoration(
             color: const Color(0xffF1F0FF),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius:
+                BorderRadius.circular(12),
           ),
           child: Icon(
             icon,
@@ -772,7 +934,9 @@ class _InfoRow extends StatelessWidget {
             size: 21,
           ),
         ),
+
         const SizedBox(width: 11),
+
         Expanded(
           child: Column(
             crossAxisAlignment:
@@ -785,7 +949,9 @@ class _InfoRow extends StatelessWidget {
                   fontSize: 13,
                 ),
               ),
+
               const SizedBox(height: 3),
+
               Text(
                 subtitle,
                 style: TextStyle(
@@ -801,6 +967,10 @@ class _InfoRow extends StatelessWidget {
     );
   }
 }
+
+// ============================================================
+// PRICE DETAILS
+// ============================================================
 
 class _PriceDetailsCard extends StatelessWidget {
   final double originalTotal;
@@ -837,27 +1007,37 @@ class _PriceDetailsCard extends StatelessWidget {
               fontWeight: FontWeight.w900,
             ),
           ),
+
           const SizedBox(height: 14),
+
           _PriceRow(
             title: 'MRP / Product Price',
-            value: '₹${originalTotal.toStringAsFixed(0)}',
+            value:
+                '₹${originalTotal.toStringAsFixed(0)}',
             muted: hasDiscount,
           ),
+
           const SizedBox(height: 10),
+
           _PriceRow(
             title: 'Discounted Price',
-            value: '₹${total.toStringAsFixed(0)}',
+            value:
+                '₹${total.toStringAsFixed(0)}',
             bold: true,
           ),
+
           const SizedBox(height: 10),
+
           _PriceRow(
             title: 'Delivery',
             value: 'FREE',
             valueColor: Colors.green,
             bold: true,
           ),
+
           if (savings > 0) ...[
             const SizedBox(height: 13),
+
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(11),
@@ -878,14 +1058,19 @@ class _PriceDetailsCard extends StatelessWidget {
               ),
             ),
           ],
+
           const SizedBox(height: 14),
+
           Divider(
             color: Colors.grey.shade200,
           ),
+
           const SizedBox(height: 8),
+
           _PriceRow(
             title: 'Total Amount',
-            value: '₹${total.toStringAsFixed(0)}',
+            value:
+                '₹${total.toStringAsFixed(0)}',
             bold: true,
             large: true,
           ),
@@ -894,6 +1079,10 @@ class _PriceDetailsCard extends StatelessWidget {
     );
   }
 }
+
+// ============================================================
+// PRICE ROW
+// ============================================================
 
 class _PriceRow extends StatelessWidget {
   final String title;
@@ -930,6 +1119,7 @@ class _PriceRow extends StatelessWidget {
             ),
           ),
         ),
+
         Text(
           value,
           style: TextStyle(
@@ -950,6 +1140,10 @@ class _PriceRow extends StatelessWidget {
     );
   }
 }
+
+// ============================================================
+// COD INFO
+// ============================================================
 
 class _CodInfoCard extends StatelessWidget {
   const _CodInfoCard();
@@ -972,14 +1166,17 @@ class _CodInfoCard extends StatelessWidget {
             height: 42,
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius:
+                  BorderRadius.circular(12),
             ),
             child: const Icon(
               Icons.payments_outlined,
               color: Color(0xffB45309),
             ),
           ),
+
           const SizedBox(width: 11),
+
           const Expanded(
             child: Column(
               crossAxisAlignment:
@@ -1008,6 +1205,10 @@ class _CodInfoCard extends StatelessWidget {
     );
   }
 }
+
+// ============================================================
+// CHECKOUT BOTTOM BAR
+// ============================================================
 
 class _CheckoutBottomBar extends StatelessWidget {
   final double total;
@@ -1047,8 +1248,7 @@ class _CheckoutBottomBar extends StatelessWidget {
           children: [
             Expanded(
               child: Column(
-                mainAxisSize:
-                    MainAxisSize.min,
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment:
                     CrossAxisAlignment.start,
                 children: [
@@ -1059,7 +1259,9 @@ class _CheckoutBottomBar extends StatelessWidget {
                       color: Colors.grey.shade600,
                     ),
                   ),
+
                   const SizedBox(height: 2),
+
                   Text(
                     '₹${total.toStringAsFixed(0)}',
                     style: const TextStyle(
@@ -1070,6 +1272,7 @@ class _CheckoutBottomBar extends StatelessWidget {
                 ],
               ),
             ),
+
             SizedBox(
               height: 52,
               child: FilledButton.icon(
@@ -1082,7 +1285,8 @@ class _CheckoutBottomBar extends StatelessWidget {
                       const EdgeInsets.symmetric(
                     horizontal: 20,
                   ),
-                  shape: RoundedRectangleBorder(
+                  shape:
+                      RoundedRectangleBorder(
                     borderRadius:
                         BorderRadius.circular(16),
                   ),
@@ -1106,6 +1310,10 @@ class _CheckoutBottomBar extends StatelessWidget {
   }
 }
 
+// ============================================================
+// EMPTY CART
+// ============================================================
+
 class _EmptyCart extends StatelessWidget {
   final VoidCallback onContinueShopping;
 
@@ -1125,8 +1333,8 @@ class _EmptyCart extends StatelessWidget {
             Container(
               width: 110,
               height: 110,
-              decoration: BoxDecoration(
-                color: const Color(0xffEEECFF),
+              decoration: const BoxDecoration(
+                color: Color(0xffEEECFF),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -1135,7 +1343,9 @@ class _EmptyCart extends StatelessWidget {
                 color: Colors.deepPurple,
               ),
             ),
+
             const SizedBox(height: 22),
+
             const Text(
               'Your cart is empty',
               textAlign: TextAlign.center,
@@ -1144,7 +1354,9 @@ class _EmptyCart extends StatelessWidget {
                 fontWeight: FontWeight.w900,
               ),
             ),
+
             const SizedBox(height: 8),
+
             Text(
               'Add products you love and they will appear here.',
               textAlign: TextAlign.center,
@@ -1154,7 +1366,9 @@ class _EmptyCart extends StatelessWidget {
                 height: 1.4,
               ),
             ),
+
             const SizedBox(height: 25),
+
             SizedBox(
               height: 50,
               child: FilledButton.icon(
@@ -1162,7 +1376,8 @@ class _EmptyCart extends StatelessWidget {
                 style: FilledButton.styleFrom(
                   backgroundColor:
                       const Color(0xff4F46E5),
-                  shape: RoundedRectangleBorder(
+                  shape:
+                      RoundedRectangleBorder(
                     borderRadius:
                         BorderRadius.circular(15),
                   ),
@@ -1189,12 +1404,14 @@ class _EmptyCart extends StatelessWidget {
   }
 }
 
-/* =========================================================
-   ACTIVE ORDER TRACKING
-   ========================================================= */
+// ============================================================
+// ACTIVE ORDER TRACKING
+// ============================================================
 
 class ActiveOrderTracking extends StatelessWidget {
-  const ActiveOrderTracking({super.key});
+  const ActiveOrderTracking({
+    super.key,
+  });
 
   String normalizeStatus(
     Map<String, dynamic> data,
@@ -1346,7 +1563,8 @@ class ActiveOrderTracking extends StatelessWidget {
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          behavior: SnackBarBehavior.floating,
+          behavior:
+              SnackBarBehavior.floating,
         ),
       );
   }
@@ -1454,8 +1672,7 @@ class ActiveOrderTracking extends StatelessWidget {
                 child: Row(
                   children: [
                     Icon(
-                      Icons
-                          .local_shipping_outlined,
+                      Icons.local_shipping_outlined,
                       color: Colors.deepPurple,
                     ),
                     SizedBox(width: 8),
@@ -1470,6 +1687,7 @@ class ActiveOrderTracking extends StatelessWidget {
                   ],
                 ),
               ),
+
               ...activeOrders.map(
                 (entry) => _buildOrderCard(
                   context,
@@ -1531,14 +1749,15 @@ class ActiveOrderTracking extends StatelessWidget {
         statusColor(currentStatus);
 
     return Container(
-      margin: const EdgeInsets.only(
-        bottom: 12,
-      ),
+      margin:
+          const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius:
+            BorderRadius.circular(20),
         border: Border.all(
-          color: color.withValues(alpha: 0.18),
+          color:
+              color.withValues(alpha: 0.18),
         ),
         boxShadow: [
           BoxShadow(
@@ -1554,8 +1773,10 @@ class ActiveOrderTracking extends StatelessWidget {
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.all(14),
-            color: color.withValues(alpha: 0.08),
+            padding:
+                const EdgeInsets.all(14),
+            color:
+                color.withValues(alpha: 0.08),
             child: Row(
               children: [
                 CircleAvatar(
@@ -1567,7 +1788,9 @@ class ActiveOrderTracking extends StatelessWidget {
                     size: 22,
                   ),
                 ),
+
                 const SizedBox(width: 12),
+
                 Expanded(
                   child: Column(
                     crossAxisAlignment:
@@ -1593,18 +1816,22 @@ class ActiveOrderTracking extends StatelessWidget {
                     ],
                   ),
                 ),
+
                 Text(
                   '#${shortOrderId(orderId)}',
                   style: const TextStyle(
                     fontSize: 11,
-                    fontWeight: FontWeight.w800,
+                    fontWeight:
+                        FontWeight.w800,
                   ),
                 ),
               ],
             ),
           ),
+
           Padding(
-            padding: const EdgeInsets.all(14),
+            padding:
+                const EdgeInsets.all(14),
             child: Column(
               children: [
                 Row(
@@ -1619,22 +1846,28 @@ class ActiveOrderTracking extends StatelessWidget {
                     const Spacer(),
                     Text(
                       '₹${total.toStringAsFixed(0)}',
-                      style: const TextStyle(
+                      style:
+                          const TextStyle(
                         fontWeight:
                             FontWeight.w900,
                       ),
                     ),
                   ],
                 ),
+
                 const SizedBox(height: 14),
+
                 _TrackingTimeline(
-                  currentIndex: currentIndex,
+                  currentIndex:
+                      currentIndex,
                 ),
+
                 if (courierName.isNotEmpty ||
                     courierMobile.isNotEmpty ||
                     courierPartner.isNotEmpty ||
                     trackingNumber.isNotEmpty) ...[
                   const SizedBox(height: 14),
+
                   Container(
                     width: double.infinity,
                     padding:
@@ -1643,7 +1876,9 @@ class ActiveOrderTracking extends StatelessWidget {
                       color: Colors.teal
                           .withValues(alpha: 0.07),
                       borderRadius:
-                          BorderRadius.circular(14),
+                          BorderRadius.circular(
+                        14,
+                      ),
                     ),
                     child: Column(
                       crossAxisAlignment:
@@ -1666,6 +1901,7 @@ class ActiveOrderTracking extends StatelessWidget {
                             ),
                           ],
                         ),
+
                         if (courierPartner
                             .isNotEmpty) ...[
                           const SizedBox(height: 7),
@@ -1673,10 +1909,12 @@ class ActiveOrderTracking extends StatelessWidget {
                             'Partner: $courierPartner',
                           ),
                         ],
+
                         if (courierName.isNotEmpty)
                           Text(
                             'Name: $courierName',
                           ),
+
                         if (courierMobile
                             .isNotEmpty)
                           Row(
@@ -1702,6 +1940,7 @@ class ActiveOrderTracking extends StatelessWidget {
                               ),
                             ],
                           ),
+
                         if (trackingNumber
                             .isNotEmpty)
                           Row(
@@ -1731,11 +1970,14 @@ class ActiveOrderTracking extends StatelessWidget {
                     ),
                   ),
                 ],
+
                 const SizedBox(height: 13),
+
                 SizedBox(
                   width: double.infinity,
                   height: 44,
-                  child: OutlinedButton.icon(
+                  child:
+                      OutlinedButton.icon(
                     onPressed: () {
                       Navigator.push(
                         context,
@@ -1761,6 +2003,10 @@ class ActiveOrderTracking extends StatelessWidget {
     );
   }
 }
+
+// ============================================================
+// TRACKING TIMELINE
+// ============================================================
 
 class _TrackingTimeline
     extends StatelessWidget {
@@ -1804,7 +2050,9 @@ class _TrackingTimeline
                               BoxShape.circle,
                           color: completed
                               ? Colors.deepPurple
-                              : Colors.grey.shade300,
+                              : Colors
+                                  .grey
+                                  .shade300,
                         ),
                         child: Icon(
                           completed
@@ -1814,10 +2062,12 @@ class _TrackingTimeline
                           size: 14,
                           color: completed
                               ? Colors.white
-                              : Colors.grey
+                              : Colors
+                                  .grey
                                   .shade600,
                         ),
                       ),
+
                       if (!last)
                         Expanded(
                           child: Container(
@@ -1838,7 +2088,9 @@ class _TrackingTimeline
                     ],
                   ),
                 ),
+
                 const SizedBox(width: 9),
+
                 Expanded(
                   child: Padding(
                     padding:
@@ -1856,7 +2108,8 @@ class _TrackingTimeline
                                 : FontWeight.w500,
                         color: completed
                             ? Colors.black87
-                            : Colors.grey
+                            : Colors
+                                .grey
                                 .shade500,
                       ),
                     ),
