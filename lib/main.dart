@@ -622,58 +622,61 @@ class ProductStream
   });
 
   Product productFromDocument(
-    QueryDocumentSnapshot<
-        Map<String, dynamic>> doc,
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
   ) {
     final data = doc.data();
 
-    final rawMrp =
-        double.tryParse(
-              data['MRP']?.toString() ??
-                  data['Mrp']?.toString() ??
-                  '0',
-            ) ??
-            0;
+    String firstValue(List<String> keys, [String fallback = '']) {
+      for (final key in keys) {
+        final value = data[key];
+        if (value != null && value.toString().trim().isNotEmpty) {
+          return value.toString();
+        }
+      }
+      return fallback;
+    }
 
-    final rawDiscount =
-        double.tryParse(
-              data['DiscountPercent']
-                      ?.toString() ??
-                  data['Discount']
-                      ?.toString() ??
-                  '0',
-            ) ??
-            0;
+    double numberValue(List<String> keys) {
+      final raw = firstValue(keys, '0');
+      return double.tryParse(raw.replaceAll(RegExp(r'[^0-9.-]'), '')) ?? 0;
+    }
+
+    int intValue(List<String> keys) {
+      final raw = firstValue(keys, '0');
+      return int.tryParse(raw.replaceAll(RegExp(r'[^0-9-]'), '')) ?? 0;
+    }
+
+    String image = firstValue(['imageUrl', 'Imageurl', 'ImageUrl']);
+    if (image.isEmpty) {
+      final rawImages = data['imageUrls'];
+      if (rawImages is List && rawImages.isNotEmpty) {
+        image = rawImages.first.toString();
+      } else if (rawImages is String) {
+        image = rawImages.split(RegExp(r'[\n,]')).first.trim();
+      }
+    }
+
+    final activeValue = data['active'] ?? data['Active'];
+    final active = activeValue is bool
+        ? activeValue
+        : activeValue?.toString().toLowerCase() == 'true';
 
     return Product(
       id: doc.id,
-      name:
-          data['Name']?.toString() ?? '',
-      category:
-          data['Category']?.toString() ??
-              '',
-      price:
-          data['Price']?.toString() ??
-              '0',
-      stock: int.tryParse(
-            data['Stock']?.toString() ??
-                '0',
-          ) ??
-          0,
-      imageUrl:
-          data['Imageurl']?.toString() ??
-              data['ImageUrl']
-                  ?.toString() ??
-              '',
-      description:
-          data['Description']
-                  ?.toString() ??
-              '',
-      active:
-          data['Active'] == true,
-      mrp: rawMrp,
-      discountPercent:
-          rawDiscount,
+      name: firstValue(['name', 'Name']),
+      category: firstValue(['category', 'Category']),
+      price: firstValue(['price', 'Price'], '0'),
+      stock: intValue(['stock', 'Stock']),
+      imageUrl: image,
+      description: firstValue(['description', 'Description']),
+      active: active,
+      mrp: numberValue(['mrp', 'MRP', 'Mrp']),
+      discountPercent: numberValue([
+        'discountPercent',
+        'DiscountPercent',
+        'discount',
+        'Discount',
+      ]),
     );
   }
 
@@ -1226,41 +1229,263 @@ class _ModernProductCard extends StatelessWidget {
   final Product product;
   final VoidCallback onCartChanged;
 
-  const _ModernProductCard({required this.product, required this.onCartChanged});
+  const _ModernProductCard({
+    required this.product,
+    required this.onCartChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final item = CartController.findItem(product.id);
-    final quantity = item?.quantity ?? 0;
+    final existing = CartController.findItem(product.id);
+    final quantity = existing?.quantity ?? 0;
+
     return InkWell(
       borderRadius: BorderRadius.circular(18),
       onTap: () async {
-        await Navigator.push(context, MaterialPageRoute(builder: (_) => ProductDetailsPage(product: product, onCartChanged: onCartChanged)));
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ProductDetailsPage(
+              product: product,
+              onCartChanged: onCartChanged,
+            ),
+          ),
+        );
         onCartChanged();
       },
       child: Container(
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xffE6E9EC)), boxShadow: const [BoxShadow(blurRadius: 9, offset: Offset(0, 3), color: Color(0x0C000000))]),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(child: Stack(children: [
-            ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(18)), child: Container(width: double.infinity, color: const Color(0xffF5F6F7), child: _ProductImage(product.imageUrl, fit: BoxFit.contain))),
-            if (product.hasDiscount) Positioned(left: 8, top: 8, child: _DiscountBadge(percent: product.discountPercent)),
-            Positioned(right: 8, top: 8, child: Container(width: 30, height: 30, decoration: BoxDecoration(color: Colors.white.withOpacity(.92), shape: BoxShape.circle), child: const Icon(Icons.favorite_border_rounded, size: 18))),
-          ])),
-          Padding(padding: const EdgeInsets.fromLTRB(10, 9, 10, 10), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(product.name.isEmpty ? 'Unnamed Product' : product.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
-            const SizedBox(height: 4),
-            Row(children: [Container(padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2), decoration: BoxDecoration(color: const Color(0xffE9F7EF), borderRadius: BorderRadius.circular(5)), child: const Row(children: [Icon(Icons.star_rounded, size: 11, color: Color(0xff1B8A4A)), SizedBox(width: 2), Text('4.3', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Color(0xff1B8A4A)))])), const SizedBox(width: 5), Expanded(child: Text(product.category, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 9, color: Colors.black54)))]),
-            const SizedBox(height: 6),
-            Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Text('₹${product.sellingPrice.toStringAsFixed(0)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-              if (product.hasDiscount) ...[const SizedBox(width: 5), Text('₹${product.originalPrice.toStringAsFixed(0)}', style: const TextStyle(fontSize: 10, color: Colors.black45, decoration: TextDecoration.lineThrough))],
-            ]),
-            const SizedBox(height: 3),
-            Text(product.stock > 0 ? 'Free delivery • In stock' : 'Out of stock', style: TextStyle(fontSize: 9, color: product.stock > 0 ? const Color(0xff1B8A4A) : Colors.red, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            SizedBox(width: double.infinity, height: 36, child: quantity == 0 ? OutlinedButton.icon(onPressed: product.stock <= 0 ? null : () async { final added = await CartController.addProduct(product); if (added) { onCartChanged(); if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Added to cart'), duration: Duration(seconds: 1))); } }, icon: const Icon(Icons.add_shopping_cart_rounded, size: 16), label: const Text('Add to Cart', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)), style: OutlinedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)))) : Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [IconButton(onPressed: () async { await CartController.decreaseQuantity(product.id); onCartChanged(); }, icon: const Icon(Icons.remove_circle_outline_rounded, size: 20)), Text('$quantity', style: const TextStyle(fontWeight: FontWeight.w900)), IconButton(onPressed: quantity >= product.stock ? null : () async { await CartController.increaseQuantity(product.id); onCartChanged(); }, icon: const Icon(Icons.add_circle_outline_rounded, size: 20))])),
-          ]),
-        ]),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xffE6E9EC)),
+          boxShadow: const [
+            BoxShadow(
+              blurRadius: 9,
+              offset: Offset(0, 3),
+              color: Color(0x0C000000),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(18),
+                    ),
+                    child: Container(
+                      width: double.infinity,
+                      color: const Color(0xffF5F6F7),
+                      child: _ProductImage(
+                        product.imageUrl,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
+                  if (product.hasDiscount)
+                    Positioned(
+                      left: 8,
+                      top: 8,
+                      child: _DiscountBadge(
+                        percent: product.discountPercent,
+                      ),
+                    ),
+                  Positioned(
+                    right: 8,
+                    top: 8,
+                    child: Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(.92),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.favorite_border_rounded,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    product.name.isEmpty ? 'Unnamed Product' : product.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xffE9F7EF),
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.star_rounded,
+                              size: 11,
+                              color: Color(0xff1B8A4A),
+                            ),
+                            SizedBox(width: 2),
+                            Text(
+                              '4.3',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xff1B8A4A),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          product.category,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 9,
+                            color: Colors.black54,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '₹${product.sellingPrice.toStringAsFixed(0)}',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      if (product.hasDiscount) ...[
+                        const SizedBox(width: 5),
+                        Text(
+                          '₹${product.originalPrice.toStringAsFixed(0)}',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Colors.black45,
+                            decoration: TextDecoration.lineThrough,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    product.stock > 0
+                        ? 'Free delivery • In stock'
+                        : 'Out of stock',
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: product.stock > 0
+                          ? const Color(0xff1B8A4A)
+                          : Colors.red,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 36,
+                    child: quantity == 0
+                        ? OutlinedButton.icon(
+                            onPressed: product.stock <= 0
+                                ? null
+                                : () async {
+                                    final added =
+                                        await CartController.addProduct(product);
+                                    if (!added) return;
+                                    onCartChanged();
+                                    if (!context.mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Added to cart'),
+                                        duration: Duration(seconds: 1),
+                                      ),
+                                    );
+                                  },
+                            icon: const Icon(
+                              Icons.add_shopping_cart_rounded,
+                              size: 16,
+                            ),
+                            label: const Text(
+                              'Add to Cart',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                          )
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              IconButton(
+                                onPressed: () async {
+                                  await CartController.decreaseQuantity(product.id);
+                                  onCartChanged();
+                                },
+                                icon: const Icon(
+                                  Icons.remove_circle_outline_rounded,
+                                  size: 20,
+                                ),
+                              ),
+                              Text(
+                                '$quantity',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: quantity >= product.stock
+                                    ? null
+                                    : () async {
+                                        await CartController.increaseQuantity(product.id);
+                                        onCartChanged();
+                                      },
+                                icon: const Icon(
+                                  Icons.add_circle_outline_rounded,
+                                  size: 20,
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
