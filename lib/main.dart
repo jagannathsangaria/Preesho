@@ -84,91 +84,11 @@ class PreeshoApp extends StatelessWidget {
 class AppEntry extends StatelessWidget {
   const AppEntry({super.key});
 
-  Future<Widget> _getStartPage() async {
-    final user = FirebaseAuth.instance.currentUser;
-
-    if (user == null) {
-      return const MainShell();
-    }
-
-    try {
-      final firestore = FirebaseFirestore.instance;
-
-      final userSnap = await firestore
-          .collection('users')
-          .doc(user.uid)
-          .get();
-
-      final courierSnap = await firestore
-          .collection('couriers')
-          .doc(user.uid)
-          .get();
-
-      final userData = userSnap.data() ?? {};
-      final courierData = courierSnap.data() ?? {};
-
-      final userRole =
-          (userData['role'] ?? '').toString().trim().toLowerCase();
-
-      final courierRole =
-          (courierData['role'] ?? '').toString().trim().toLowerCase();
-
-      final isCourier =
-          userRole == 'courier' ||
-          courierRole == 'courier' ||
-          courierSnap.exists;
-
-      if (isCourier) {
-        final status = (
-          courierData['status'] ??
-          userData['status'] ??
-          ''
-        ).toString().trim().toLowerCase();
-
-        final active =
-            courierData['active'] == true ||
-            userData['active'] == true;
-
-        final approvedByAdmin =
-            courierData['approvedByAdmin'] == true ||
-            userData['approvedByAdmin'] == true;
-
-        final approved =
-            status == 'approved' ||
-            status == 'active';
-
-        if (approved && active && approvedByAdmin) {
-          return const CourierPanel();
-        }
-
-        return CourierDocumentsPage(
-          courierUid: user.uid,
-        );
-      }
-
-      return const MainShell();
-    } catch (_) {
-      return const MainShell();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<Widget>(
-      future: _getStartPage(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState ==
-            ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(),
-            ),
-          );
-        }
-
-        return snapshot.data ?? const MainShell();
-      },
-    );
+    // App restart par hamesha Home khulega.
+    // Firebase login session delete nahi hoga.
+    return const MainShell();
   }
 }
 
