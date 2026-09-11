@@ -15,286 +15,46 @@ class CourierDocumentsPage extends StatefulWidget {
       _CourierDocumentsPageState();
 }
 
-class _CourierDocumentsPageState
-    extends State<CourierDocumentsPage> {
+class _CourierDocumentsPageState extends State<CourierDocumentsPage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore =
-      FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  final TextEditingController _panController =
+  final TextEditingController panController = TextEditingController();
+  final TextEditingController aadhaarController = TextEditingController();
+  final TextEditingController drivingLicenceController =
+      TextEditingController();
+  final TextEditingController vehicleRcController =
+      TextEditingController();
+  final TextEditingController addressProofController =
       TextEditingController();
 
-  final TextEditingController _aadhaarController =
-      TextEditingController();
+  bool isLoading = true;
+  bool isSaving = false;
 
-  final TextEditingController _dlController =
-      TextEditingController();
+  bool documentsSubmitted = false;
+  bool approvedByAdmin = false;
+  bool active = false;
 
-  final TextEditingController _rcController =
-      TextEditingController();
-
-  final TextEditingController _addressProofController =
-      TextEditingController();
+  String status = 'pending_documents';
+  String rejectionReason = '';
 
   String? _uid;
-
-  bool _loading = true;
-  bool _saving = false;
-
-  String _status = 'pending_documents';
-  bool _documentsSubmitted = false;
-  bool _approvedByAdmin = false;
-  bool _active = false;
-
-  String _rejectionReason = '';
-
-  final Map<String, String> _documentStatuses = {
-    'pan': 'pending',
-    'aadhaar': 'pending',
-    'drivingLicence': 'pending',
-    'vehicleRc': 'pending',
-    'addressProof': 'pending',
-  };
-
-  final Map<String, String> _documentReasons = {};
 
   @override
   void initState() {
     super.initState();
-
     _uid = widget.courierUid ?? _auth.currentUser?.uid;
-
-    _loadCourier();
+    _loadCourierData();
   }
 
   @override
   void dispose() {
-    _panController.dispose();
-    _aadhaarController.dispose();
-    _dlController.dispose();
-    _rcController.dispose();
-    _addressProofController.dispose();
-
+    panController.dispose();
+    aadhaarController.dispose();
+    drivingLicenceController.dispose();
+    vehicleRcController.dispose();
+    addressProofController.dispose();
     super.dispose();
-  }
-
-  // ============================================================
-  // BACK
-  // ============================================================
-
-  void _goBack() {
-    if (_saving) return;
-
-    final navigator = Navigator.of(context);
-
-    if (navigator.canPop()) {
-      navigator.pop();
-    } else {
-      navigator.pushNamedAndRemoveUntil(
-        '/',
-        (route) => false,
-      );
-    }
-  }
-
-  // ============================================================
-  // LOAD COURIER
-  // ============================================================
-
-  Future<void> _loadCourier() async {
-    if (_uid == null || _uid!.isEmpty) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-        });
-      }
-      return;
-    }
-
-    try {
-      final courierDoc = await _firestore
-          .collection('couriers')
-          .doc(_uid)
-          .get();
-
-      Map<String, dynamic> data = {};
-
-      if (courierDoc.exists) {
-        data = courierDoc.data() ?? {};
-      } else {
-        final userDoc = await _firestore
-            .collection('users')
-            .doc(_uid)
-            .get();
-
-        if (userDoc.exists) {
-          data = userDoc.data() ?? {};
-        }
-      }
-
-      _status = _normalizeStatus(
-        data['status'] ??
-            data['registrationStatus'] ??
-            'pending_documents',
-      );
-
-      _documentsSubmitted =
-          data['documentsSubmitted'] == true;
-
-      _approvedByAdmin =
-          data['approvedByAdmin'] == true;
-
-      _active = data['active'] == true;
-
-      _rejectionReason =
-          _clean(data['rejectionReason']);
-
-      final documents = data['documents'];
-
-      if (documents is Map) {
-        _loadDocument(
-          documents,
-          'pan',
-          _panController,
-        );
-
-        _loadDocument(
-          documents,
-          'aadhaar',
-          _aadhaarController,
-        );
-
-        _loadDocument(
-          documents,
-          'drivingLicence',
-          _dlController,
-        );
-
-        _loadDocument(
-          documents,
-          'vehicleRc',
-          _rcController,
-        );
-
-        _loadDocument(
-          documents,
-          'addressProof',
-          _addressProofController,
-        );
-      }
-
-      // Legacy flat fields support.
-      if (_panController.text.isEmpty) {
-        _panController.text =
-            _clean(data['panNumber']);
-      }
-
-      if (_aadhaarController.text.isEmpty) {
-        _aadhaarController.text =
-            _clean(data['aadhaarNumber']);
-      }
-
-      if (_dlController.text.isEmpty) {
-        _dlController.text =
-            _clean(data['drivingLicenceNumber']);
-      }
-
-      if (_rcController.text.isEmpty) {
-        _rcController.text =
-            _clean(data['vehicleRcNumber']);
-      }
-
-      if (_addressProofController.text.isEmpty) {
-        _addressProofController.text =
-            _clean(data['addressProofNumber']);
-      }
-
-      if (mounted) {
-        setState(() {
-          _loading = false;
-        });
-      }
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        _loading = false;
-      });
-
-      _message(
-        'Courier details load nahi ho paye.\n$e',
-        error: true,
-      );
-    }
-  }
-
-  void _loadDocument(
-    Map documents,
-    String key,
-    TextEditingController controller,
-  ) {
-    final raw = documents[key];
-
-    if (raw is Map) {
-      controller.text = _clean(
-        raw['number'] ??
-            raw['documentNumber'] ??
-            raw['value'],
-      );
-
-      final status = _normalizeStatus(
-        raw['status'] ?? 'pending',
-      );
-
-      _documentStatuses[key] =
-          status.isEmpty ? 'pending' : status;
-
-      _documentReasons[key] =
-          _clean(raw['rejectionReason']);
-    } else if (raw is String) {
-      controller.text = raw;
-    }
-  }
-
-  // ============================================================
-  // HELPERS
-  // ============================================================
-
-  String _clean(dynamic value) {
-    return value?.toString().trim() ?? '';
-  }
-
-  String _normalizeStatus(dynamic value) {
-    return _clean(value)
-        .toLowerCase()
-        .replaceAll(' ', '_');
-  }
-
-  bool _isAccountApproved() {
-    return _status == 'approved' &&
-        _approvedByAdmin &&
-        _active;
-  }
-
-  bool _isDocumentApproved(String key) {
-    return _documentStatuses[key] == 'approved';
-  }
-
-  bool _isDocumentRejected(String key) {
-    return _documentStatuses[key] == 'rejected';
-  }
-
-  bool _isLocked(String key) {
-    if (_isAccountApproved()) {
-      return true;
-    }
-
-    if (_documentsSubmitted &&
-        _status == 'pending_approval') {
-      return true;
-    }
-
-    return _isDocumentApproved(key);
   }
 
   void _message(
@@ -303,36 +63,46 @@ class _CourierDocumentsPageState
   }) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(text),
-        backgroundColor: error
-            ? Colors.red.shade700
-            : Colors.green.shade700,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(text),
+          backgroundColor: error ? Colors.red : Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
   }
 
-  // ============================================================
-  // SAVE DOCUMENT NUMBERS
-  // ============================================================
+  Future<void> _loadCourierData() async {
+    final currentUser = _auth.currentUser;
 
-  Future<void> _saveDocumentNumbers({
-    bool submit = false,
-  }) async {
-    if (_uid == null || _uid!.isEmpty) {
+    if (currentUser == null) {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
       _message(
-        'Courier login session nahi mili.',
+        'Courier login session nahi mili. Please login again.',
         error: true,
       );
       return;
     }
 
-    final currentUser = _auth.currentUser;
+    if (_uid == null || _uid!.isEmpty) {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
+      _message(
+        'Courier UID nahi mila. Please login again.',
+        error: true,
+      );
+      return;
+    }
 
-    if (currentUser == null ||
-        currentUser.uid != _uid) {
+    if (currentUser.uid != _uid) {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
       _message(
         'Courier login session invalid hai. Please login again.',
         error: true,
@@ -340,19 +110,266 @@ class _CourierDocumentsPageState
       return;
     }
 
-    if (_isAccountApproved()) {
+    try {
+      Map<String, dynamic>? data;
+
+      final courierSnapshot =
+          await _firestore.collection('couriers').doc(_uid).get();
+
+      if (courierSnapshot.exists) {
+        data = courierSnapshot.data();
+      }
+
+      if (data == null) {
+        final userSnapshot =
+            await _firestore.collection('users').doc(_uid).get();
+
+        if (userSnapshot.exists) {
+          data = userSnapshot.data();
+        }
+      }
+
+      data ??= <String, dynamic>{};
+
+      final dynamic nestedDocuments = data['documents'];
+
+      Map<String, dynamic> documents = {};
+
+      if (nestedDocuments is Map) {
+        documents = Map<String, dynamic>.from(nestedDocuments);
+      }
+
+      final pan = _readDocumentNumber(
+        documents,
+        data,
+        'pan',
+        'panNumber',
+      );
+
+      final aadhaar = _readDocumentNumber(
+        documents,
+        data,
+        'aadhaar',
+        'aadhaarNumber',
+      );
+
+      final drivingLicence = _readDocumentNumber(
+        documents,
+        data,
+        'drivingLicence',
+        'drivingLicenceNumber',
+      );
+
+      final vehicleRc = _readDocumentNumber(
+        documents,
+        data,
+        'vehicleRc',
+        'vehicleRcNumber',
+      );
+
+      final addressProof = _readDocumentNumber(
+        documents,
+        data,
+        'addressProof',
+        'addressProofNumber',
+      );
+
+      panController.text = pan;
+      aadhaarController.text = aadhaar;
+      drivingLicenceController.text = drivingLicence;
+      vehicleRcController.text = vehicleRc;
+      addressProofController.text = addressProof;
+
+      if (!mounted) return;
+
+      setState(() {
+        documentsSubmitted =
+            data?['documentsSubmitted'] == true;
+
+        approvedByAdmin =
+            data?['approvedByAdmin'] == true;
+
+        active =
+            data?['active'] == true;
+
+        status = (
+          data?['status'] ??
+          data?['registrationStatus'] ??
+          data?['approvalStatus'] ??
+          'pending_documents'
+        )
+            .toString()
+            .toLowerCase()
+            .trim();
+
+        rejectionReason =
+            (data?['rejectionReason'] ?? '').toString();
+
+        isLoading = false;
+      });
+    } on FirebaseException catch (e) {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
+
       _message(
-        'Courier account already approved hai.',
+        'Data load failed.\nCode: ${e.code}\n${e.message ?? ''}',
+        error: true,
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
+
+      _message(
+        'Courier documents load nahi ho paaye.',
+        error: true,
+      );
+    }
+  }
+
+  String _readDocumentNumber(
+    Map<String, dynamic> documents,
+    Map<String, dynamic> data,
+    String nestedKey,
+    String legacyKey,
+  ) {
+    final nested = documents[nestedKey];
+
+    if (nested is Map) {
+      final value = nested['number'];
+
+      if (value != null && value.toString().trim().isNotEmpty) {
+        return value.toString();
+      }
+    }
+
+    final legacy = data[legacyKey];
+
+    if (legacy != null) {
+      return legacy.toString();
+    }
+
+    return '';
+  }
+
+  bool get _isLocked {
+    return approvedByAdmin ||
+        active ||
+        status == 'pending_approval' ||
+        status == 'approved' ||
+        status == 'active' ||
+        status == 'verified';
+  }
+
+  bool get _isRejected {
+    return status == 'rejected';
+  }
+
+  bool get _canEdit {
+    if (approvedByAdmin || active) {
+      return false;
+    }
+
+    if (status == 'pending_approval') {
+      return false;
+    }
+
+    return true;
+  }
+
+  bool _validateDocuments() {
+    if (panController.text.trim().isEmpty) {
+      _message(
+        'Please enter PAN number.',
+        error: true,
+      );
+      return false;
+    }
+
+    if (aadhaarController.text.trim().isEmpty) {
+      _message(
+        'Please enter Aadhaar number.',
+        error: true,
+      );
+      return false;
+    }
+
+    if (drivingLicenceController.text.trim().isEmpty) {
+      _message(
+        'Please enter Driving Licence number.',
+        error: true,
+      );
+      return false;
+    }
+
+    if (vehicleRcController.text.trim().isEmpty) {
+      _message(
+        'Please enter Vehicle RC number.',
+        error: true,
+      );
+      return false;
+    }
+
+    if (addressProofController.text.trim().isEmpty) {
+      _message(
+        'Please enter Address Proof number.',
+        error: true,
+      );
+      return false;
+    }
+
+    return true;
+  }
+
+  Future<void> _saveDocumentNumbers({
+    bool submit = false,
+  }) async {
+    final currentUser = _auth.currentUser;
+
+    if (currentUser == null) {
+      _message(
+        'Please login again.',
         error: true,
       );
       return;
     }
 
-    if (submit &&
-        _documentsSubmitted &&
-        _status == 'pending_approval') {
+    if (_uid == null || _uid!.isEmpty) {
       _message(
-        'Documents already Admin review mein hain.',
+        'Courier UID missing.',
+        error: true,
+      );
+      return;
+    }
+
+    if (currentUser.uid != _uid) {
+      _message(
+        'Courier login session invalid hai. Please login again.',
+        error: true,
+      );
+      return;
+    }
+
+    if (approvedByAdmin || active) {
+      _message(
+        'Approved courier documents cannot be changed.',
+        error: true,
+      );
+      return;
+    }
+
+    if (status == 'pending_approval' && !submit) {
+      _message(
+        'Documents are already submitted for admin approval.',
+        error: true,
+      );
+      return;
+    }
+
+    if (submit && status == 'pending_approval') {
+      _message(
+        'Documents are already submitted for approval.',
         error: true,
       );
       return;
@@ -362,114 +379,93 @@ class _CourierDocumentsPageState
       return;
     }
 
+    setState(() => isSaving = true);
+
     try {
-      setState(() {
-        _saving = true;
-      });
-
       final now = FieldValue.serverTimestamp();
-
-      final documentStatus =
-          submit ? 'pending' : 'draft';
 
       final documents = <String, dynamic>{
         'pan': {
-          'number':
-              _panController.text.trim().toUpperCase(),
-          'status': documentStatus,
+          'number': panController.text.trim(),
+          'status': submit ? 'pending' : 'draft',
           'rejectionReason': '',
           'updatedAt': now,
         },
         'aadhaar': {
-          'number':
-              _aadhaarController.text.trim(),
-          'status': documentStatus,
+          'number': aadhaarController.text.trim(),
+          'status': submit ? 'pending' : 'draft',
           'rejectionReason': '',
           'updatedAt': now,
         },
         'drivingLicence': {
-          'number':
-              _dlController.text.trim().toUpperCase(),
-          'status': documentStatus,
+          'number': drivingLicenceController.text.trim(),
+          'status': submit ? 'pending' : 'draft',
           'rejectionReason': '',
           'updatedAt': now,
         },
         'vehicleRc': {
-          'number':
-              _rcController.text.trim().toUpperCase(),
-          'status': documentStatus,
+          'number': vehicleRcController.text.trim(),
+          'status': submit ? 'pending' : 'draft',
           'rejectionReason': '',
           'updatedAt': now,
         },
         'addressProof': {
-          'number':
-              _addressProofController.text.trim(),
-          'status': documentStatus,
+          'number': addressProofController.text.trim(),
+          'status': submit ? 'pending' : 'draft',
           'rejectionReason': '',
           'updatedAt': now,
         },
       };
 
-      // ========================================================
-      // IMPORTANT:
-      // uid + role are explicitly saved.
-      // ========================================================
+      final newStatus = submit
+          ? 'pending_approval'
+          : 'pending_documents';
 
+      /*
+       * IMPORTANT:
+       * uid + role are deliberately written here.
+       *
+       * This also fixes old courier documents where uid
+       * was missing.
+       */
       final courierData = <String, dynamic>{
         'uid': _uid,
         'role': 'courier',
 
         'documents': documents,
 
-        'panNumber':
-            _panController.text.trim().toUpperCase(),
-
-        'aadhaarNumber':
-            _aadhaarController.text.trim(),
-
+        // Legacy flat fields
+        'panNumber': panController.text.trim(),
+        'aadhaarNumber': aadhaarController.text.trim(),
         'drivingLicenceNumber':
-            _dlController.text.trim().toUpperCase(),
-
+            drivingLicenceController.text.trim(),
         'vehicleRcNumber':
-            _rcController.text.trim().toUpperCase(),
-
+            vehicleRcController.text.trim(),
         'addressProofNumber':
-            _addressProofController.text.trim(),
+            addressProofController.text.trim(),
+
+        'documentsSubmitted': submit,
+        'status': newStatus,
+        'registrationStatus': newStatus,
+
+        /*
+         * Courier cannot approve itself.
+         */
+        'approvedByAdmin': false,
+        'active': false,
+
+        'rejectionReason': '',
 
         'updatedAt': now,
       };
 
       if (submit) {
-        courierData.addAll({
-          'documentsSubmitted': true,
-          'status': 'pending_approval',
-          'registrationStatus':
-              'pending_approval',
-
-          // Courier cannot approve itself.
-          'approvedByAdmin': false,
-          'active': false,
-
-          'rejectionReason': '',
-          'documentsSubmittedAt': now,
-        });
-      } else {
-        courierData.addAll({
-          'documentsSubmitted': false,
-          'status': 'pending_documents',
-          'registrationStatus':
-              'pending_documents',
-
-          // Courier cannot approve itself.
-          'approvedByAdmin': false,
-          'active': false,
-        });
+        courierData['documentsSubmittedAt'] = now;
       }
 
-      // ========================================================
-      // SAVE COURIER DOCUMENT
-      // ========================================================
-
+      /*
+       * First save courier document.
+       */
       await _firestore
           .collection('couriers')
           .doc(_uid)
@@ -478,37 +474,28 @@ class _CourierDocumentsPageState
             SetOptions(merge: true),
           );
 
-      // ========================================================
-      // SYNC USERS COLLECTION
-      // ========================================================
-
+      /*
+       * Keep users/{uid} synchronized because login_page
+       * checks the user's role/status.
+       */
       final userData = <String, dynamic>{
         'uid': _uid,
         'role': 'courier',
 
         'documentsSubmitted': submit,
-
-        'status': submit
-            ? 'pending_approval'
-            : 'pending_documents',
-
-        'registrationStatus': submit
-            ? 'pending_approval'
-            : 'pending_documents',
+        'status': newStatus,
+        'registrationStatus': newStatus,
 
         'approvedByAdmin': false,
         'active': false,
+
+        'rejectionReason': '',
+
         'updatedAt': now,
       };
 
       if (submit) {
-        userData[
-                'documentsSubmittedAt'] =
-            now;
-
-        userData[
-                'rejectionReason'] =
-            '';
+        userData['documentsSubmittedAt'] = now;
       }
 
       await _firestore
@@ -522,457 +509,152 @@ class _CourierDocumentsPageState
       if (!mounted) return;
 
       setState(() {
-        _documentsSubmitted = submit;
-
-        _status = submit
-            ? 'pending_approval'
-            : 'pending_documents';
-
-        _approvedByAdmin = false;
-        _active = false;
-        _saving = false;
-
-        for (final key
-            in _documentStatuses.keys) {
-          _documentStatuses[key] =
-              submit ? 'pending' : 'draft';
-        }
-
-        if (submit) {
-          _rejectionReason = '';
-        }
+        documentsSubmitted = submit;
+        status = newStatus;
+        approvedByAdmin = false;
+        active = false;
+        rejectionReason = '';
       });
 
       _message(
         submit
-            ? 'Documents Admin approval ke liye submit ho gaye.'
-            : 'Document details save ho gayi.',
+            ? 'Documents submitted successfully for admin approval.'
+            : 'Documents saved successfully.',
       );
     } on FirebaseException catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        _saving = false;
-      });
-
-      _message(
-        'Save failed.\nCode: ${e.code}\n${e.message ?? ''}',
-        error: true,
-      );
+      if (mounted) {
+        _message(
+          'Save failed.\nCode: ${e.code}\n${e.message ?? ''}',
+          error: true,
+        );
+      }
     } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        _saving = false;
-      });
-
-      _message(
-        'Save failed.\n$e',
-        error: true,
-      );
+      if (mounted) {
+        _message(
+          'Unable to save courier documents.',
+          error: true,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => isSaving = false);
+      }
     }
   }
 
-  // ============================================================
-  // VALIDATION
-  // ============================================================
-
-  bool _validateDocuments() {
-    final pan =
-        _panController.text.trim().toUpperCase();
-
-    final aadhaar =
-        _aadhaarController.text.trim();
-
-    final dl =
-        _dlController.text.trim();
-
-    final rc =
-        _rcController.text.trim();
-
-    final address =
-        _addressProofController.text.trim();
-
-    if (pan.isEmpty) {
-      _message(
-        'PAN Number enter karein.',
-        error: true,
-      );
-      return false;
-    }
-
-    if (pan.length != 10) {
-      _message(
-        'PAN Number 10 characters ka hona chahiye.',
-        error: true,
-      );
-      return false;
-    }
-
-    final panRegex =
-        RegExp(r'^[A-Z]{5}[0-9]{4}[A-Z]$');
-
-    if (!panRegex.hasMatch(pan)) {
-      _message(
-        'Valid PAN Number enter karein.',
-        error: true,
-      );
-      return false;
-    }
-
-    if (aadhaar.isEmpty) {
-      _message(
-        'Aadhaar Number enter karein.',
-        error: true,
-      );
-      return false;
-    }
-
-    if (aadhaar.length != 12 ||
-        int.tryParse(aadhaar) == null) {
-      _message(
-        'Aadhaar Number 12 digit ka hona chahiye.',
-        error: true,
-      );
-      return false;
-    }
-
-    if (dl.isEmpty) {
-      _message(
-        'Driving Licence Number enter karein.',
-        error: true,
-      );
-      return false;
-    }
-
-    if (rc.isEmpty) {
-      _message(
-        'Vehicle RC Number enter karein.',
-        error: true,
-      );
-      return false;
-    }
-
-    if (address.isEmpty) {
-      _message(
-        'Address Proof Number/Details enter karein.',
-        error: true,
-      );
-      return false;
-    }
-
-    return true;
+  InputDecoration _decoration(
+    String label,
+    IconData icon,
+  ) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(
+          color: Color(0xFF5B35D5),
+          width: 2,
+        ),
+      ),
+    );
   }
-
-  // ============================================================
-  // DOCUMENT FIELD
-  // ============================================================
 
   Widget _documentField({
-    required String key,
-    required String title,
-    required String hint,
-    required IconData icon,
     required TextEditingController controller,
-    TextInputType keyboardType =
-        TextInputType.text,
-    bool obscure = false,
-    int? maxLength,
+    required String label,
+    required IconData icon,
   }) {
-    final approved =
-        _isDocumentApproved(key);
-
-    final rejected =
-        _isDocumentRejected(key);
-
-    final locked =
-        _isLocked(key);
-
-    final reason =
-        _documentReasons[key] ?? '';
-
-    return Container(
-      margin:
-          const EdgeInsets.only(bottom: 16),
-      padding:
-          const EdgeInsets.all(16),
-      decoration:
-          BoxDecoration(
-        color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(18),
-        border: Border.all(
-          color: rejected
-              ? Colors.red.shade200
-              : approved
-                  ? Colors.green.shade200
-                  : Colors.grey.shade200,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color:
-                Colors.black.withOpacity(.035),
-            blurRadius: 12,
-            offset:
-                const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration:
-                    BoxDecoration(
-                  color: approved
-                      ? Colors.green.withOpacity(.10)
-                      : rejected
-                          ? Colors.red.withOpacity(.10)
-                          : const Color(0xff5B35D5)
-                              .withOpacity(.10),
-                  borderRadius:
-                      BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  icon,
-                  color: approved
-                      ? Colors.green
-                      : rejected
-                          ? Colors.red
-                          : const Color(0xff5B35D5),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  title,
-                  style:
-                      const TextStyle(
-                    fontSize: 15,
-                    fontWeight:
-                        FontWeight.w800,
-                  ),
-                ),
-              ),
-              if (approved)
-                const Icon(
-                  Icons.lock_rounded,
-                  color: Colors.green,
-                ),
-              if (rejected)
-                const Icon(
-                  Icons.error_outline_rounded,
-                  color: Colors.red,
-                ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: controller,
-            enabled: !locked && !_saving,
-            keyboardType: keyboardType,
-            obscureText: obscure,
-            maxLength: maxLength,
-            textCapitalization:
-                TextCapitalization.characters,
-            decoration:
-                InputDecoration(
-              labelText: title,
-              hintText: hint,
-              counterText: '',
-              prefixIcon:
-                  const Icon(
-                Icons.edit_document,
-              ),
-              suffixIcon:
-                  approved
-                      ? const Icon(
-                          Icons.lock_rounded,
-                          color: Colors.green,
-                        )
-                      : rejected
-                          ? const Icon(
-                              Icons.edit_rounded,
-                              color: Colors.red,
-                            )
-                          : null,
-              filled: true,
-              fillColor:
-                  locked
-                      ? Colors.grey.shade100
-                      : Colors.grey.shade50,
-              border:
-                  OutlineInputBorder(
-                borderRadius:
-                    BorderRadius.circular(13),
-              ),
-            ),
-          ),
-          if (approved)
-            Padding(
-              padding:
-                  const EdgeInsets.only(top: 9),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.verified_rounded,
-                    size: 16,
-                    color: Colors.green,
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    'Admin Approved • Locked',
-                    style:
-                        TextStyle(
-                      color:
-                          Colors.green.shade700,
-                      fontSize: 12,
-                      fontWeight:
-                          FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          if (rejected) ...[
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding:
-                  const EdgeInsets.all(11),
-              decoration:
-                  BoxDecoration(
-                color:
-                    Colors.red.shade50,
-                borderRadius:
-                    BorderRadius.circular(10),
-              ),
-              child: Text(
-                reason.isEmpty
-                    ? 'Admin ne document reject kiya hai. Details dobara enter karein.'
-                    : 'Admin Reason: $reason',
-                style:
-                    TextStyle(
-                  color:
-                      Colors.red.shade800,
-                  fontSize: 12,
-                  fontWeight:
-                      FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ],
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: TextField(
+        controller: controller,
+        enabled: _canEdit,
+        textCapitalization: TextCapitalization.characters,
+        decoration: _decoration(label, icon),
       ),
     );
   }
-
-  // ============================================================
-  // STATUS CARD
-  // ============================================================
 
   Widget _statusCard() {
-    if (_isAccountApproved()) {
-      return _infoCard(
-        color: Colors.green,
-        icon: Icons.verified_rounded,
-        title: 'Courier Account Approved',
-        text:
-            'Aapka Courier account Admin ne approve kar diya hai. Approved document numbers ab locked hain.',
-      );
+    Color background;
+    Color foreground;
+    String title;
+    String subtitle;
+
+    if (approvedByAdmin || active) {
+      background = Colors.green.shade50;
+      foreground = Colors.green.shade800;
+      title = 'Courier Approved';
+      subtitle =
+          'Your courier account has been approved by admin.';
+    } else if (status == 'pending_approval') {
+      background = Colors.orange.shade50;
+      foreground = Colors.orange.shade900;
+      title = 'Documents Under Review';
+      subtitle =
+          'Your documents have been submitted and are waiting for admin approval.';
+    } else if (status == 'rejected') {
+      background = Colors.red.shade50;
+      foreground = Colors.red.shade800;
+      title = 'Documents Rejected';
+      subtitle = rejectionReason.isEmpty
+          ? 'Please update your documents and submit again.'
+          : rejectionReason;
+    } else {
+      background = Colors.blue.shade50;
+      foreground = Colors.blue.shade800;
+      title = 'Documents Required';
+      subtitle =
+          'Complete all document details and submit them for approval.';
     }
 
-    if (_status == 'pending_approval' &&
-        _documentsSubmitted) {
-      return _infoCard(
-        color: Colors.orange,
-        icon: Icons.hourglass_top_rounded,
-        title: 'Under Admin Review',
-        text:
-            'Aapke document numbers Admin verification ke liye submit ho chuke hain.',
-      );
-    }
-
-    if (_status == 'rejected') {
-      return _infoCard(
-        color: Colors.red,
-        icon: Icons.cancel_outlined,
-        title: 'Documents Rejected',
-        text:
-            _rejectionReason.isEmpty
-                ? 'Rejected details ko correct karke dobara submit karein.'
-                : _rejectionReason,
-      );
-    }
-
-    return _infoCard(
-      color: const Color(0xff5B35D5),
-      icon: Icons.description_rounded,
-      title: 'Complete Courier KYC',
-      text:
-          'Neeche required document numbers enter karke Admin approval ke liye submit karein.',
-    );
-  }
-
-  Widget _infoCard({
-    required Color color,
-    required IconData icon,
-    required String title,
-    required String text,
-  }) {
     return Container(
-      padding:
-          const EdgeInsets.all(16),
-      decoration:
-          BoxDecoration(
-        color:
-            color.withOpacity(.08),
-        borderRadius:
-            BorderRadius.circular(18),
-        border: Border.all(
-          color:
-              color.withOpacity(.18),
-        ),
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
-            icon,
-            color: color,
-            size: 27,
+            approvedByAdmin || active
+                ? Icons.verified
+                : status == 'rejected'
+                    ? Icons.error_outline
+                    : status == 'pending_approval'
+                        ? Icons.hourglass_top
+                        : Icons.description_outlined,
+            color: foreground,
+            size: 28,
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
-                  style:
-                      TextStyle(
-                    color: color,
-                    fontSize: 15,
-                    fontWeight:
-                        FontWeight.w800,
+                  style: TextStyle(
+                    color: foreground,
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  text,
-                  style:
-                      const TextStyle(
-                    fontSize: 12,
-                    height: 1.4,
-                    fontWeight:
-                        FontWeight.w500,
+                  subtitle,
+                  style: TextStyle(
+                    color: foreground,
+                    height: 1.35,
                   ),
                 ),
               ],
@@ -982,426 +664,199 @@ class _CourierDocumentsPageState
       ),
     );
   }
-
-  // ============================================================
-  // PROGRESS
-  // ============================================================
-
-  Widget _progressCard() {
-    final controllers = [
-      _panController,
-      _aadhaarController,
-      _dlController,
-      _rcController,
-      _addressProofController,
-    ];
-
-    int completed = 0;
-
-    for (final controller
-        in controllers) {
-      if (controller.text
-          .trim()
-          .isNotEmpty) {
-        completed++;
-      }
-    }
-
-    const total = 5;
-
-    return Container(
-      padding:
-          const EdgeInsets.all(18),
-      decoration:
-          BoxDecoration(
-        gradient:
-            const LinearGradient(
-          colors: [
-            Color(0xff5B35D5),
-            Color(0xff4323A8),
-          ],
-        ),
-        borderRadius:
-            BorderRadius.circular(20),
-      ),
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'KYC Progress',
-                  style:
-                      TextStyle(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight:
-                        FontWeight.w800,
-                  ),
-                ),
-              ),
-              Text(
-                '$completed/$total',
-                style:
-                    const TextStyle(
-                  color: Colors.white,
-                  fontSize: 17,
-                  fontWeight:
-                      FontWeight.w900,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius:
-                BorderRadius.circular(10),
-            child:
-                LinearProgressIndicator(
-              value:
-                  completed / total,
-              minHeight: 8,
-              backgroundColor:
-                  Colors.white.withOpacity(.20),
-              valueColor:
-                  const AlwaysStoppedAnimation<
-                      Color>(
-                Colors.white,
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            completed == total
-                ? 'All document numbers complete.'
-                : '${total - completed} document details remaining.',
-            style:
-                const TextStyle(
-              color: Colors.white70,
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ============================================================
-  // BUILD
-  // ============================================================
 
   @override
-  Widget build(
-    BuildContext context,
-  ) {
-    if (_loading) {
-      return const Scaffold(
-        body:
-            Center(
-          child:
-              CircularProgressIndicator(),
-        ),
-      );
-    }
-
+  Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor:
-          const Color(0xfff5f6fa),
+      backgroundColor: const Color(0xFFF7F8FA),
       appBar: AppBar(
-        leading:
-            IconButton(
-          onPressed:
-              _saving
-                  ? null
-                  : _goBack,
-          icon:
-              const Icon(
-            Icons.arrow_back_rounded,
-          ),
-        ),
-        title:
-            const Text(
+        title: const Text(
           'Courier Documents',
-          style:
-              TextStyle(
-            fontWeight:
-                FontWeight.w800,
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
           ),
         ),
-        backgroundColor:
-            const Color(0xfff5f6fa),
-        foregroundColor:
-            Colors.black87,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
         elevation: 0,
-        actions: [
-          IconButton(
-            onPressed:
-                _saving
-                    ? null
-                    : _loadCourier,
-            icon:
-                const Icon(
-              Icons.refresh_rounded,
-            ),
-          ),
-        ],
       ),
-      body: SafeArea(
-        child:
-            RefreshIndicator(
-          onRefresh:
-              _loadCourier,
-          child:
-              ListView(
-            physics:
-                const AlwaysScrollableScrollPhysics(),
-            padding:
-                const EdgeInsets.fromLTRB(
-              16,
-              6,
-              16,
-              35,
+      body: isLoading
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : SafeArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Complete Courier Verification',
+                      style: TextStyle(
+                        fontSize: 25,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Enter your document details carefully. These details will be reviewed by the admin.',
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    _statusCard(),
+
+                    if (_isRejected)
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(
+                          bottom: 20,
+                        ),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          borderRadius:
+                              BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          rejectionReason.isEmpty
+                              ? 'Your previous submission was rejected. You can edit and resubmit.'
+                              : 'Reason: $rejectionReason',
+                          style: TextStyle(
+                            color: Colors.red.shade800,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+
+                    _documentField(
+                      controller: panController,
+                      label: 'PAN Number',
+                      icon: Icons.badge_outlined,
+                    ),
+
+                    _documentField(
+                      controller: aadhaarController,
+                      label: 'Aadhaar Number',
+                      icon: Icons.credit_card_outlined,
+                    ),
+
+                    _documentField(
+                      controller:
+                          drivingLicenceController,
+                      label: 'Driving Licence Number',
+                      icon: Icons.drive_eta_outlined,
+                    ),
+
+                    _documentField(
+                      controller: vehicleRcController,
+                      label: 'Vehicle RC Number',
+                      icon: Icons.directions_car_outlined,
+                    ),
+
+                    _documentField(
+                      controller:
+                          addressProofController,
+                      label: 'Address Proof Number',
+                      icon: Icons.home_outlined,
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    if (_isLocked)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius:
+                              BorderRadius.circular(12),
+                        ),
+                        child: const Text(
+                          'Documents are locked because they are already submitted or approved.',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+
+                    if (!_isLocked) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: OutlinedButton(
+                          onPressed: isSaving
+                              ? null
+                              : () => _saveDocumentNumbers(
+                                    submit: false,
+                                  ),
+                          child: isSaving
+                              ? const SizedBox(
+                                  height: 22,
+                                  width: 22,
+                                  child:
+                                      CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text(
+                                  'Save Documents',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight:
+                                        FontWeight.bold,
+                                  ),
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: ElevatedButton(
+                          onPressed: isSaving
+                              ? null
+                              : () => _saveDocumentNumbers(
+                                    submit: true,
+                                  ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor:
+                                const Color(0xFF5B35D5),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius:
+                                  BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: isSaving
+                              ? const SizedBox(
+                                  height: 22,
+                                  width: 22,
+                                  child:
+                                      CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  'Submit for Approval',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight:
+                                        FontWeight.bold,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
-            children: [
-              _statusCard(),
-
-              const SizedBox(height: 14),
-
-              _progressCard(),
-
-              const SizedBox(height: 22),
-
-              const Text(
-                'Enter Document Numbers',
-                style:
-                    TextStyle(
-                  fontSize: 20,
-                  fontWeight:
-                      FontWeight.w900,
-                ),
-              ),
-
-              const SizedBox(height: 5),
-
-              Text(
-                'Document ki copy/photo upload nahi karni hai. Sirf document number/details enter karein.',
-                style:
-                    TextStyle(
-                  color:
-                      Colors.grey.shade600,
-                  fontSize: 12,
-                  height: 1.4,
-                ),
-              ),
-
-              const SizedBox(height: 17),
-
-              _documentField(
-                key: 'pan',
-                title: 'PAN Number',
-                hint: 'ABCDE1234F',
-                icon: Icons.badge_rounded,
-                controller:
-                    _panController,
-                maxLength: 10,
-              ),
-
-              _documentField(
-                key: 'aadhaar',
-                title: 'Aadhaar Number',
-                hint: '12 digit Aadhaar Number',
-                icon:
-                    Icons.credit_card_rounded,
-                controller:
-                    _aadhaarController,
-                keyboardType:
-                    TextInputType.number,
-                maxLength: 12,
-              ),
-
-              _documentField(
-                key: 'drivingLicence',
-                title:
-                    'Driving Licence Number',
-                hint:
-                    'Driving Licence Number',
-                icon:
-                    Icons.drive_eta_rounded,
-                controller:
-                    _dlController,
-                maxLength: 30,
-              ),
-
-              _documentField(
-                key: 'vehicleRc',
-                title:
-                    'Vehicle RC Number',
-                hint: 'RJ14AB1234',
-                icon:
-                    Icons.directions_car_rounded,
-                controller:
-                    _rcController,
-                maxLength: 30,
-              ),
-
-              _documentField(
-                key: 'addressProof',
-                title:
-                    'Address Proof Number / Details',
-                hint:
-                    'Address proof number/details',
-                icon:
-                    Icons.home_rounded,
-                controller:
-                    _addressProofController,
-                maxLength: 100,
-              ),
-
-              const SizedBox(height: 8),
-
-              if (!_isAccountApproved() &&
-                  !(_documentsSubmitted &&
-                      _status ==
-                          'pending_approval')) ...[
-                SizedBox(
-                  height: 52,
-                  width: double.infinity,
-                  child:
-                      OutlinedButton.icon(
-                    onPressed:
-                        _saving
-                            ? null
-                            : () =>
-                                _saveDocumentNumbers(),
-                    icon:
-                        const Icon(
-                      Icons.save_rounded,
-                    ),
-                    label:
-                        const Text(
-                      'Save Details',
-                      style:
-                          TextStyle(
-                        fontWeight:
-                            FontWeight.w800,
-                      ),
-                    ),
-                    style:
-                        OutlinedButton.styleFrom(
-                      shape:
-                          RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(15),
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 12),
-
-                SizedBox(
-                  height: 55,
-                  width: double.infinity,
-                  child:
-                      ElevatedButton.icon(
-                    onPressed:
-                        _saving
-                            ? null
-                            : () =>
-                                _saveDocumentNumbers(
-                                  submit: true,
-                                ),
-                    icon:
-                        _saving
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child:
-                                    CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color:
-                                      Colors.white,
-                                ),
-                              )
-                            : const Icon(
-                                Icons.send_rounded,
-                              ),
-                    label:
-                        Text(
-                      _saving
-                          ? 'Processing...'
-                          : _status ==
-                                  'rejected'
-                              ? 'Resubmit for Approval'
-                              : 'Submit for Admin Approval',
-                      style:
-                          const TextStyle(
-                        fontWeight:
-                            FontWeight.w800,
-                        fontSize: 14,
-                      ),
-                    ),
-                    style:
-                        ElevatedButton.styleFrom(
-                      backgroundColor:
-                          const Color(0xff5B35D5),
-                      foregroundColor:
-                          Colors.white,
-                      shape:
-                          RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(15),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-
-              if (_status ==
-                      'pending_approval' &&
-                  _documentsSubmitted) ...[
-                const SizedBox(height: 15),
-                _infoCard(
-                  color: Colors.orange,
-                  icon:
-                      Icons.lock_clock_rounded,
-                  title:
-                      'Editing Locked',
-                  text:
-                      'Admin approval/rejection ka wait karein. Verification complete hone tak submitted details edit nahi hongi.',
-                ),
-              ],
-
-              if (_isAccountApproved()) ...[
-                const SizedBox(height: 15),
-                _infoCard(
-                  color: Colors.green,
-                  icon:
-                      Icons.verified_rounded,
-                  title: 'KYC Approved',
-                  text:
-                      'Aapke Courier KYC documents Admin ne approve kar diye hain. Ab document details change nahi ki ja sakti.',
-                ),
-              ],
-
-              if (_status == 'rejected') ...[
-                const SizedBox(height: 15),
-                _infoCard(
-                  color: Colors.red,
-                  icon:
-                      Icons.edit_note_rounded,
-                  title:
-                      'Edit & Resubmit',
-                  text:
-                      'Rejected details ko correct karein aur "Resubmit for Approval" button dabayein.',
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
