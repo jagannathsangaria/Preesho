@@ -29,20 +29,11 @@ service firebase.storage {
 
     match /vendor_documents/{userId}/{fileName} {
 
-      // ----------------------------------------------------------
       // ADMIN
-      // ----------------------------------------------------------
-
       allow read, write: if isAdmin();
 
 
-      // ----------------------------------------------------------
       // VENDOR OWN DOCUMENTS
-      // ----------------------------------------------------------
-      // Only the owner can access documents while the vendor is
-      // pending/rejected/inactive.
-      // ----------------------------------------------------------
-
       function canManageVendorDocuments() {
         return isSignedIn()
           && request.auth.uid == userId
@@ -64,35 +55,23 @@ service firebase.storage {
       }
 
 
-      // ----------------------------------------------------------
       // READ
-      // ----------------------------------------------------------
-
       allow read: if canManageVendorDocuments();
 
 
-      // ----------------------------------------------------------
       // CREATE / UPLOAD
-      // ----------------------------------------------------------
-
       allow create: if canManageVendorDocuments()
         && request.resource.size <= 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
 
 
-      // ----------------------------------------------------------
       // UPDATE
-      // ----------------------------------------------------------
-
       allow update: if canManageVendorDocuments()
         && request.resource.size <= 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
 
 
-      // ----------------------------------------------------------
       // DELETE
-      // ----------------------------------------------------------
-
       allow delete: if canManageVendorDocuments();
     }
 
@@ -103,19 +82,11 @@ service firebase.storage {
 
     match /courier_documents/{userId}/{fileName} {
 
-      // ----------------------------------------------------------
       // ADMIN
-      // ----------------------------------------------------------
-      // Admin can view/download/replace/delete courier documents.
-      // ----------------------------------------------------------
-
       allow read, write: if isAdmin();
 
 
-      // ----------------------------------------------------------
       // COURIER OWN DOCUMENTS
-      // ----------------------------------------------------------
-
       function canManageCourierDocuments() {
         return isSignedIn()
           && request.auth.uid == userId
@@ -137,38 +108,23 @@ service firebase.storage {
       }
 
 
-      // ----------------------------------------------------------
       // READ
-      // ----------------------------------------------------------
-      // Courier can see his own documents while registration is
-      // pending/rejected.
-      // ----------------------------------------------------------
-
       allow read: if canManageCourierDocuments();
 
 
-      // ----------------------------------------------------------
       // CREATE / UPLOAD
-      // ----------------------------------------------------------
-
       allow create: if canManageCourierDocuments()
         && request.resource.size <= 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
 
 
-      // ----------------------------------------------------------
       // UPDATE
-      // ----------------------------------------------------------
-
       allow update: if canManageCourierDocuments()
         && request.resource.size <= 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
 
 
-      // ----------------------------------------------------------
       // DELETE
-      // ----------------------------------------------------------
-
       allow delete: if canManageCourierDocuments();
     }
 
