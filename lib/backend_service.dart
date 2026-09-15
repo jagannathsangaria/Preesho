@@ -1,3 +1,4 @@
+
 /// Production backend interface.
 /// Connect this interface to Firebase/Supabase/API after project credentials are supplied.
 abstract class BackendService {
@@ -24,14 +25,11 @@ class LocalBackendService implements BackendService {
   Future<List<Map<String, dynamic>>> products() async => [];
 
   @override
-  Future<void> saveAddress(Map<String, dynamic> address) async =>
-      _addresses.add(address);
+  Future<void> saveAddress(Map<String, dynamic> address) async => _addresses.add(address);
 
   @override
-  Future<void> createOrder(Map<String, dynamic> order) async =>
-      _orders.add(order);
+  Future<void> createOrder(Map<String, dynamic> order) async => _orders.add(order);
 
   @override
-  Future<List<Map<String, dynamic>>> orders() async =>
-      List.unmodifiable(_orders);
+  Future<List<Map<String, dynamic>>> orders() async => List.unmodifiable(_orders);
 }
