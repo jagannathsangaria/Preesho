@@ -284,10 +284,11 @@ class _LoginPageState extends State<LoginPage> {
 
     setState(() => isLoading = true);
     try {
-      var user = _auth.currentUser;
-      if (user == null) {
+      final currentUser = _auth.currentUser;
+      if (currentUser == null) {
         throw FirebaseAuthException(code: 'phone-session-missing', message: 'Phone verification session is missing.');
       }
+      User user = currentUser;
 
       final emailCredential = EmailAuthProvider.credential(email: email, password: password);
       try {
