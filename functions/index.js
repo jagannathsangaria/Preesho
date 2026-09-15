@@ -227,17 +227,6 @@ async function verifyCourier(request) {
 
 // ============================================================
 // TARGET COURIER VALIDATION
-//
-// Used only by Admin assignment.
-//
-// Client is NOT trusted for:
-// name
-// phone
-// email
-// role
-// status
-// active
-// approval
 // ============================================================
 
 async function verifyTargetCourier(courierId) {
@@ -536,10 +525,6 @@ exports.createCourierAccount = onCall(
       );
     }
 
-    // ----------------------------------------------------------
-    // CHECK EXISTING AUTH ACCOUNT
-    // ----------------------------------------------------------
-
     try {
       await auth.getUserByEmail(email);
 
@@ -562,10 +547,6 @@ exports.createCourierAccount = onCall(
         );
       }
     }
-
-    // ----------------------------------------------------------
-    // CREATE AUTH ACCOUNT
-    // ----------------------------------------------------------
 
     let courierUser;
 
@@ -602,10 +583,6 @@ exports.createCourierAccount = onCall(
 
     const courierUid =
       courierUser.uid;
-
-    // ----------------------------------------------------------
-    // CREATE FIRESTORE PROFILES
-    // ----------------------------------------------------------
 
     try {
       const batch =
@@ -697,10 +674,6 @@ exports.createCourierAccount = onCall(
         error
       );
 
-      // --------------------------------------------------------
-      // ROLLBACK AUTH ACCOUNT
-      // --------------------------------------------------------
-
       try {
         await auth.deleteUser(
           courierUid
@@ -776,10 +749,6 @@ exports.authorizeVendor = onCall(
 
     let vendorUser;
 
-    // ----------------------------------------------------------
-    // FIND AUTH USER
-    // ----------------------------------------------------------
-
     try {
       if (targetUid) {
         vendorUser =
@@ -854,10 +823,6 @@ exports.authorizeVendor = onCall(
         existingVendorData.role
       );
 
-    // ----------------------------------------------------------
-    // PREVENT ROLE CONVERSION OF ADMIN / COURIER
-    // ----------------------------------------------------------
-
     if (
       existingRole === "admin"
     ) {
@@ -916,10 +881,6 @@ exports.authorizeVendor = onCall(
     const batch =
       db.batch();
 
-    // ----------------------------------------------------------
-    // USER PROFILE
-    // ----------------------------------------------------------
-
     batch.set(
       userRef,
       {
@@ -971,10 +932,6 @@ exports.authorizeVendor = onCall(
       },
       { merge: true }
     );
-
-    // ----------------------------------------------------------
-    // VENDOR PROFILE
-    // ----------------------------------------------------------
 
     batch.set(
       vendorRef,
@@ -1189,10 +1146,6 @@ exports.updateVendorStatus = onCall(
       );
     }
 
-    // ----------------------------------------------------------
-    // APPROVAL REQUIRES ALL DOCUMENTS
-    // ----------------------------------------------------------
-
     if (status === "approved") {
       if (!userDoc.exists) {
         throw new HttpsError(
@@ -1259,10 +1212,6 @@ exports.updateVendorStatus = onCall(
     const batch =
       db.batch();
 
-    // ----------------------------------------------------------
-    // USERS
-    // ----------------------------------------------------------
-
     batch.set(
       userRef,
       {
@@ -1308,10 +1257,6 @@ exports.updateVendorStatus = onCall(
       },
       { merge: true }
     );
-
-    // ----------------------------------------------------------
-    // VENDORS
-    // ----------------------------------------------------------
 
     batch.set(
       vendorRef,
@@ -1898,10 +1843,6 @@ exports.shipOrder = onCall(
             FieldValue.serverTimestamp(),
         };
 
-        // ------------------------------------------------------
-        // LEGACY COMPATIBILITY
-        // ------------------------------------------------------
-
         if (courierPersonName) {
           updateData.courierPersonName =
             courierPersonName;
@@ -2157,10 +2098,6 @@ exports.assignOrderToCourier = onCall(
       );
     }
 
-    // ----------------------------------------------------------
-    // VERIFY REAL COURIER PROFILE
-    // ----------------------------------------------------------
-
     const courier =
       await verifyTargetCourier(
         courierId
@@ -2279,21 +2216,6 @@ exports.assignOrderToCourier = onCall(
 // Delivered
 //
 // SECURITY:
-//
-// Courier cannot send or modify:
-//
-// paymentMethod
-// paymentStatus
-// codAmount
-// total
-// totalAmount
-// subtotal
-// discount
-// deliveryFee
-// courierId
-// vendorUids
-// userId
-//
 // Only backend-controlled delivery fields are written.
 // ============================================================
 
@@ -2374,10 +2296,6 @@ exports.updateCourierOrderStatus = onCall(
         const orderData =
           orderDoc.data() || {};
 
-        // ------------------------------------------------------
-        // VERIFY COURIER ASSIGNMENT
-        // ------------------------------------------------------
-
         const assignedCourierId =
           cleanString(
             orderData.courierId
@@ -2399,10 +2317,6 @@ exports.updateCourierOrderStatus = onCall(
             "This order is assigned to another courier."
           );
         }
-
-        // ------------------------------------------------------
-        // VERIFY CURRENT STATUS
-        // ------------------------------------------------------
 
         const currentStatus =
           normalizeOrderStatus(
@@ -2443,10 +2357,6 @@ exports.updateCourierOrderStatus = onCall(
           );
         }
 
-        // ------------------------------------------------------
-        // BUILD HISTORY
-        // ------------------------------------------------------
-
         const newHistory =
           buildStatusHistory(
             orderData.statusHistory,
@@ -2467,13 +2377,6 @@ exports.updateCourierOrderStatus = onCall(
                 courier.uid,
             }
           );
-
-        // ------------------------------------------------------
-        // IMPORTANT:
-        // ONLY SAFE DELIVERY FIELDS ARE CREATED HERE.
-        //
-        // No client payment/COD data is used.
-        // ------------------------------------------------------
 
         const updateData = {
           orderStatus:
