@@ -562,13 +562,11 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
-    // Bottom navigation: Home, Play, Top Deals, Cart.
-    // Account/Profile remains accessible elsewhere in the app,
-    // but is intentionally removed from bottom navigation.
     final pages = [
       HomePage(onCartChanged: refresh),
       PlayPage(onCartChanged: refresh),
       TopDealsPage(onCartChanged: refresh),
+      ProfilePage(onProfileChanged: refresh),
       CartPage(onCartChanged: refresh),
     ];
 
@@ -594,12 +592,14 @@ class _MainShellState extends State<MainShell> {
             selectedIcon: Icon(Icons.local_fire_department_rounded),
             label: 'Top Deals',
           ),
+          const NavigationDestination(
+            icon: Icon(Icons.person_outline_rounded),
+            selectedIcon: Icon(Icons.person_rounded),
+            label: 'Account',
+          ),
           NavigationDestination(
             icon: _CartNavIcon(count: CartController.items.length),
-            selectedIcon: _CartNavIcon(
-              count: CartController.items.length,
-              selected: true,
-            ),
+            selectedIcon: _CartNavIcon(count: CartController.items.length, selected: true),
             label: 'Cart',
           ),
         ],
@@ -619,40 +619,23 @@ class _CartNavIcon extends StatelessWidget {
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        Icon(
-          selected
-              ? Icons.shopping_cart_rounded
-              : Icons.shopping_cart_outlined,
-        ),
+        Icon(selected ? Icons.shopping_cart_rounded : Icons.shopping_cart_outlined),
         if (count > 0)
           Positioned(
             right: -9,
             top: -8,
             child: Container(
-              constraints: const BoxConstraints(
-                minWidth: 17,
-                minHeight: 17,
-              ),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 4,
-                vertical: 1,
-              ),
+              constraints: const BoxConstraints(minWidth: 17, minHeight: 17),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
               decoration: BoxDecoration(
                 color: const Color(0xffE53935),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: Theme.of(context).scaffoldBackgroundColor,
-                  width: 1.5,
-                ),
+                border: Border.all(color: Theme.of(context).scaffoldBackgroundColor, width: 1.5),
               ),
               child: Text(
                 count > 99 ? '99+' : '$count',
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 9,
-                  fontWeight: FontWeight.w800,
-                ),
+                style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800),
               ),
             ),
           ),
@@ -660,6 +643,10 @@ class _CartNavIcon extends StatelessWidget {
     );
   }
 }
+
+// ============================================================
+// FIRESTORE PRODUCT STREAM
+// ============================================================
 
 class ProductStream
     extends StatelessWidget {
@@ -1311,7 +1298,6 @@ class _ModernProductCard extends StatelessWidget {
             const SizedBox(height: 8),
             SizedBox(width: double.infinity, height: 36, child: quantity == 0 ? OutlinedButton.icon(onPressed: product.stock <= 0 ? null : () async { final added = await CartController.addProduct(product); if (added) { onCartChanged(); if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Added to cart'), duration: Duration(seconds: 1))); } }, icon: const Icon(Icons.add_shopping_cart_rounded, size: 16), label: const Text('Add to Cart', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)), style: OutlinedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)))) : Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [IconButton(onPressed: () async { await CartController.decreaseQuantity(product.id); onCartChanged(); }, icon: const Icon(Icons.remove_circle_outline_rounded, size: 20)), Text('$quantity', style: const TextStyle(fontWeight: FontWeight.w900)), IconButton(onPressed: quantity >= product.stock ? null : () async { await CartController.increaseQuantity(product.id); onCartChanged(); }, icon: const Icon(Icons.add_circle_outline_rounded, size: 20))])),
           ]),
-            ),
         ]),
       ),
     );
